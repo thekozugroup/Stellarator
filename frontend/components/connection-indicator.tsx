@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const API_URL =
   (typeof process !== "undefined" &&
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "")) ||
-  "http://localhost:8000";
+  "";
 
 const POLL_INTERVAL_MS = 10_000;
 const FAILURE_THRESHOLD = 2;

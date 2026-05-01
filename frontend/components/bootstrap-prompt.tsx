@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { copyToClipboard } from "@/lib/clipboard";
 
 const API_URL =
   typeof process !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000")
-    : "http://localhost:8000";
+    ? (process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "")
+    : "";
 
 const templates: { id: string; label: string; docsAnchor?: string; content: string }[] = [
   {
@@ -530,7 +531,7 @@ function CopyButton({ text }: { text: string }) {
   const [liveText, setLiveText] = useState("");
 
   async function copy() {
-    await navigator.clipboard.writeText(text);
+    await copyToClipboard(text);
     setCopied(true);
     setLiveText("Copied");
     setTimeout(() => {

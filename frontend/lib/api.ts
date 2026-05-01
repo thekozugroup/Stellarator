@@ -11,7 +11,7 @@ import {
 import { z } from "zod";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+  (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 function viewerToken(): string | undefined {
   if (typeof window !== "undefined") {

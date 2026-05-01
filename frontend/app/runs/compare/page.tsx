@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RunOverlayChart } from "@/components/compare/run-overlay-chart";
 import { HyperparamDiff } from "@/components/compare/hyperparam-diff";
 import { api } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 
 const PALETTE = [
   "var(--color-chart-1)",
@@ -85,7 +86,7 @@ function ComparePage() {
 
   function shareUrl() {
     const url = `${window.location.origin}/runs/compare?ids=${selected.join(",")}`;
-    navigator.clipboard.writeText(url);
+    copyToClipboard(url);
     toast.success("Share URL copied");
   }
 

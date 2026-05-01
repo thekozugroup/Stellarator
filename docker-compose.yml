@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -13,31 +11,35 @@ services:
       - ./backend:/app
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    depends_on:
-      supervisor:
-        condition: service_started
+      start_period: 30s
 
   supervisor:
     build:
       context: .
       dockerfile: docker/supervisor.Dockerfile
     env_file: .env
+    environment:
+      # Override .env's +aiosqlite URL — sqlx doesn't understand that driver suffix.
+      # mode=rwc creates the file if missing (in case backend hasn't initialized yet).
+      STELLARATOR_DB_URL: "sqlite:////data/stellarator.db?mode=rwc"
     ports:
       - "8001:8001"
     volumes:
       - stellarator-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8001/healthz"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8001 && echo -e 'GET /healthz HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n' >&3 && head -c 12 <&3 | grep -q '200 OK'"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
+    depends_on:
+      backend:
+        condition: service_healthy
 
   frontend:
     build:

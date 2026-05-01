@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ToolStep } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 
 // ----- Status header (shared across renderers) -----------------------------
 
@@ -578,7 +579,7 @@ function PreflightRejectedCard({
     };
     const text = JSON.stringify(template, null, 2);
     if (typeof navigator !== "undefined") {
-      void navigator.clipboard.writeText(text);
+      void copyToClipboard(text);
     }
     window.dispatchEvent(
       new CustomEvent("stellarator:cite-intent", { detail: { paperId: text } }),

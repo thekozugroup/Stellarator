@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+// Empty base = same-origin (next.config.ts rewrites /v1/* to the backend).
+// Override with NEXT_PUBLIC_API_URL only when you need to bypass the proxy.
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 function viewerToken(): string | undefined {
   if (typeof window !== "undefined") {

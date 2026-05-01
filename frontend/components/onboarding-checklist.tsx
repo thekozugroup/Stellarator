@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 const DISMISS_KEY = "stellarator.onboarding.dismissed";
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+  (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 interface Props {
   hasCompletedRuns: boolean;
@@ -209,9 +209,27 @@ function Step({
 function ConnectAgentMenu() {
   function copyMcp() {
     const cmd = `claude mcp add stellarator -- npx -y stellarator-mcp --api-url ${API_URL}`;
-    if (typeof navigator !== "undefined") {
+    // navigator.clipboard is only available in secure contexts (HTTPS or localhost).
+    // Over plain HTTP from LAN/Tailscale, clipboard is undefined → guard + fallback.
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(cmd);
       toast.success("MCP command copied");
+    } else {
+      // Fallback: legacy execCommand on a temporary textarea.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = cmd;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        toast.success("MCP command copied");
+      } catch {
+        toast.message("Copy failed — copy manually:", { description: cmd });
+      }
     }
   }
   return (

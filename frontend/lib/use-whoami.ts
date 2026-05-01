@@ -7,7 +7,7 @@ import type { Run } from "@/lib/types";
 const API_URL =
   (typeof process !== "undefined" &&
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "")) ||
-  "http://localhost:8000";
+  "";
 
 const WhoamiSchema = z.object({ agent: z.string() });
 export type Whoami = z.infer<typeof WhoamiSchema>;

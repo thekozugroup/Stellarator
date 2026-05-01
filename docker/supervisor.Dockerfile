@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # Multi-stage build for the Stellarator Rust supervisor sidecar.
 
-FROM rust:1.82-bookworm AS builder
+FROM rust:1-bookworm AS builder
 WORKDIR /build
 
 # Cache deps separately from sources.

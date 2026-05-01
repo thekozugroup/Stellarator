@@ -26,7 +26,7 @@ import { Run } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+  (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 const GPU_TYPES = ["H100", "A100", "L40S", "H200", "MI300X"] as const;
 
