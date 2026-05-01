@@ -119,6 +119,22 @@ export default function RunDetailPage() {
             <span className="font-mono">{r.gpu}</span>
             <span>·</span>
             <span className="font-mono tabular-nums">{fmtUsd(r.cost_so_far_usd)}</span>
+            {r.reward_mean != null && (
+              <>
+                <span>·</span>
+                <span className="font-mono tabular-nums text-chart-5">
+                  Reward {r.reward_mean.toFixed(3)}
+                </span>
+              </>
+            )}
+            {r.percent_correct != null && (
+              <>
+                <span>·</span>
+                <span className="font-mono tabular-nums text-chart-4">
+                  Pass {r.percent_correct.toFixed(1)}%
+                </span>
+              </>
+            )}
             <span>·</span>
             <span
               className={
@@ -133,7 +149,18 @@ export default function RunDetailPage() {
             </span>
           </div>
         </div>
-        <RunActions run={r} onChange={() => run.refetch()} />
+        <div className="flex items-center gap-2">
+          {r.status === "succeeded" && r.checkpoint_url ? (
+            <a
+              href={r.checkpoint_url}
+              download
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs text-foreground hover:bg-accent transition-colors"
+            >
+              Download checkpoint ↓
+            </a>
+          ) : null}
+          <RunActions run={r} onChange={() => run.refetch()} />
+        </div>
       </header>
 
       <Separator className="my-6" />

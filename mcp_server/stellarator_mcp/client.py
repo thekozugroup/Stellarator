@@ -183,6 +183,35 @@ class StellaratorClient:
             json={"source": source, "paper_id": paper_id, "note": note},
         )
 
+    async def get_checkpoint(self, run_id: str) -> dict[str, Any]:
+        """Return checkpoint readiness for *run_id*.
+
+        Fetches the run and extracts status + checkpoint_url, returning:
+        ``{"run_id": ..., "status": ..., "checkpoint_url": str|null, "ready": bool}``
+        """
+        run = await self._request("GET", f"/v1/runs/{run_id}")
+        run_status = run.get("status", "")
+        ready = run_status == "succeeded"
+        url = run.get("checkpoint_url") if ready else None
+        return {
+            "run_id": run_id,
+            "status": run_status,
+            "checkpoint_url": url,
+            "ready": ready,
+        }
+
+    async def pick_environment(self, env_id: str) -> dict[str, Any]:
+        """Return the environment recipe for *env_id* from the backend registry.
+
+        Delegates to GET /v1/environments/{env_id} on the backend, which
+        wraps the environments catalog lookup helper.
+        """
+        return await self._request("GET", f"/v1/environments/{env_id}")
+
+    # NOTE: /v1/environments/{env_id} must be registered in the backend API.
+    # The backend app/api/runs.py (or a dedicated router) exposes this endpoint
+    # by calling app.services.environments.pick_environment.
+
 
 class StellaratorAPIError(Exception):
     """Raised when the backend returns an error response."""

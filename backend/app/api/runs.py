@@ -26,6 +26,7 @@ from app.services import notifications as notif_service
 from app.services.reconcile import reconciliation_loop
 from app.services.tinker import TinkerError, TinkerKeyMissing, tinker
 
+from app.services.environments import list_environments, pick_environment
 from .schemas import NoteCreate, RunCreate, RunDetail, RunNoteOut, RunOut, PromoteCreate
 
 logger = logging.getLogger(__name__)
@@ -754,6 +755,29 @@ async def stream_run(
 # ---------------------------------------------------------------------------
 # POST /preflight/validate — pure validation (no run created)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# GET /environments — RL task environment catalog
+# ---------------------------------------------------------------------------
+
+
+@router.get("/environments", response_model=list[dict])
+async def list_run_environments(_agent: str = CurrentAgent) -> list[dict]:
+    """List all known RL/eval task environment presets."""
+    return list_environments()
+
+
+@router.get("/environments/{env_id}", response_model=dict)
+async def get_run_environment(
+    env_id: str,
+    _agent: str = CurrentAgent,
+) -> dict:
+    """Look up a single RL/eval task environment preset by ID."""
+    env = pick_environment(env_id)
+    if env is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Environment '{env_id}' not found")
+    return env
 
 
 @router.post("/preflight/validate")

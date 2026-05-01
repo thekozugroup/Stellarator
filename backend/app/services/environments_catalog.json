@@ -1,0 +1,144 @@
+[
+  {
+    "id": "gsm8k",
+    "display_name": "GSM8K — Grade-School Math",
+    "task_type": "math",
+    "recommended_method": "grpo",
+    "recommended_dataset_mixture": [
+      {"hf_id": "openai/gsm8k", "split": "train", "weight": 1.0}
+    ],
+    "recommended_hyperparams": {
+      "lr": 1e-5,
+      "batch_size": 64,
+      "kl_coeff": 0.01,
+      "max_steps": 2000,
+      "reward_fn": "exact_match_numeric"
+    },
+    "suggested_eval_metric": "percent_correct on GSM8K test split",
+    "suggested_max_steps": 2000
+  },
+  {
+    "id": "math",
+    "display_name": "MATH — Competition Mathematics",
+    "task_type": "reasoning",
+    "recommended_method": "grpo",
+    "recommended_dataset_mixture": [
+      {"hf_id": "lighteval/MATH", "split": "train", "weight": 0.8},
+      {"hf_id": "openai/gsm8k", "split": "train", "weight": 0.2}
+    ],
+    "recommended_hyperparams": {
+      "lr": 5e-6,
+      "batch_size": 32,
+      "kl_coeff": 0.02,
+      "max_steps": 5000,
+      "reward_fn": "exact_match_numeric"
+    },
+    "suggested_eval_metric": "percent_correct on MATH test split (levels 1-5)",
+    "suggested_max_steps": 5000
+  },
+  {
+    "id": "humaneval",
+    "display_name": "HumanEval — Python Code Synthesis",
+    "task_type": "code",
+    "recommended_method": "ppo",
+    "recommended_dataset_mixture": [
+      {"hf_id": "openai/openai_humaneval", "split": "test", "weight": 1.0}
+    ],
+    "recommended_hyperparams": {
+      "lr": 1e-5,
+      "batch_size": 32,
+      "kl_coeff": 0.05,
+      "max_steps": 3000,
+      "reward_fn": "unit_test_pass_rate"
+    },
+    "suggested_eval_metric": "pass@1 on HumanEval 164 problems",
+    "suggested_max_steps": 3000
+  },
+  {
+    "id": "mbpp",
+    "display_name": "MBPP — Mostly Basic Python Problems",
+    "task_type": "code",
+    "recommended_method": "sft",
+    "recommended_dataset_mixture": [
+      {"hf_id": "google-research-datasets/mbpp", "split": "train", "weight": 1.0}
+    ],
+    "recommended_hyperparams": {
+      "lr": 2e-5,
+      "batch_size": 64,
+      "epochs": 3,
+      "max_steps": 1500
+    },
+    "suggested_eval_metric": "pass@1 on MBPP sanitized test split (374 problems)",
+    "suggested_max_steps": 1500
+  },
+  {
+    "id": "mt-bench",
+    "display_name": "MT-Bench — Multi-Turn Instruction Following",
+    "task_type": "instruction",
+    "recommended_method": "dpo",
+    "recommended_dataset_mixture": [
+      {"hf_id": "HuggingFaceH4/ultrafeedback_binarized", "split": "train_prefs", "weight": 0.7},
+      {"hf_id": "HuggingFaceH4/ultrachat_200k", "split": "train_sft", "weight": 0.3}
+    ],
+    "recommended_hyperparams": {
+      "lr": 5e-7,
+      "beta": 0.1,
+      "batch_size": 32,
+      "max_steps": 2000
+    },
+    "suggested_eval_metric": "GPT-4 judge score (1-10) on MT-Bench 80 questions",
+    "suggested_max_steps": 2000
+  },
+  {
+    "id": "alpaca-eval",
+    "display_name": "AlpacaEval — Open-Ended Instruction Following",
+    "task_type": "instruction",
+    "recommended_method": "dpo",
+    "recommended_dataset_mixture": [
+      {"hf_id": "HuggingFaceH4/ultrafeedback_binarized", "split": "train_prefs", "weight": 1.0}
+    ],
+    "recommended_hyperparams": {
+      "lr": 5e-7,
+      "beta": 0.1,
+      "batch_size": 64,
+      "max_steps": 3000
+    },
+    "suggested_eval_metric": "win rate (%) on AlpacaEval 2.0 vs GPT-4-Turbo baseline",
+    "suggested_max_steps": 3000
+  },
+  {
+    "id": "truthfulqa",
+    "display_name": "TruthfulQA — Truthfulness & Calibration",
+    "task_type": "safety",
+    "recommended_method": "rm",
+    "recommended_dataset_mixture": [
+      {"hf_id": "truthful_qa", "split": "validation", "weight": 0.5},
+      {"hf_id": "HuggingFaceH4/ultrafeedback_binarized", "split": "train_prefs", "weight": 0.5}
+    ],
+    "recommended_hyperparams": {
+      "lr": 1e-5,
+      "batch_size": 32,
+      "max_steps": 1000,
+      "margin": 0.5
+    },
+    "suggested_eval_metric": "percent_correct (MC1) on TruthfulQA 817 questions",
+    "suggested_max_steps": 1000
+  },
+  {
+    "id": "hellaswag",
+    "display_name": "HellaSwag — Commonsense NLI",
+    "task_type": "reasoning",
+    "recommended_method": "sft",
+    "recommended_dataset_mixture": [
+      {"hf_id": "Rowan/hellaswag", "split": "train", "weight": 1.0}
+    ],
+    "recommended_hyperparams": {
+      "lr": 2e-5,
+      "batch_size": 128,
+      "epochs": 2,
+      "max_steps": 4000
+    },
+    "suggested_eval_metric": "accuracy on HellaSwag validation split (10042 examples)",
+    "suggested_max_steps": 4000
+  }
+]

@@ -192,6 +192,28 @@ class TinkerClient:
         api_key = await self._key(agent, session)
         return await self._request("POST", f"/jobs/{job_id}/resume", api_key=api_key)
 
+    def extract_rl_signals(self, job_response: dict[str, Any]) -> dict[str, Any]:
+        """Extract RL-parity signals from a Tinker job response dict.
+
+        Looks for ``weights_url`` / ``checkpoint_url`` and
+        ``metrics.reward_mean`` / ``metrics.percent_correct``.
+        Returns a dict of non-None fields only.
+        """
+        out: dict[str, Any] = {}
+        # checkpoint URL — prefer weights_url, fall back to checkpoint_url
+        url = job_response.get("weights_url") or job_response.get("checkpoint_url")
+        if isinstance(url, str) and url:
+            out["checkpoint_url"] = url
+        metrics = job_response.get("metrics")
+        if isinstance(metrics, dict):
+            rm = metrics.get("reward_mean")
+            if isinstance(rm, (int, float)):
+                out["reward_mean"] = float(rm)
+            pc = metrics.get("percent_correct")
+            if isinstance(pc, (int, float)):
+                out["percent_correct"] = float(pc)
+        return out
+
     async def stream_metrics(
         self,
         job_id: str,

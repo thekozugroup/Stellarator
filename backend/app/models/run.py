@@ -49,6 +49,11 @@ class Run(Base):
     gpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # RL-parity signals (nullable; populated by reconcile loop from Tinker response)
+    reward_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    percent_correct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    checkpoint_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

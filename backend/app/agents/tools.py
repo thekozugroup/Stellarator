@@ -297,6 +297,50 @@ TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_checkpoint",
+            "description": (
+                "Get the trained weights URL for a completed run. Returns null until "
+                "the run reaches succeeded status. Use this to pass weights to a "
+                "downstream eval script or to a promotion run."
+            ),
+            "parameters": {
+                "type": "object",
+                "required": ["run_id"],
+                "properties": {
+                    "run_id": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pick_environment",
+            "description": (
+                "Look up a recipe scaffold for a known RL/eval task. Returns the "
+                "recommended method, dataset mixture, hyperparams, and eval metric. "
+                "The agent can use this as a starting point for sandbox_create. "
+                "Known IDs: gsm8k, math, humaneval, mbpp, mt-bench, alpaca-eval, "
+                "truthfulqa, hellaswag."
+            ),
+            "parameters": {
+                "type": "object",
+                "required": ["env_id"],
+                "properties": {
+                    "env_id": {
+                        "type": "string",
+                        "description": (
+                            "Environment identifier, e.g. 'gsm8k', 'humaneval', "
+                            "'mt-bench'."
+                        ),
+                    },
+                },
+            },
+        },
+    },
 ]
 
 
@@ -411,6 +455,28 @@ async def execute(
                 },
             )
             return _result(r)
+
+        if name == "get_checkpoint":
+            r = await client.get(f"/v1/runs/{args['run_id']}")
+            if r.status_code >= 400:
+                return _result(r)
+            data = r.json()
+            run_status = data.get("status", "")
+            ready = run_status == "succeeded"
+            url = data.get("checkpoint_url") if ready else None
+            return json.dumps({
+                "run_id": args["run_id"],
+                "status": run_status,
+                "checkpoint_url": url,
+                "ready": ready,
+            })
+
+        if name == "pick_environment":
+            from app.services.environments import pick_environment as _pick_env
+            env = _pick_env(args.get("env_id", ""))
+            if env is None:
+                return json.dumps({"error": f"Unknown environment: {args.get('env_id')!r}"})
+            return json.dumps(env)
 
     return json.dumps({"error": f"Unknown tool: {name}"})
 

@@ -96,6 +96,10 @@ class RunOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # RL-parity signals
+    reward_mean: float | None = None
+    percent_correct: float | None = None
+    checkpoint_url: str | None = None
 
     model_config = {"from_attributes": True}
 

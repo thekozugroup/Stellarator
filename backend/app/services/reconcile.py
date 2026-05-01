@@ -149,9 +149,16 @@ async def _untrack(
 async def _refresh_run_status(run: Run) -> str | None:
     """Return the new status string if it changed, else None.
 
+    Also copies RL-parity signals (reward_mean, percent_correct, checkpoint_url)
+    directly onto the Run row when present in the Tinker response.
     Raises TinkerError on failure (caller tracks consecutive failures).
     """
     job = await tinker.get_job(run.tinker_job_id)  # type: ignore[arg-type]
+
+    # Copy RL-parity signals onto the row (surgical; no new tables).
+    signals = tinker.extract_rl_signals(job)
+    for field, value in signals.items():
+        setattr(run, field, value)
 
     new_status = job.get("status")
     if not isinstance(new_status, str):

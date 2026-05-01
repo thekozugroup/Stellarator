@@ -65,6 +65,10 @@ const RunRaw = z.object({
   is_sandbox: z.boolean().optional(),
   parent_run_id: z.string().nullable().optional(),
   preflight_json: PreflightJson.nullable().optional(),
+  // RL-parity signals
+  reward_mean: z.number().nullable().optional(),
+  percent_correct: z.number().nullable().optional(),
+  checkpoint_url: z.string().nullable().optional(),
 });
 
 export interface Run {
@@ -90,6 +94,10 @@ export interface Run {
   is_sandbox?: boolean;
   parent_run_id?: string | null;
   preflight_json?: PreflightJson | null;
+  // RL-parity signals
+  reward_mean?: number | null;
+  percent_correct?: number | null;
+  checkpoint_url?: string | null;
 }
 
 export const Run: z.ZodType<Run> = RunRaw.transform((r) => ({

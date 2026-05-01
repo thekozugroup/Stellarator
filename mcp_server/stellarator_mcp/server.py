@@ -361,6 +361,49 @@ TOOLS: list[Tool] = [
             },
         },
     ),
+    Tool(
+        name="stellarator_get_checkpoint",
+        description=(
+            "Get the trained weights URL for a completed run. "
+            "Returns null for checkpoint_url until the run reaches succeeded status. "
+            "Use this to pass weights to a downstream eval script or to a promotion run. "
+            "Poll this tool after run completion before launching an evaluation job."
+        ),
+        inputSchema={
+            "type": "object",
+            "required": ["run_id"],
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": "Run UUID to fetch the checkpoint for.",
+                },
+            },
+        },
+    ),
+    Tool(
+        name="stellarator_pick_environment",
+        description=(
+            "Look up a recipe scaffold for a known RL/eval task. "
+            "Returns the recommended method (sft/dpo/grpo/ppo/rm), dataset mixture, "
+            "hyperparameters, and eval metric for the requested environment. "
+            "Use the returned scaffold as a starting point for sandbox_create. "
+            "Known environment IDs: gsm8k, math, humaneval, mbpp, mt-bench, "
+            "alpaca-eval, truthfulqa, hellaswag."
+        ),
+        inputSchema={
+            "type": "object",
+            "required": ["env_id"],
+            "properties": {
+                "env_id": {
+                    "type": "string",
+                    "description": (
+                        "Environment identifier, e.g. 'gsm8k', 'humaneval', 'mt-bench'. "
+                        "Returns an error if the ID is not in the catalog."
+                    ),
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -437,6 +480,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
                     arguments["paper_id"],
                     arguments["note"],
                 )
+                return _ok(data)
+
+            case "stellarator_get_checkpoint":
+                data = await _client.get_checkpoint(arguments["run_id"])
+                return _ok(data)
+
+            case "stellarator_pick_environment":
+                data = await _client.pick_environment(arguments["env_id"])
                 return _ok(data)
 
             case _:
