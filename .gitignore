@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Rust
+target/
+Cargo.lock
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Data
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Test artifacts
+load_results*.csv
+htmlcov/
+.coverage
+coverage.xml
+
+# Build artifacts (load test)
+tests/load/*.html
+.claude/

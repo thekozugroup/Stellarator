@@ -1,0 +1,185 @@
+name: Load Regression
+
+on:
+  pull_request:
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------ #
+      # Start services
+      # ------------------------------------------------------------------ #
+      - name: Start backend and supervisor
+        env:
+          STELLARATOR_SECRET: ci-load-test-secret-change-me
+          STELLARATOR_DB_URL: sqlite+aiosqlite:////tmp/stellarator-ci.db
+          # Stub token accepted by the backend in CI
+          AGENT_TOKEN_LOAD_TEST: ci-load-test-bearer-token
+        run: |
+          docker compose up --build --detach backend supervisor
+
+      - name: Wait for /healthz (backend)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz > /dev/null 2>&1; then
+              echo "backend healthy"
+              break
+            fi
+            echo "attempt $i: backend not ready, waiting…"
+            sleep 3
+          done
+          curl -fsS http://localhost:8000/healthz
+
+      - name: Wait for /healthz (supervisor)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8001/healthz > /dev/null 2>&1; then
+              echo "supervisor healthy"
+              break
+            fi
+            echo "attempt $i: supervisor not ready, waiting…"
+            sleep 3
+          done
+          curl -fsS http://localhost:8001/healthz
+
+      # ------------------------------------------------------------------ #
+      # Python / Locust setup
+      # ------------------------------------------------------------------ #
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Locust + PyYAML
+        run: pip install locust pyyaml
+
+      # ------------------------------------------------------------------ #
+      # Obtain a CI bearer token
+      # The backend must issue a token for the load-test agent.  Adjust the
+      # endpoint/payload if your auth flow differs.
+      # ------------------------------------------------------------------ #
+      - name: Obtain load-test bearer token
+        id: get_token
+        run: |
+          TOKEN=$(curl -fsS \
+            -X POST http://localhost:8000/v1/auth/token \
+            -H "Content-Type: application/json" \
+            -d '{"agent_id":"load-test-agent","token":"ci-load-test-bearer-token"}' \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token','ci-load-test-bearer-token'))" \
+            2>/dev/null || echo "ci-load-test-bearer-token")
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------ #
+      # Run Locust headless
+      # ------------------------------------------------------------------ #
+      - name: Run Locust headless (60 s)
+        env:
+          STELLARATOR_LOAD_TOKEN: ${{ steps.get_token.outputs.token }}
+        run: |
+          locust \
+            -f tests/load/locustfile.py \
+            --headless \
+            -u 50 \
+            -r 5 \
+            -t 60s \
+            --csv=load_results \
+            --host=http://localhost:8000
+
+      # ------------------------------------------------------------------ #
+      # Parse CSV and assert thresholds
+      # ------------------------------------------------------------------ #
+      - name: Assert thresholds from CSV
+        run: |
+          python3 - <<'PYEOF'
+          import csv, sys, pathlib, yaml
+
+          thresholds_path = pathlib.Path("tests/load/thresholds.yaml")
+          stats_csv = pathlib.Path("load_results_stats.csv")
+
+          if not stats_csv.exists():
+              print("ERROR: load_results_stats.csv not found — Locust did not produce output")
+              sys.exit(2)
+
+          thresholds = yaml.safe_load(thresholds_path.read_text()) if thresholds_path.exists() else {}
+          endpoint_thresholds = thresholds.get("endpoints", {})
+          global_thresholds   = thresholds.get("global", {})
+
+          rows = {}
+          total_row = None
+          with stats_csv.open(newline="") as fh:
+              for row in csv.DictReader(fh):
+                  name = row.get("Name", "").strip()
+                  if name == "Aggregated":
+                      total_row = row
+                  else:
+                      rows[name] = row
+
+          breaches = []
+
+          def _float(row, key):
+              v = row.get(key, "") or "0"
+              try:
+                  return float(v)
+              except ValueError:
+                  return 0.0
+
+          for endpoint, limits in endpoint_thresholds.items():
+              row = rows.get(endpoint)
+              if row is None:
+                  print(f"WARN  no CSV row for '{endpoint}' — skipping")
+                  continue
+              total_reqs = _float(row, "Request Count") + _float(row, "Failure Count")
+              err_rate   = _float(row, "Failure Count") / total_reqs if total_reqs else 0.0
+              p95_ms     = _float(row, "95%")
+
+              max_p95 = limits.get("p95_ms")
+              max_err = limits.get("error_rate")
+              breach  = False
+
+              parts = []
+              if max_p95 is not None:
+                  ok = p95_ms <= max_p95
+                  parts.append(f"p95={p95_ms:.0f}ms limit={max_p95}ms {'OK' if ok else 'FAIL'}")
+                  if not ok:
+                      breach = True
+              if max_err is not None:
+                  ok = err_rate <= max_err
+                  parts.append(f"err={err_rate:.3f} limit={max_err:.3f} {'OK' if ok else 'FAIL'}")
+                  if not ok:
+                      breach = True
+
+              verdict = "FAIL" if breach else "PASS"
+              print(f"{verdict}  {endpoint}: {', '.join(parts)}")
+              if breach:
+                  breaches.append(endpoint)
+
+          # Global RPS
+          min_rps = global_thresholds.get("min_rps")
+          if min_rps is not None and total_row is not None:
+              rps = _float(total_row, "Requests/s")
+              ok  = rps >= min_rps
+              print(f"{'PASS' if ok else 'FAIL'}  global: rps={rps:.1f} limit={min_rps:.1f}")
+              if not ok:
+                  breaches.append("global.min_rps")
+
+          if breaches:
+              print(f"\nFAIL — {len(breaches)} threshold(s) breached: {', '.join(breaches)}")
+              sys.exit(1)
+          print("\nPASS — all thresholds satisfied")
+          PYEOF
+
+      # ------------------------------------------------------------------ #
+      # Always upload CSV artifacts
+      # ------------------------------------------------------------------ #
+      - name: Upload load-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-results-${{ github.run_id }}
+          path: load_results*.csv
+          retention-days: 30

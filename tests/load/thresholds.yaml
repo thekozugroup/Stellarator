@@ -1,0 +1,16 @@
+endpoints:
+  "GET /v1/whoami":
+    p95_ms: 100
+    error_rate: 0.01
+  "GET /v1/runs":
+    p95_ms: 500
+    error_rate: 0.01
+  "POST /v1/runs":
+    p95_ms: 1500
+    error_rate: 0.05  # tinker mock latency
+  "POST /v1/integrations/keys/{kind}/test":
+    p95_ms: 2000
+    error_rate: 0.20  # rate-limited expected
+
+global:
+  min_rps: 20
