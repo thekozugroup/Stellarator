@@ -1,5 +1,9 @@
 Stellarator is a control plane for fine-tuning and reinforcement learning workloads on [Tinker](https://thinkingmachines.ai/tinker/). Operators launch sandbox runs, validate them through a structured pre-flight gate, then promote to scale — with cost projections, budgets, and live alert streams threaded through every step.
 
+## Screenshots
+
+![Stellarator dashboard](./docs/screenshot.png)
+
 ## How it works
 
 Each run is owned by the identity that created it. Other identities can read the metrics, alerts, and notes but cannot mutate the run — pause, cancel, edit hyperparameters all require ownership. This makes the platform safe for multi-operator workspaces where several pipelines may share a Tinker organization.
