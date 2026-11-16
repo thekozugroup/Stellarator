@@ -56,11 +56,11 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
         <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
-              <th scope="col" className="w-[30%] px-4 pt-3 pb-2 font-normal">Name</th>
+              <th scope="col" className="w-[28%] px-4 pt-3 pb-2 font-normal">Name</th>
               <th scope="col" className="w-[20%] px-4 pt-3 pb-2 font-normal">Prompt set</th>
-              <th scope="col" className="w-[24%] px-4 pt-3 pb-2 font-normal">Runs</th>
-              <th scope="col" className="w-[16%] px-4 pt-3 pb-2 text-right font-normal">Progress</th>
-              <th scope="col" className="w-[10%] px-4 pt-3 pb-2 text-right font-normal">Created</th>
+              <th scope="col" className="w-[22%] px-4 pt-3 pb-2 font-normal">Runs</th>
+              <th scope="col" className="w-[17%] px-4 pt-3 pb-2 text-right font-normal">Progress</th>
+              <th scope="col" className="w-[13%] px-4 pt-3 pb-2 text-right font-normal">Created</th>
             </tr>
           </thead>
           <tbody>
@@ -127,7 +127,7 @@ function LoadingRows() {
   return (
     <div aria-label="Loading preference sets…" className="divide-y">
       {[0, 1, 2].map((n) => (
-        <div key={n} className="grid gap-2 px-4 py-4 md:grid-cols-[30%_20%_24%_16%_10%] md:gap-0">
+        <div key={n} className="grid gap-2 px-4 py-4 md:grid-cols-[28%_20%_22%_17%_13%] md:gap-0">
           <Bar className="h-4 w-40" />
           <Bar className="h-4 w-28" />
           <Bar className="h-4 w-36" />
@@ -155,12 +155,6 @@ export function PreferencesPage() {
   return (
     <Page
       title="Preferences"
-      meta={
-        <p className="max-w-[70ch]">
-          A preference set pairs a chosen and a rejected response for each prompt, picked from runs on the same
-          prompt set, for DPO or KTO training.
-        </p>
-      }
       actions={
         <Button onClick={() => setOpen(true)}>
           <Plus aria-hidden="true" />
@@ -183,7 +177,7 @@ export function PreferencesPage() {
             action={
               noRuns ? (
                 <Button asChild variant="outline">
-                  <Link to="/runs/new">Start a run</Link>
+                  <Link to="/runs/new">New run</Link>
                 </Button>
               ) : (
                 <Button variant="outline" onClick={() => setOpen(true)}>
@@ -192,9 +186,7 @@ export function PreferencesPage() {
               )
             }
           >
-            {noRuns
-              ? "Preference sets compare the responses of runs, and there are no runs yet. Start a run first, then come back to pick pairs."
-              : "Preference sets you create appear here with how many prompts are decided. Create one from runs on the same prompt set."}
+            {noRuns ? "No runs yet. Start a run with 2 or more samples per prompt." : "No preference sets yet."}
           </EmptyBlock>
         ) : (
           <SetsTable sets={sets.data} />

@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -51,7 +50,7 @@ function suggestName(selected: Run[]): string {
 export function NewPreferenceSetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl">
+      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl">
         {open ? <NewSetForm onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>
     </Dialog>
@@ -126,10 +125,6 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
     <form onSubmit={submit} noValidate className="contents">
       <DialogHeader>
         <DialogTitle>New preference set</DialogTitle>
-        <DialogDescription>
-          Pick runs on the same prompt set. Every prompt with two or more finished responses becomes a choice
-          between them.
-        </DialogDescription>
       </DialogHeader>
 
       <div className="-mx-4 grid min-h-0 content-start gap-5 overflow-y-auto px-4 py-1">
@@ -167,48 +162,42 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
             <ErrorBlock message={runsQuery.error.message} onRetry={() => runsQuery.refetch()} />
           ) : runs.length === 0 ? (
             <p className="rounded-lg border px-3 py-4 text-sm text-muted-foreground">
-              There are no runs yet. A preference set compares the responses of runs, so{" "}
+              No runs yet.{" "}
               <Link to="/runs/new" className="font-medium text-foreground underline">
-                start a run
-              </Link>{" "}
-              first.
+                New run
+              </Link>
             </p>
           ) : (
             <div className="max-h-80 overflow-y-auto rounded-lg border">
               {groups.map((g) => {
                 const blocked = lockedSet !== null && lockedSet !== g.promptSetId
-                const reasonId = `pref-group-${g.promptSetId}-reason`
                 return (
                   <div key={g.promptSetId} className="border-b last:border-b-0">
                     <div className="sticky top-0 z-10 bg-popover px-3 pt-3 pb-1.5">
                       <p className="truncate text-sm font-medium" title={g.promptSetName}>
                         {g.promptSetName}
                       </p>
-                      {blocked ? (
-                        <p id={reasonId} className="text-xs text-muted-foreground">
-                          Can't be combined with runs on {lockedSetName}.
-                        </p>
-                      ) : null}
                     </div>
                     <ul className="pb-1.5">
                       {g.runs.map((run) => {
                         const id = `pref-run-${run.id}`
                         const checked = selected.includes(run.id)
+                        const empty = run.done === 0
+                        const off = blocked || empty
                         return (
                           <li key={run.id}>
                             <label
                               htmlFor={id}
                               className={cn(
                                 "flex min-h-11 items-start gap-3 px-3 py-2",
-                                blocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted",
+                                off ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted",
                               )}
                             >
                               <Checkbox
                                 id={id}
                                 checked={checked}
-                                disabled={blocked}
+                                disabled={off}
                                 onCheckedChange={(v) => toggle(run, v === true)}
-                                aria-describedby={blocked ? reasonId : undefined}
                                 className="mt-0.5"
                               />
                               <span className="grid min-w-0 flex-1 gap-0.5">
@@ -218,8 +207,12 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
                                 </span>
                               </span>
                               <span className="grid flex-none justify-items-end gap-0.5 text-right">
-                                <span className="tabular text-sm">{int(run.done)} done</span>
-                                {run.status === "completed" ? (
+                                {empty ? (
+                                  <span className="text-sm text-muted-foreground">No finished samples</span>
+                                ) : (
+                                  <span className="tabular text-sm">{int(run.done)} done</span>
+                                )}
+                                {empty ? null : run.status === "completed" ? (
                                   <span className="tabular text-xs text-muted-foreground">
                                     {count(run.params.samples_per_prompt, "sample", "samples")} per prompt
                                   </span>

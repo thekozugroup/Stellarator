@@ -2,7 +2,7 @@ import { TextModeToggle } from "@/components/shared/model-text"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ChevronLeft, ChevronRight, Ellipsis, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Ellipsis, Keyboard, Trash2 } from "lucide-react"
 import { AutoPairDialog } from "@/components/preferences/auto-pair-dialog"
 import { CandidateCard, type Mark } from "@/components/preferences/candidate-card"
 import { DeleteSetDialog } from "@/components/preferences/delete-set-dialog"
@@ -13,14 +13,13 @@ import {
   letter,
   patchCachedItem,
   prefKeys,
-  shortModel,
   usePreferenceSet,
   type ItemFilter,
 } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
-import { ProgressBar } from "@/components/shared/progress-bar"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -132,6 +131,8 @@ function Review({ set }: { set: PreferenceSet }) {
   const [autoOpen, setAutoOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [announce, setAnnounce] = useState("")
 
   const itemQ = useQuery({ // taste-ignore: missing-states -- an empty queue renders ReviewEmpty (no prompts, none decided, all decided)
     queryKey: prefKeys.item(set.id, filter, i),
@@ -185,6 +186,7 @@ function Review({ set }: { set: PreferenceSet }) {
   }
 
   function cancelAdvance() {
+    setAnnounce("")
     window.clearTimeout(advanceTimer.current)
     advanceTimer.current = undefined
   }
@@ -261,7 +263,12 @@ function Review({ set }: { set: PreferenceSet }) {
       if (settled && shown) {
         advanceTimer.current = window.setTimeout(() => {
           advanceTimer.current = undefined
-          if (live.current.item?.prompt_id === promptId) go(1)
+          const cur = live.current
+          if (cur.item?.prompt_id !== promptId) return
+          const gone = !matchesFilter(cur.item, cur.filter)
+          const more = gone ? cur.total - 1 > 0 : cur.i + 1 < cur.total
+          go(1)
+          setAnnounce(more ? "Saved. Next prompt." : "Saved.")
         }, BEAT_MS)
       }
     } catch (err) {
@@ -345,6 +352,11 @@ function Review({ set }: { set: PreferenceSet }) {
         handlers.current.pick(Number(digit[1]) - 1, e.shiftKey ? "rejected" : "chosen")
         return
       }
+      if (e.key === "?") {
+        e.preventDefault()
+        setHelpOpen(true)
+        return
+      }
       if (e.shiftKey) return
       const composite = target?.closest("[role='radiogroup'], [role='tablist'], [data-slot='toggle-group']")
       switch (e.key) {
@@ -403,6 +415,7 @@ function Review({ set }: { set: PreferenceSet }) {
   const undecided = Math.max(0, set.prompt_count - set.decided)
   const counts: Record<ItemFilter, number> = { undecided, decided: set.decided, all: set.prompt_count }
   const nextDisabled = !left && i + 1 >= total
+  const multiModel = new Set(set.runs.map((r) => r.model)).size > 1
   const showSampleFor = new Set(
     (item?.candidates ?? [])
       .map((c) => c.run_id)
@@ -419,22 +432,30 @@ function Review({ set }: { set: PreferenceSet }) {
       <ReviewEmpty
         set={set}
         filter={filter}
-        onExport={() => setExportOpen(true)}
         onFilter={setFilter}
       />
     )
   } else {
     body = (
       <Fragment key={item.prompt_id}>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 id="review-question" ref={headingRef} tabIndex={-1} className="text-base font-semibold focus:outline-none">
-            Which response is better for this prompt?
+        <div className="mb-3 flex items-center justify-between gap-x-4 gap-y-1">
+          <h2 id="review-question" ref={headingRef} tabIndex={-1} className="tabular text-sm text-muted-foreground focus:outline-none">
+            <span className="sr-only">Which response is better for this prompt? </span>
+            Prompt {int(item.prompt_idx + 1)}
           </h2>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="tabular text-xs text-muted-foreground">
-              Prompt {int(item.prompt_idx + 1)} in {set.prompt_set_name}
-            </p>
+          <div className="flex items-center gap-2">
             <TextModeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="pointer-coarse:hidden"
+              aria-label="Keyboard shortcuts"
+              aria-keyshortcuts="?"
+              title="Keyboard shortcuts (?)"
+              onClick={() => setHelpOpen(true)}
+            >
+              <Keyboard aria-hidden="true" />
+            </Button>
           </div>
         </div>
         <PromptView messages={item.messages} />
@@ -446,13 +467,13 @@ function Review({ set }: { set: PreferenceSet }) {
               label={letter(n)}
               position={n + 1}
               mark={sel.chosen === c.sample_id ? "chosen" : sel.rejected === c.sample_id ? "rejected" : null}
+              showModel={multiModel}
               showSample={showSampleFor.has(c.run_id)}
               disabled={isPlaceholder}
               onMark={(m) => pick(n, m)}
             />
           ))}
         </div>
-        <KeyboardHelp count={item.candidates.length} />
       </Fragment>
     )
   }
@@ -465,7 +486,7 @@ function Review({ set }: { set: PreferenceSet }) {
       actions={
         <>
           {set.runs.length >= 2 ? (
-            <Button variant="outline" onClick={() => setAutoOpen(true)}>
+            <Button variant="outline" className="max-sm:hidden" onClick={() => setAutoOpen(true)}>
               Auto-pair by run…
             </Button>
           ) : null}
@@ -477,6 +498,11 @@ function Review({ set }: { set: PreferenceSet }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {set.runs.length >= 2 ? (
+                <DropdownMenuItem className="sm:hidden" onSelect={() => setAutoOpen(true)}>
+                  Auto-pair by run…
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
                 <Trash2 aria-hidden="true" />
                 Delete preference set…
@@ -486,7 +512,7 @@ function Review({ set }: { set: PreferenceSet }) {
         </>
       }
     >
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+      <div className="mb-4 sm:mb-6">
         <ToggleGroup
           type="single"
           variant="outline"
@@ -508,19 +534,6 @@ function Review({ set }: { set: PreferenceSet }) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {set.prompt_count > 0 ? (
-          <div className="w-full sm:w-64">
-            <p className="tabular text-sm">
-              {int(set.decided)} of {int(set.prompt_count)} decided
-            </p>
-            <ProgressBar
-              done={set.decided}
-              total={set.prompt_count}
-              label={`${int(set.decided)} of ${int(set.prompt_count)} prompts decided`}
-              className="mt-1.5"
-            />
-          </div>
-        ) : null}
       </div>
 
       <section ref={regionRef} aria-labelledby={item ? "review-question" : undefined} aria-label={item ? undefined : "Review"} className="scroll-mt-20 md:scroll-mt-6">
@@ -530,18 +543,13 @@ function Review({ set }: { set: PreferenceSet }) {
       {item ? (
         <div className="sticky bottom-[var(--bottom-chrome)] z-20 -mx-4 mt-6 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <div id="review-status" className="min-w-0 flex-1 basis-64" aria-live="polite">
+            <div id="review-status" className="min-w-0 flex-1 basis-64 empty:hidden">
               <StatusLine item={item} sel={sel} status={status} onRetry={retry} />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               {sel.chosen != null || sel.rejected != null ? (
                 <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => void clear()} aria-keyshortcuts="U">
                   Clear pair
-                </Button>
-              ) : null}
-              {item.chosen_sample_id == null ? (
-                <Button variant="outline" className="pointer-coarse:h-11" onClick={() => go(1)} disabled={nextDisabled} aria-keyshortcuts="J">
-                  Skip
                 </Button>
               ) : null}
               <nav aria-label="Prompts" className="flex items-center gap-1">
@@ -578,6 +586,10 @@ function Review({ set }: { set: PreferenceSet }) {
         </div>
       ) : null}
 
+      <p role="status" className="sr-only">
+        {announce}
+      </p>
+      <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} count={item?.candidates.length ?? 2} />
       <AutoPairDialog set={set} open={autoOpen} onOpenChange={setAutoOpen} />
       <ExportPairsDialog set={set} open={exportOpen} onOpenChange={setExportOpen} />
       <DeleteSetDialog set={set} open={deleteOpen} onOpenChange={setDeleteOpen} />
@@ -587,38 +599,33 @@ function Review({ set }: { set: PreferenceSet }) {
 
 // --------------------------------------------------------------------------- pieces
 
+/** A run's short name here: its model, unless two runs share a model or the run was named by hand. */
+function runLabel(r: PreferenceSet["runs"][number], set: PreferenceSet): string {
+  const defaultName = r.name === `${r.model} on ${set.prompt_set_name}`
+  const shared = set.runs.filter((o) => o.model === r.model).length > 1
+  return defaultName && !shared ? r.model : r.name
+}
+
 function SetMeta({ set }: { set: PreferenceSet }) {
-  const runs = set.runs
-  const fmt = new Intl.ListFormat(undefined, { style: "long", type: "conjunction" })
-  const parts = fmt.formatToParts(runs.map((_, n) => String(n)))
+  const link = "text-foreground underline-offset-2 hover:underline"
   return (
     <p className="max-w-[90ch]">
-      {runs.length ? (
-        <>
-          Compares{" "}
-          {parts.map((part, n) =>
-            part.type === "element" ? (
-              <span key={n}>
-                <Link to={`/runs/${runs[Number(part.value)].id}`} className="text-foreground underline-offset-2 hover:underline">
-                  {runs[Number(part.value)].name}
-                </Link>{" "}
-                <span className="font-mono text-[13px]" title={runs[Number(part.value)].model}>
-                  ({shortModel(runs[Number(part.value)].model)})
-                </span>
-              </span>
-            ) : (
-              <Fragment key={n}>{part.value}</Fragment>
-            ),
-          )}{" "}
-          on{" "}
-        </>
+      {set.runs.length ? (
+        set.runs.map((r, n) => (
+          <Fragment key={r.id}>
+            {n > 0 ? " vs " : null}
+            <Link to={`/runs/${r.id}`} className={link} title={r.name}>
+              {runLabel(r, set)}
+            </Link>
+          </Fragment>
+        ))
       ) : (
-        <>The runs of this set were deleted. Prompt set: </>
+        "Runs deleted"
       )}
-      <Link to={`/prompts/${set.prompt_set_id}`} className="text-foreground underline-offset-2 hover:underline">
+      {" · "}
+      <Link to={`/prompts/${set.prompt_set_id}`} className={link}>
         {set.prompt_set_name}
       </Link>
-      .
     </p>
   )
 }
@@ -651,7 +658,7 @@ function StatusLine({
       </div>
     )
   }
-  if (status?.status === "saving") return <p className="text-sm text-muted-foreground">Saving pair…</p>
+  if (status?.status === "saving") return <p className="text-sm text-muted-foreground">Saving…</p>
   if (status?.status === "clearing") return <p className="text-sm text-muted-foreground">Clearing pair…</p>
   if (status?.status === "cleared") return <p className="text-sm text-muted-foreground">Pair cleared.</p>
   if (sel.chosen != null && sel.rejected != null) {
@@ -677,42 +684,82 @@ function StatusLine({
         <span className="font-medium">{name(sel.rejected)}</span> is rejected. Pick a chosen response.
       </p>
     )
-  return <p className="text-sm text-muted-foreground">Pick a chosen and a rejected response.</p>
+  return null
 }
 
-function KeyboardHelp({ count }: { count: number }) {
+function ShortcutsDialog({
+  open,
+  onOpenChange,
+  count,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+}) {
   const last = String(Math.min(9, Math.max(count, 2)))
+  const rows: { keys: ReactNode; action: string }[] = [
+    {
+      keys: (
+        <>
+          <Kbd>1</Kbd>–<Kbd>{last}</Kbd>
+        </>
+      ),
+      action: "Choose response",
+    },
+    {
+      keys: (
+        <>
+          <Kbd>Shift</Kbd>
+          <Kbd>1</Kbd>–<Kbd>{last}</Kbd>
+        </>
+      ),
+      action: "Reject response",
+    },
+    {
+      keys: (
+        <>
+          <Kbd>J</Kbd> <Kbd>→</Kbd>
+        </>
+      ),
+      action: "Next prompt",
+    },
+    {
+      keys: (
+        <>
+          <Kbd>K</Kbd> <Kbd>←</Kbd>
+        </>
+      ),
+      action: "Previous prompt",
+    },
+    { keys: <Kbd>U</Kbd>, action: "Clear pair" },
+    { keys: <Kbd>?</Kbd>, action: "Keyboard shortcuts" },
+  ]
   return (
-    <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground pointer-coarse:hidden">
-      <span className="font-medium text-foreground">Keyboard</span>
-      <span className="inline-flex items-center gap-1">
-        <Kbd>1</Kbd>–<Kbd>{last}</Kbd> chosen
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Kbd>Shift</Kbd>
-        <Kbd>1</Kbd>–<Kbd>{last}</Kbd> rejected
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Kbd>J</Kbd>
-        <Kbd>K</Kbd> or <Kbd>→</Kbd>
-        <Kbd>←</Kbd> next and previous
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Kbd>U</Kbd> clear pair
-      </span>
-    </p>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
+        </DialogHeader>
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2.5 text-sm">
+          {rows.map((r) => (
+            <Fragment key={r.action}>
+              <dt className="inline-flex items-center gap-1 whitespace-nowrap">{r.keys}</dt>
+              <dd className="text-muted-foreground">{r.action}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function ReviewEmpty({
   set,
   filter,
-  onExport,
   onFilter,
 }: {
   set: PreferenceSet
   filter: ItemFilter
-  onExport: () => void
   onFilter: (f: ItemFilter) => void
 }) {
   if (set.prompt_count === 0 || filter === "all") {
@@ -725,7 +772,7 @@ function ReviewEmpty({
           </Button>
         }
       >
-        These runs have no prompt with two finished responses yet. Prompts appear here as the runs finish them.
+        No prompt has two finished responses yet.
       </EmptyBlock>
     )
   }
@@ -735,11 +782,11 @@ function ReviewEmpty({
         className="rounded-lg border px-4"
         action={
           <Button variant="outline" onClick={() => onFilter("undecided")}>
-            Show undecided prompts
+            Show undecided
           </Button>
         }
       >
-        No prompt is decided yet. Pick a chosen and a rejected response on an undecided prompt, or auto-pair by run.
+        No prompt is decided yet.
       </EmptyBlock>
     )
   }
@@ -747,14 +794,9 @@ function ReviewEmpty({
     <EmptyBlock
       className="rounded-lg border px-4"
       action={
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={onExport}>
-            Export pairs…
-          </Button>
-          <Button variant="ghost" onClick={() => onFilter("decided")}>
-            Review decided prompts
-          </Button>
-        </div>
+        <Button variant="outline" onClick={() => onFilter("decided")}>
+          Review decided prompts
+        </Button>
       }
     >
       <p className="text-base text-foreground">
@@ -768,7 +810,7 @@ function ReviewSkeleton({ withHeading = false }: { withHeading?: boolean }) {
   return (
     <div aria-busy="true" aria-label="Loading prompt…">
       {withHeading ? (
-        <p className="mb-3 text-base font-semibold">Which response is better for this prompt?</p>
+        <p className="sr-only">Which response is better for this prompt?</p>
       ) : (
         <Bar className="mb-3 h-5 w-72 max-w-full" />
       )}
