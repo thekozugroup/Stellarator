@@ -201,3 +201,17 @@ async def test_live_gsm8k():
     prompts, field = await asyncio.to_thread(run)
     assert field == "question" and len(prompts) == 50
     assert prompts[0][-1]["content"].startswith("Natalia sold clips")
+
+
+def test_rate_limited_fails_fast(monkeypatch):
+    """A 429 from Hugging Face ends the import with a sentence, instead of sleeping for minutes."""
+    ref = hf.ParquetRef("o/d", "refs%2Fconvert%2Fparquet", "main/train/0000.parquet", 10)
+    export = hf.ParquetExport("o/d", "main", "train", [ref], False, 10)
+    with respx.mock(assert_all_called=False) as router:
+        router.head(url__startswith="https://huggingface.co/datasets/o/d/resolve/").respond(
+            429, headers={"ratelimit": '"resolvers";r=0;t=136'}
+        )
+        with pytest.raises(imp.ImportProblem) as e:
+            hf.open_export(export, None)
+    assert e.value.status == 429
+    assert "in about 3 minutes" in e.value.message and "token" in e.value.message

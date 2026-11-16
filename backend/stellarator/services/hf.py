@@ -3,8 +3,13 @@ rows from the auto-converted Parquet export with range reads."""
 
 from __future__ import annotations
 
+import math
 import re
+import shutil
+import tempfile
+import weakref
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
@@ -280,20 +285,81 @@ async def fetch_parquet(dataset: str, config_name: str | None, split: str | None
     return ParquetExport(dataset, config_name, split, refs, bool(data.get("partial")), num_rows)
 
 
+# Shards up to this size are downloaded whole (one request each). Larger ones are read with range
+# requests in big blocks. Anonymous access gets about 3,000 file requests per 5 minutes, and every
+# small range read spends one, so few large requests keep big imports inside the limit.
+WHOLE_SHARD_BYTES = 256 * 1024 * 1024
+RANGE_BLOCK_BYTES = 64 * 1024 * 1024
+
+
+def _rate_limit_problem(resp: httpx.Response, token: str | None) -> ImportProblem:
+    wait = None
+    m = re.search(r"\bt=(\d+)", resp.headers.get("ratelimit", ""))
+    if m:
+        wait = int(m.group(1))
+    elif resp.headers.get("retry-after", "").isdigit():
+        wait = int(resp.headers["retry-after"])
+    minutes = max(1, math.ceil((wait or 60) / 60))
+    when = "in about a minute" if minutes == 1 else f"in about {minutes} minutes"
+    hint = "" if token else " Adding a Hugging Face token in Settings raises the limit."
+    return ImportProblem(f"Hugging Face is limiting downloads from this machine. Try again {when}.{hint}", 429)
+
+
+def _check_not_rate_limited(ref: ParquetRef, token: str | None) -> None:
+    """Fail at once on a 429. huggingface_hub would otherwise sleep out the window (minutes)
+    several times over, and the import would hang with no explanation."""
+    url = f"https://huggingface.co/datasets/{ref.repo}/resolve/{ref.revision}/{ref.rest}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        with httpx.Client(timeout=15, headers=headers) as client:
+            resp = client.head(url)
+    except Exception:  # noqa: BLE001 - the real read reports network trouble properly
+        return
+    if resp.status_code == 429:
+        raise _rate_limit_problem(resp, token)
+
+
 def open_export(export: ParquetExport, token: str | None) -> ParquetTable:
     """A lazily read table over the export's shards. Blocking: call in a thread."""
     if HfFileSystem is None:  # pragma: no cover
         raise ImportProblem("huggingface_hub is not installed on the server.", 500)
+    if export.refs:
+        _check_not_rate_limited(export.refs[0], token)
     fs = HfFileSystem(token=token)
-    openers = [(lambda p=ref.path: fs.open(p, "rb")) for ref in export.refs]
+    workdir = Path(tempfile.mkdtemp(prefix="hf-", dir=config.UPLOAD_DIR))
+
+    def opener(i: int, ref: ParquetRef):
+        def open_shard():
+            if ref.size is not None and ref.size <= WHOLE_SHARD_BYTES and hasattr(fs, "get_file"):
+                local = workdir / f"{i:05d}.parquet"
+                if not local.exists():
+                    part = local.with_suffix(".part")
+                    fs.get_file(ref.path, str(part))
+                    part.replace(local)
+                return open(local, "rb")
+            try:
+                return fs.open(ref.path, "rb", block_size=RANGE_BLOCK_BYTES)
+            except TypeError:  # filesystems without block_size
+                return fs.open(ref.path, "rb")
+
+        return open_shard
+
+    openers = [opener(i, ref) for i, ref in enumerate(export.refs)]
     try:
-        return ParquetTable(
+        table = ParquetTable(
             openers, total_rows=export.num_rows, detected_format="huggingface", small=False
         )
     except ImportProblem:
+        shutil.rmtree(workdir, ignore_errors=True)
         raise
     except Exception as e:
+        shutil.rmtree(workdir, ignore_errors=True)
         text = str(e)
+        if "429" in text or "Too Many Requests" in text:
+            raise ImportProblem("Hugging Face is limiting downloads from this machine. Try again in a few minutes.", 429) from e
         if "401" in text or "403" in text or "Unauthorized" in text or "Forbidden" in text:
             raise ImportProblem("This dataset needs a Hugging Face token with access. Add one in Settings.", 403) from e
         raise ImportProblem(f"Couldn't read the Parquet files from Hugging Face: {text[:200]}", 502) from e
+    # Downloaded shards live as long as the table.
+    weakref.finalize(table, shutil.rmtree, workdir, True)
+    return table
