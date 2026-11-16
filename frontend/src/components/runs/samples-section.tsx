@@ -1,0 +1,366 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react"
+import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
+import { SampleStatusPill } from "@/components/shared/status-pill"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { DASH, duration, int } from "@/lib/format"
+import type { Run, SampleSummary } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import { PAGE_SIZE, SAMPLE_FILTERS, isActive, sampleLabel, useSamplePage, type SampleFilter } from "./run-data"
+import { SampleViewer } from "./sample-viewer"
+
+const FILTER_LABEL: Record<SampleFilter, string> = {
+  all: "All",
+  done: "Done",
+  failed: "Failed",
+  truncated: "Truncated",
+  pending: "Pending",
+}
+
+function filterCount(run: Run, f: SampleFilter): number {
+  switch (f) {
+    case "all":
+      return run.total
+    case "done":
+      return run.done
+    case "failed":
+      return run.failed
+    case "truncated":
+      return run.truncated
+    case "pending":
+      return run.pending
+  }
+}
+
+function emptyText(f: SampleFilter, q: string, run: Run): string {
+  if (q) return `No ${f === "all" ? "" : `${FILTER_LABEL[f].toLowerCase()} `}samples match “${q}”.`
+  switch (f) {
+    case "failed":
+      return "No failed samples. Requests that fail every attempt are listed here."
+    case "truncated":
+      return "No truncated samples. Responses that hit the max tokens limit are listed here."
+    case "pending":
+      return isActive(run.status) ? "Nothing is waiting to be sent. The last requests are in flight." : "Nothing is waiting to be sent."
+    case "done":
+      return "No finished samples yet. They appear here as responses come back."
+    default:
+      return "No samples yet."
+  }
+}
+
+/** Keep the other search params; set or clear one. */
+function withParams(params: URLSearchParams, changes: Record<string, string | null>): string {
+  const next = new URLSearchParams(params)
+  for (const [k, v] of Object.entries(changes)) {
+    if (v === null || v === "") next.delete(k)
+    else next.set(k, v)
+  }
+  const s = next.toString()
+  return s ? `?${s}` : "?"
+}
+
+function SampleRows({
+  items,
+  run,
+  params,
+  selected,
+}: {
+  items: SampleSummary[]
+  run: Run
+  params: URLSearchParams
+  selected: number | null
+}) {
+  const spp = run.params.samples_per_prompt
+  const open = (id: number) => ({ search: withParams(params, { sample: String(id) }) })
+  return (
+    <>
+      <table className="hidden w-full table-fixed text-sm md:table">
+        <caption className="sr-only">Samples. Select a row to read the sample in full.</caption>
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th scope="col" className="h-9 w-[5.5rem] px-4 font-normal">#</th>
+            <th scope="col" className="h-9 px-3 font-normal">Prompt</th>
+            <th scope="col" className="hidden h-9 px-3 font-normal lg:table-cell">Response</th>
+            <th scope="col" className="hidden h-9 w-[5.5rem] px-3 font-normal xl:table-cell">Thinking</th>
+            <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Tokens</th>
+            <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Latency</th>
+            <th scope="col" className="h-9 w-[7.5rem] px-4 font-normal">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((s) => (
+            <tr
+              key={s.id}
+              aria-selected={selected === s.id || undefined}
+              className={cn(
+                "relative border-t transition-colors duration-150 hover:bg-muted/60 has-[a:focus-visible]:bg-muted/60",
+                selected === s.id && "bg-muted",
+              )}
+            >
+              <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
+                {sampleLabel(s.prompt_idx, s.sample_idx, spp)}
+              </td>
+              <td className="px-3 py-2.5">
+                <Link
+                  to={open(s.id)}
+                  state={{ viewer: true }}
+                  title={s.prompt_preview}
+                  className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+                >
+                  {s.prompt_preview || DASH}
+                </Link>
+              </td>
+              <td className="hidden truncate px-3 py-2.5 text-muted-foreground lg:table-cell">
+                {s.status === "failed" && s.error ? <span className="text-destructive">{s.error}</span> : s.response_preview || DASH}
+              </td>
+              <td className="hidden px-3 py-2.5 text-muted-foreground xl:table-cell">{s.has_reasoning ? "Yes" : DASH}</td>
+              <td className="px-3 py-2.5 text-right tabular">{int(s.completion_tokens)}</td>
+              <td className="px-3 py-2.5 text-right text-muted-foreground tabular">{duration(s.latency_ms)}</td>
+              <td className="px-4 py-2.5">
+                <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <ul className="divide-y border-t md:hidden">
+        {items.map((s) => (
+          <li key={s.id} className={cn("relative px-4 py-3 has-[a:focus-visible]:bg-muted/60", selected === s.id && "bg-muted")}>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-mono text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</span>
+              <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
+              <span className="ml-auto text-muted-foreground tabular">
+                {s.completion_tokens !== null ? `${int(s.completion_tokens)} tokens` : null}
+              </span>
+            </div>
+            <Link
+              to={open(s.id)}
+              state={{ viewer: true }}
+              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+            >
+              {s.prompt_preview || DASH}
+            </Link>
+            <p className="truncate text-sm text-muted-foreground">
+              {s.status === "failed" && s.error ? <span className="text-destructive">{s.error}</span> : s.response_preview || DASH}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+function RowsLoading() {
+  return (
+    <div aria-busy="true" aria-label="Loading samples">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="flex h-[45px] items-center gap-4 border-t px-4">
+          <Bar className="h-3 w-10" />
+          <Bar className="w-1/3" />
+          <Bar className="hidden w-1/4 lg:inline-block" />
+          <span className="ml-auto flex gap-4">
+            <Bar className="w-12" />
+            <Bar className="h-5 w-14 rounded-full" />
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * The run's samples: a status filter with counts, a search box, 50 rows a page from the server,
+ * and the sample viewer. Filter, search, page and the open sample all live in the URL.
+ */
+export function SamplesSection({ run }: { run: Run }) {
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const rawStatus = params.get("status") as SampleFilter | null
+  const status: SampleFilter = rawStatus && SAMPLE_FILTERS.includes(rawStatus) ? rawStatus : "all"
+  const q = params.get("q") ?? ""
+  const page = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1)
+  const sampleParam = params.get("sample")
+  const sampleId = sampleParam && /^\d+$/.test(sampleParam) ? Number(sampleParam) : null
+
+  const query = useMemo(() => ({ status, q, page }), [status, q, page])
+  const samples = useSamplePage(run.id, query, isActive(run.status))
+
+  // Search: typed text goes to the URL after 300 ms; the URL wins when it changes elsewhere (Back).
+  const [text, setText] = useState(q)
+  const lastSent = useRef(q)
+  useEffect(() => {
+    if (q !== lastSent.current) {
+      lastSent.current = q
+      setText(q)
+    }
+  }, [q])
+  useEffect(() => {
+    const t = text.trim()
+    if (t === lastSent.current) return
+    const id = window.setTimeout(() => {
+      lastSent.current = t
+      setParams((p) => new URLSearchParams(withParams(p, { q: t, page: null }).slice(1)), { replace: true })
+    }, 300)
+    return () => window.clearTimeout(id)
+  }, [text, setParams])
+
+  const data = samples.data
+  const total = data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const from = total ? (page - 1) * PAGE_SIZE + 1 : 0
+  const to = Math.min(total, page * PAGE_SIZE)
+
+  const items = data?.items ?? []
+  const idx = sampleId !== null ? items.findIndex((s) => s.id === sampleId) : -1
+  const prevId = idx > 0 ? items[idx - 1].id : null
+  const nextId = idx >= 0 && idx < items.length - 1 ? items[idx + 1].id : null
+
+  const closeViewer = () => {
+    if ((location.state as { viewer?: boolean } | null)?.viewer) navigate(-1)
+    else setParams((p) => new URLSearchParams(withParams(p, { sample: null }).slice(1)), { replace: true })
+  }
+  const stepViewer = (id: number) =>
+    navigate({ search: withParams(params, { sample: String(id) }) }, { replace: true, state: location.state })
+
+  return (
+    <section aria-labelledby="samples-heading" className="rounded-xl border">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 pt-3 pb-3">
+        <h2 id="samples-heading" className="text-base font-semibold">
+          Samples
+        </h2>
+        <div className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && text) {
+                e.preventDefault()
+                setText("")
+              }
+            }}
+            placeholder="Search prompts and responses…"
+            aria-label="Search samples"
+            enterKeyHint="search"
+            autoComplete="off"
+            spellCheck={false}
+            className="pl-8 pointer-coarse:h-11"
+          />
+        </div>
+      </div>
+
+      <nav aria-label="Filter samples by status" className="overflow-x-auto px-4 pb-3">
+        <ul className="inline-flex min-w-max gap-0.5 rounded-lg bg-muted p-[3px]">
+          {SAMPLE_FILTERS.map((f) => {
+            const active = f === status
+            const n = filterCount(run, f)
+            return (
+              <li key={f}>
+                <Link
+                  to={{ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) }}
+                  replace
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-coarse:h-10",
+                    active ? "bg-background font-medium text-foreground shadow-sm dark:bg-accent" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {FILTER_LABEL[f]}
+                  {!q ? (
+                    <span className={cn("tabular", f === "failed" && n > 0 ? "text-destructive" : "text-muted-foreground")}>{int(n)}</span>
+                  ) : null}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </nav>
+
+      {samples.isError && !data ? (
+        <div className="border-t p-4">
+          <ErrorBlock message={`Couldn't load samples. ${samples.error.message}`} onRetry={() => void samples.refetch()} />
+        </div>
+      ) : !data ? (
+        <RowsLoading />
+      ) : items.length === 0 ? (
+        <div className="border-t px-4">
+          <EmptyBlock
+            action={
+              q ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => setText("")}>
+                  <X aria-hidden="true" />
+                  Clear search
+                </Button>
+              ) : page > 1 && total > 0 ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link to={{ search: withParams(params, { page: null }) }}>Go to the first page</Link>
+                </Button>
+              ) : undefined
+            }
+          >
+            {page > 1 && total > 0 ? `Page ${int(page)} is past the last page.` : emptyText(status, q, run)}
+          </EmptyBlock>
+        </div>
+      ) : (
+        <div className={cn("transition-opacity duration-150", samples.isPlaceholderData && "opacity-60")}>
+          <SampleRows items={items} run={run} params={params} selected={sampleId} />
+        </div>
+      )}
+
+      {data && total > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+          <p className="text-muted-foreground tabular" aria-live="polite">
+            Showing {int(from)}–{int(to)} of {int(total)}
+          </p>
+          {pages > 1 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground tabular">
+                Page {int(page)} of {int(pages)}
+              </span>
+              {page > 1 ? (
+                <Button asChild variant="outline" size="sm" className="pointer-coarse:h-11">
+                  <Link to={{ search: withParams(params, { page: page - 1 > 1 ? String(page - 1) : null, sample: null }) }}>
+                    <ChevronLeft aria-hidden="true" />
+                    Previous
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" disabled className="pointer-coarse:h-11">
+                  <ChevronLeft aria-hidden="true" />
+                  Previous
+                </Button>
+              )}
+              {page < pages ? (
+                <Button asChild variant="outline" size="sm" className="pointer-coarse:h-11">
+                  <Link to={{ search: withParams(params, { page: String(page + 1), sample: null }) }}>
+                    Next
+                    <ChevronRight aria-hidden="true" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" disabled className="pointer-coarse:h-11">
+                  Next
+                  <ChevronRight aria-hidden="true" />
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <SampleViewer
+        sampleId={sampleId}
+        samplesPerPrompt={run.params.samples_per_prompt}
+        prevId={prevId}
+        nextId={nextId}
+        onStep={stepViewer}
+        onClose={closeViewer}
+      />
+    </section>
+  )
+}
