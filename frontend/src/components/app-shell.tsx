@@ -47,6 +47,7 @@ function ThemeSwitch() {
       type="single"
       size="sm"
       variant="outline"
+      spacing={0}
       value={theme ?? "system"}
       onValueChange={(v) => v && setTheme(v)}
       aria-label="Theme"

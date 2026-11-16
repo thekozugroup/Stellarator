@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .api import endpoints, imports, preferences, prompt_sets, runs, settings
+from .api import endpoints, exports, imports, preferences, prompt_sets, runs, settings
 from .config import STATIC_DIR
 from .db import init_db
 from .services.engine import engine_registry
@@ -26,7 +26,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Stellarator", version=__version__, lifespan=lifespan)
 
-for module in (endpoints, prompt_sets, imports, runs, preferences, settings):
+for module in (endpoints, prompt_sets, imports, runs, exports, preferences, settings):
     app.include_router(module.router)
 
 
