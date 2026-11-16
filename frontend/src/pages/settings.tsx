@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/lib/theme"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import {
