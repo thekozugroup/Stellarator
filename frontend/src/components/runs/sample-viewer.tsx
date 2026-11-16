@@ -240,7 +240,7 @@ export function SampleViewer({
           ref={bodyRef}
           tabIndex={-1}
           aria-label="Sample"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 outline-none sm:px-6"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 focus-visible:-outline-offset-2 sm:px-6"
         >
           {sample.isError ? (
             <ErrorBlock message={`Couldn't load this sample. ${sample.error.message}`} onRetry={() => void sample.refetch()} />

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,6 +15,8 @@ from .api import endpoints, exports, imports, preferences, prompt_sets, runs, se
 from .config import STATIC_DIR
 from .db import init_db
 from .services.engine import engine_registry
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 @asynccontextmanager

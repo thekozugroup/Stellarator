@@ -326,3 +326,64 @@
   .md :where(.hljs-title, .hljs-section, .hljs-name) { color: var(--warning-ink); }
   .md .hljs-deletion { color: var(--negative-ink); }
 }
+
+/*
+  Apple HIG and touch.
+  - --bottom-chrome: the height of the phone tab bar plus the home-indicator inset, so sticky
+    action bars and the page end sit above it. Zero from 768 px up, where the sidebar takes over.
+  - On touch screens every control is at least 44 x 44 pt.
+  - Increase Contrast (prefers-contrast: more) darkens secondary text, dividers and control edges.
+*/
+:root {
+  --bottom-chrome: calc(3.5rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 48rem) {
+  :root {
+    --bottom-chrome: 0px;
+  }
+}
+
+@layer base {
+  @media (pointer: coarse) {
+    :where(
+        [data-slot="button"],
+        [data-slot="toggle"],
+        [data-slot="toggle-group-item"],
+        [data-slot="select-trigger"],
+        [data-slot="tabs-trigger"],
+        [data-slot="input"],
+        [data-slot="dropdown-menu-item"],
+        [data-slot="select-item"],
+        [data-slot="command-item"]
+      ) {
+      min-height: 44px;
+    }
+    :where([data-slot="button"][data-size^="icon"], [data-slot="toggle-group-item"]) {
+      min-width: 44px;
+    }
+    /* Small marks keep their look; their hit area grows invisibly. */
+    :where([data-slot="checkbox"], [data-slot="radio-group-item"], [data-slot="switch"]) {
+      position: relative;
+    }
+    :where([data-slot="checkbox"], [data-slot="radio-group-item"], [data-slot="switch"])::after {
+      content: "";
+      position: absolute;
+      inset: -12px;
+    }
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted-foreground: oklch(0.36 0 0);
+    --border: oklch(0.72 0 0);
+    --input: oklch(0.42 0 0);
+    --sidebar-border: oklch(0.72 0 0);
+  }
+  .dark {
+    --muted-foreground: oklch(0.84 0 0);
+    --border: oklch(0.48 0 0);
+    --input: oklch(0.68 0 0);
+    --sidebar-border: oklch(0.48 0 0);
+  }
+}

@@ -240,7 +240,7 @@ export function ImportPromptsPage() {
   return (
     <Page
       title="Import prompts"
-      back={{ to: "/prompts", label: "Back to prompt sets" }}
+      back={{ to: "/prompts", label: "Prompt sets" }}
       meta="Bring in prompts from a Hugging Face dataset, a file or pasted text."
       wide
     >
@@ -341,7 +341,7 @@ export function ImportPromptsPage() {
           />
         </div>
 
-        <div className="sticky bottom-0 z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:row-start-2 lg:mx-0 lg:border-0 lg:px-0 lg:py-0">
+        <div className="sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:row-start-2 lg:mx-0 lg:border-0 lg:px-0 lg:py-0">
           {commit.error ? (
             <div
               ref={alertRef}

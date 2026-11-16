@@ -78,7 +78,7 @@ export function PromptSetDetailPage() {
 
   if (setQuery.isError) {
     return (
-      <Page title="Prompt set" back={{ to: "/prompts", label: "Back to prompt sets" }}>
+      <Page title="Prompt set" back={{ to: "/prompts", label: "Prompt sets" }}>
         <ErrorBlock message={setQuery.error.message} onRetry={() => setQuery.refetch()} />
       </Page>
     )
@@ -86,7 +86,7 @@ export function PromptSetDetailPage() {
 
   return (
     <Page
-      back={{ to: "/prompts", label: "Back to prompt sets" }}
+      back={{ to: "/prompts", label: "Prompt sets" }}
       title={set ? set.name : <Bar className="h-7 w-64 max-w-full align-middle" />}
       meta={
         set ? (

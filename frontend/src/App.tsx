@@ -1,16 +1,19 @@
+import { lazy } from "react"
 import { Navigate, Route, Routes } from "react-router"
 import { AppShell } from "@/components/app-shell"
-import { EndpointsPage } from "@/pages/endpoints"
-import { NotFoundPage } from "@/pages/not-found"
-import { PreferenceReviewPage } from "@/pages/preference-review"
-import { PreferencesPage } from "@/pages/preferences-list"
-import { ImportPromptsPage } from "@/pages/prompt-import"
-import { PromptSetDetailPage } from "@/pages/prompt-set-detail"
-import { PromptSetsPage } from "@/pages/prompt-sets"
-import { RunDetailPage } from "@/pages/run-detail"
-import { NewRunPage } from "@/pages/run-new"
-import { RunsListPage } from "@/pages/runs-list"
-import { SettingsPage } from "@/pages/settings"
+
+// Each screen is its own chunk, so the first load only fetches the screen you open.
+const EndpointsPage = lazy(() => import("@/pages/endpoints").then((m) => ({ default: m.EndpointsPage })))
+const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })))
+const PreferenceReviewPage = lazy(() => import("@/pages/preference-review").then((m) => ({ default: m.PreferenceReviewPage })))
+const PreferencesPage = lazy(() => import("@/pages/preferences-list").then((m) => ({ default: m.PreferencesPage })))
+const ImportPromptsPage = lazy(() => import("@/pages/prompt-import").then((m) => ({ default: m.ImportPromptsPage })))
+const PromptSetDetailPage = lazy(() => import("@/pages/prompt-set-detail").then((m) => ({ default: m.PromptSetDetailPage })))
+const PromptSetsPage = lazy(() => import("@/pages/prompt-sets").then((m) => ({ default: m.PromptSetsPage })))
+const RunDetailPage = lazy(() => import("@/pages/run-detail").then((m) => ({ default: m.RunDetailPage })))
+const NewRunPage = lazy(() => import("@/pages/run-new").then((m) => ({ default: m.NewRunPage })))
+const RunsListPage = lazy(() => import("@/pages/runs-list").then((m) => ({ default: m.RunsListPage })))
+const SettingsPage = lazy(() => import("@/pages/settings").then((m) => ({ default: m.SettingsPage })))
 
 export default function App() {
   return (

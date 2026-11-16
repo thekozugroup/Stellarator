@@ -20,7 +20,7 @@ function NameButton({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: (e: Endp
       type="button"
       onClick={() => onOpen(endpoint)}
       title={endpoint.name}
-      className="max-w-full rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+      className="max-w-full rounded-sm text-left font-medium pointer-coarse:min-h-11 underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span className="line-clamp-2 break-words">{endpoint.name}</span>
     </button>

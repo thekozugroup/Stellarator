@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router"
-import { ArrowLeft } from "lucide-react"
+import { ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
@@ -25,13 +25,13 @@ export function Page({
   wide?: boolean
 }) {
   return (
-    <div className={cn("mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8", wide ? "max-w-[96rem]" : "max-w-[80rem]", className)}>
+    <div className={cn("mx-auto w-full px-[max(1rem,env(safe-area-inset-left))] py-6 sm:px-6 lg:px-8 lg:py-8", wide ? "max-w-[96rem]" : "max-w-[80rem]", className)}>
       {back ? (
         <Link
           to={back.to}
-          className="mb-3 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground"
+          className="-ml-1.5 mb-2 inline-flex min-h-8 items-center gap-0.5 rounded-md pr-1.5 text-sm text-muted-foreground hover:text-foreground pointer-coarse:min-h-11"
         >
-          <ArrowLeft className="size-4" aria-hidden="true" />
+          <ChevronLeft className="size-4" aria-hidden="true" />
           {back.label}
         </Link>
       ) : null}

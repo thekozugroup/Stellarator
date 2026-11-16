@@ -528,7 +528,7 @@ function Review({ set }: { set: PreferenceSet }) {
       </section>
 
       {item ? (
-        <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="sticky bottom-[var(--bottom-chrome)] z-20 -mx-4 mt-6 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div id="review-status" className="min-w-0 flex-1 basis-64" aria-live="polite">
               <StatusLine item={item} sel={sel} status={status} onRetry={retry} />
