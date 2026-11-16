@@ -92,8 +92,8 @@ export function sampleLabel(promptIdx: number, sampleIdx: number, samplesPerProm
 /** The finish reason in words. Truncation is explained, never shown as a bare "length". */
 export function finishReasonText(reason: string | null | undefined): { text: string; warn: boolean } | null {
   if (!reason) return null
-  if (reason === "length") return { text: "Truncated: the response hit the max tokens limit and is cut off.", warn: true }
-  if (reason === "stop") return { text: "Finished normally.", warn: false }
+  if (reason === "length") return { text: "Truncated (max tokens)", warn: true }
+  if (reason === "stop") return { text: "Stop", warn: false }
   if (reason === "content_filter") return { text: "Stopped by the provider's content filter.", warn: true }
   if (reason === "tool_calls") return { text: "Stopped to call a tool.", warn: false }
   return { text: `Stopped with reason “${reason}”.`, warn: false }

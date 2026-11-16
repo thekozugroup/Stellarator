@@ -8,7 +8,7 @@ import { CopyButton } from "@/components/shared/copy-button"
 import { BaseUrl } from "./base-url"
 import { CheckedAt, EndpointStatus } from "./endpoint-status"
 import { useCheckEndpoint } from "./use-check-endpoint"
-import { count, int } from "@/lib/format"
+import { int } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Endpoint } from "@/lib/types"
 
@@ -81,9 +81,11 @@ function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoin
                 />
               </div>
             ) : null}
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              {needle ? `${int(models.length)} of ${count(endpoint.models.length, "model", "models")}` : count(endpoint.models.length, "model", "models")}
-            </p>
+            {needle ? (
+              <p className="text-xs text-muted-foreground tabular" aria-live="polite">
+                {int(models.length)} of {int(endpoint.models.length)}
+              </p>
+            ) : null}
             <ul className="-mx-1 min-h-0 flex-1 overflow-y-auto pb-4">
               {models.map((m) => (
                 <li key={m} className="flex items-center justify-between gap-1 rounded-md px-1 hover:bg-muted">

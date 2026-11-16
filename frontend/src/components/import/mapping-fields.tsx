@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { int, oneLine } from "@/lib/format"
+import { int } from "@/lib/format"
 import type { ColumnInfo, ImportPreview, SplitMode } from "@/lib/types"
 import { SPLIT_OPTIONS, splitHint } from "./helpers"
 
@@ -20,7 +20,6 @@ function ColumnSelect({
   value,
   onChange,
   optional,
-  hintFallback,
 }: {
   id: string
   label: string
@@ -28,12 +27,9 @@ function ColumnSelect({
   value: string | null
   onChange: (v: string | null) => void
   optional?: boolean
-  hintFallback?: string
 }) {
-  const col = columns.find((c) => c.name === value)
-  const example = col?.example ? `Example: ${oneLine(col.example, 80)}` : hintFallback
   return (
-    <Field id={id} label={label} hint={example}>
+    <Field id={id} label={label}>
       <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)}>
         <SelectTrigger id={id} className="w-full">
           <SelectValue />
@@ -124,23 +120,22 @@ export function MappingFields({
         </Field>
       )}
       <div className="grid grid-cols-2 items-start gap-4">
-        <Field id="map-offset" label="Skip first" error={offsetError} hint="Rows to skip">
+        <Field id="map-offset" label="Skip rows" error={offsetError}>
           <Input
             id="map-offset"
             inputMode="numeric"
             value={offset}
             onChange={(e) => onOffset(e.target.value)}
-            placeholder="0"
             className="tabular"
             aria-invalid={offsetError ? true : undefined}
-            aria-describedby={offsetError ? "map-offset-error" : "map-offset-hint"}
+            aria-describedby={offsetError ? "map-offset-error" : undefined}
           />
         </Field>
         <Field
           id="map-limit"
           label="Import at most"
           error={limitError}
-          hint={preview.total_rows !== null ? `of ${int(preview.total_rows)} rows` : "Empty imports all"}
+          hint={preview.total_rows !== null ? `of ${int(preview.total_rows)} rows` : undefined}
         >
           <Input
             id="map-limit"
@@ -150,18 +145,15 @@ export function MappingFields({
             placeholder="All"
             className="tabular"
             aria-invalid={limitError ? true : undefined}
-            aria-describedby={limitError ? "map-limit-error" : "map-limit-hint"}
+            aria-describedby={limitError ? "map-limit-error" : preview.total_rows !== null ? "map-limit-hint" : undefined}
           />
         </Field>
       </div>
-      <div className="flex items-start gap-2.5">
-        <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} className="mt-0.5" />
-        <div className="grid gap-0.5">
-          <Label htmlFor="map-dedupe" className="text-sm font-medium">
-            Remove duplicate prompts
-          </Label>
-          <p className="text-xs text-muted-foreground">Keeps the first of any prompts with identical text.</p>
-        </div>
+      <div className="flex items-center gap-2.5">
+        <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
+        <Label htmlFor="map-dedupe" className="text-sm font-medium">
+          Remove duplicate prompts
+        </Label>
       </div>
     </div>
   )

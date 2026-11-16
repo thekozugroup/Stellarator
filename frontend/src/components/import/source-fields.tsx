@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { bytes, int } from "@/lib/format"
+import { bytes } from "@/lib/format"
 import type { HFSplit, ImportFormat, Upload } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { ACCEPT, FORMAT_OPTIONS, formatLabel } from "./helpers"
@@ -37,12 +37,7 @@ export function HuggingFaceFields({
   const inConfig = splits.filter((s) => s.config === config)
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <Field
-        id="hf-dataset"
-        label="Dataset"
-        hint="A public dataset, or a gated one if your token in Settings has access."
-        error={error}
-      >
+      <Field id="hf-dataset" label="Dataset" error={error}>
         <div className="flex gap-2">
           <Input
             id="hf-dataset"
@@ -60,7 +55,7 @@ export function HuggingFaceFields({
             spellCheck={false}
             className="font-mono"
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? "hf-dataset-error" : "hf-dataset-hint"}
+            aria-describedby={error ? "hf-dataset-error" : undefined}
           />
           <Button type="button" variant="outline" onClick={onLoad} disabled={!input.trim() || loading}>
             {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
@@ -95,7 +90,7 @@ export function HuggingFaceFields({
                 {inConfig.map((s) => (
                   <SelectItem key={s.split} value={s.split}>
                     {s.split}
-                    {s.num_rows !== null ? <span className="text-muted-foreground"> · {int(s.num_rows)} rows</span> : null}
+                    
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -194,7 +189,7 @@ export function FileFields({
         </p>
       ) : null}
       {upload ? (
-        <Field id="import-format" label="Format" hint="Auto picks from the file's extension and content.">
+        <Field id="import-format" label="Format">
           <Select value={format} onValueChange={(v) => onFormat(v as ImportFormat)}>
             <SelectTrigger id="import-format" className="w-full">
               <SelectValue />
@@ -215,7 +210,7 @@ export function FileFields({
 
 export function PasteFields({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Field id="paste-text" label="Prompts" hint="One prompt per block. Separate prompts with a --- line, a blank line or headings.">
+    <Field id="paste-text" label="Prompts" hint="Separate prompts with ---, a blank line or headings.">
       <Textarea
         id="paste-text"
         value={value}

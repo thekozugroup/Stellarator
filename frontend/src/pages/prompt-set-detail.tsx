@@ -102,7 +102,7 @@ export function PromptSetDetailPage() {
         set ? (
           <>
             <Link to={`/runs/new?prompt_set=${set.id}`} className={buttonVariants()}>
-              Start a run
+              New run
             </Link>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -136,9 +136,11 @@ export function PromptSetDetailPage() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground tabular" aria-live="polite">
-            {data ? (total ? `Showing ${int(first)}–${int(last)} of ${int(total)}` : "Showing 0 of 0") : <Bar className="w-40" />}
-          </p>
+          {total > PAGE_SIZE || (q && total > 0) ? (
+            <p className="text-sm text-muted-foreground tabular" aria-live="polite">
+              Showing {int(first)}–{int(last)} of {int(total)}
+            </p>
+          ) : null}
           <TextModeToggle />
         </div>
       </div>

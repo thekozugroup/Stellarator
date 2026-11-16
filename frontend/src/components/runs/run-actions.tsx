@@ -125,11 +125,7 @@ function DeleteDialog({ run, open, onOpenChange }: { run: Run; open: boolean; on
           <AlertDialogTitle className="break-words">
             Delete run “{run.name}” and its {count(run.total, "sample", "samples")}?
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            {run.status === "running" || run.status === "pausing" ? "The run is stopped first. " : ""}
-            Its responses, thinking traces and throughput history are removed for good. Files you already exported are not
-            affected.
-          </AlertDialogDescription>
+          <AlertDialogDescription>Responses and thinking traces are deleted for good. Exported files are not affected.</AlertDialogDescription>
         </AlertDialogHeader>
         {del.isError ? (
           <p role="alert" className="text-sm text-destructive">
@@ -153,7 +149,11 @@ function DeleteDialog({ run, open, onOpenChange }: { run: Run; open: boolean; on
   )
 }
 
-/** Pause or resume, retry failures, export, and the rarer actions in a menu. */
+/**
+ * Pause or resume, retry failures, export, and the rarer actions in a menu. The one near-black
+ * button follows the state: Resume on a paused run, Export once a finished run has records to
+ * export, Retry failed when it has none. A running run has no primary.
+ */
 export function RunActions({ run, onExport }: { run: Run; onExport: () => void }) {
   const update = useRunUpdate(run)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -172,8 +172,31 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
   })
   const busy = action.isPending ? action.variables : null
 
+  const paused = run.status === "paused"
+  const completed = run.status === "completed"
+  const exportable = run.done > 0
+  const canRetry = run.failed > 0 && (paused || completed)
+  const primary = paused ? "resume" : completed ? (exportable ? "export" : canRetry ? "retry" : null) : null
+
   return (
     <>
+      {canRetry ? (
+        <Button
+          variant={primary === "retry" ? "default" : "outline"}
+          disabled={busy === "retry-failed"}
+          onClick={() => action.mutate("retry-failed")}
+          className="pointer-coarse:h-11"
+        >
+          <RotateCcw aria-hidden="true" />
+          {busy === "retry-failed" ? "Retrying…" : paused ? "Retry failed and resume" : `Retry failed (${int(run.failed)})`}
+        </Button>
+      ) : null}
+      {exportable ? (
+        <Button variant={primary === "export" ? "default" : "outline"} onClick={onExport} className="pointer-coarse:h-11">
+          <Download aria-hidden="true" />
+          Export dataset…
+        </Button>
+      ) : null}
       {run.status === "running" ? (
         <Button variant="outline" disabled={busy === "pause"} onClick={() => action.mutate("pause")} className="pointer-coarse:h-11">
           <Pause aria-hidden="true" />
@@ -184,27 +207,12 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
           <Pause aria-hidden="true" />
           Pausing…
         </Button>
-      ) : run.status === "paused" ? (
-        <Button variant="outline" disabled={busy === "resume"} onClick={() => action.mutate("resume")} className="pointer-coarse:h-11">
+      ) : paused ? (
+        <Button disabled={busy === "resume"} onClick={() => action.mutate("resume")} className="pointer-coarse:h-11">
           <Play aria-hidden="true" />
           {busy === "resume" ? "Resuming…" : "Resume run"}
         </Button>
       ) : null}
-      {run.failed > 0 && run.status !== "running" && run.status !== "pausing" ? (
-        <Button
-          variant="outline"
-          disabled={busy === "retry-failed"}
-          onClick={() => action.mutate("retry-failed")}
-          className="pointer-coarse:h-11"
-        >
-          <RotateCcw aria-hidden="true" />
-          {busy === "retry-failed" ? "Retrying…" : `Retry failed (${int(run.failed)})`}
-        </Button>
-      ) : null}
-      <Button onClick={onExport} className="pointer-coarse:h-11">
-        <Download aria-hidden="true" />
-        Export dataset…
-      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" aria-label="More actions for this run" className="pointer-coarse:size-11">

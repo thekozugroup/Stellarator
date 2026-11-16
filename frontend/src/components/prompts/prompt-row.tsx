@@ -1,4 +1,5 @@
-import { ModelText } from "@/components/shared/model-text"
+import { ModelText, useTextMode } from "@/components/shared/model-text"
+import { cn } from "@/lib/utils"
 import { useLayoutEffect, useRef, useState } from "react"
 import { oneLine, promptText } from "@/lib/format"
 import type { Prompt } from "@/lib/types"
@@ -10,20 +11,27 @@ function metaLine(meta: Record<string, unknown>): string {
     .join(" · ")
 }
 
-/** One prompt: index, the user text clamped to three lines (expandable), system indicator, meta. */
+/** One prompt: index, the user text (Rendered or Raw, clamped to about three lines), system indicator, meta. */
 export function PromptRow({ prompt }: { prompt: Prompt }) {
   const [open, setOpen] = useState(false)
   const [overflows, setOverflows] = useState(false)
-  const ref = useRef<HTMLParagraphElement>(null)
+  const clamp = useRef<HTMLDivElement>(null)
   const text = promptText(prompt.messages)
   const system = prompt.messages.find((m) => m.role === "system")
   const meta = metaLine(prompt.meta ?? {})
   const others = prompt.messages.filter((m) => m !== system && m.content !== text)
+  const mode = useTextMode()
 
+  // The Markdown renderer loads lazily and changes height, so measure again on every resize.
   useLayoutEffect(() => {
-    const el = ref.current
-    if (el && !open) setOverflows(el.scrollHeight > el.clientHeight + 1)
-  }, [text, open])
+    const el = clamp.current
+    if (!el || open) return
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 6)
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (el.firstElementChild) ro.observe(el.firstElementChild)
+    return () => ro.disconnect()
+  }, [text, open, mode])
 
   const expandable = overflows || open || !!system || others.length > 0
 
@@ -48,12 +56,17 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
           </div>
         ) : null}
         {open && (system || others.length) ? <p className="text-xs text-muted-foreground">User</p> : null}
-        {open && text ? (
+        {!text ? (
+          <p className="text-sm text-muted-foreground">This prompt has no user text.</p>
+        ) : open ? (
           <ModelText text={text} className="text-sm" />
         ) : (
-          <p ref={ref} className="model-text line-clamp-3 text-sm">
-            {text || <span className="text-muted-foreground">This prompt has no user text.</span>}
-          </p>
+          <div
+            ref={clamp}
+            className={cn("max-h-24 overflow-hidden", overflows && "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]")} /* taste-ignore: gradient -- overflow fade mask, no color */
+          >
+            <ModelText text={text} className="text-sm [&>*:first-child]:mt-0" />
+          </div>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {system && !open ? <span>Has a system message</span> : null}
@@ -69,7 +82,7 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
               onClick={() => setOpen((o) => !o)}
               className="-my-1.5 inline-flex min-h-8 items-center rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
             >
-              {open ? "Show less" : "Show full prompt"}
+              {open ? "Show less" : "Show all"}
             </button>
           ) : null}
         </div>

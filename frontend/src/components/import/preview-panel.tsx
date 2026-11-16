@@ -132,7 +132,7 @@ export function PreviewPanel({
           ))}
         </div>
       ) : (
-        <EmptyBlock className="px-4">{emptyHint ?? "Choose a source to see the prompts it will create."}</EmptyBlock>
+        <EmptyBlock className="px-4">{emptyHint ?? "No source yet."}</EmptyBlock>
       )}
     </Panel>
   )

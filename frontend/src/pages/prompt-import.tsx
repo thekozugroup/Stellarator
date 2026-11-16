@@ -241,7 +241,6 @@ export function ImportPromptsPage() {
     <Page
       title="Import prompts"
       back={{ to: "/prompts", label: "Prompt sets" }}
-      meta="Bring in prompts from a Hugging Face dataset, a file or pasted text."
       wide
     >
       <form
@@ -249,10 +248,9 @@ export function ImportPromptsPage() {
           e.preventDefault()
           if (!blocked && !importing) commit.mutate()
         }}
-        className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-[28rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr]"
+        className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-[28rem_minmax(0,1fr)] lg:grid-rows-[auto_auto_1fr]"
       >
-        <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 border-0 p-0">
-          <Section title="Source">
+        <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-0 p-0">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList aria-label="Source" className="w-full">
                 {TABS.map((t) => (
@@ -292,9 +290,22 @@ export function ImportPromptsPage() {
             ) : (
               <PasteFields value={paste} onChange={setPaste} />
             )}
-          </Section>
+        </fieldset>
 
-          {data ? (
+        <div className="min-w-0 lg:col-start-2 lg:row-span-3 lg:row-start-1">
+          <PreviewPanel
+            preview={data}
+            hasSource={!!source}
+            loading={!!source && !data && preview.isFetching}
+            updating={updating}
+            error={panelError}
+            onRetry={() => void preview.refetch()}
+            emptyHint={hfFieldError ? "Fix the dataset above to see its prompts." : undefined}
+          />
+        </div>
+
+        {data ? (
+          <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-0 p-0 lg:col-start-1 lg:row-start-2">
             <Section title="Mapping">
               <MappingFields
                 preview={data}
@@ -313,7 +324,7 @@ export function ImportPromptsPage() {
                 dedupe={dedupe}
                 onDedupe={setDedupe}
               />
-              <Field id="import-name" label="Name" error={commitErr?.fields["name"]} hint="Shown in your list of prompt sets.">
+              <Field id="import-name" label="Name" error={commitErr?.fields["name"]}>
                 <Input
                   id="import-name"
                   value={shownName}
@@ -326,22 +337,10 @@ export function ImportPromptsPage() {
                 />
               </Field>
             </Section>
-          ) : null}
-        </fieldset>
+          </fieldset>
+        ) : null}
 
-        <div className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <PreviewPanel
-            preview={data}
-            hasSource={!!source}
-            loading={!!source && !data && preview.isFetching}
-            updating={updating}
-            error={panelError}
-            onRetry={() => void preview.refetch()}
-            emptyHint={hfFieldError ? "Fix the dataset above to see its prompts." : undefined}
-          />
-        </div>
-
-        <div className="sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:row-start-2 lg:mx-0 lg:border-0 lg:px-0 lg:py-0">
+        <div className="sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:row-start-3 lg:mx-0 lg:border-0 lg:px-0 lg:py-0">
           {commit.error ? (
             <div
               ref={alertRef}

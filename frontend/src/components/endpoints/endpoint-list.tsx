@@ -27,7 +27,7 @@ function NameButton({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: (e: Endp
       type="button"
       onClick={() => onOpen(endpoint)}
       title={endpoint.name}
-      className="max-w-full rounded-sm text-left font-medium pointer-coarse:min-h-11 underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+      className="max-w-full rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span className="line-clamp-2 break-words">{endpoint.name}</span>
     </button>
@@ -110,9 +110,9 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
 
       <ul className="divide-y border-y md:hidden">
         {endpoints.map((e) => (
-          <li key={e.id} className="grid gap-1.5 py-3" onClick={openOnRowClick(() => h.onOpen(e))}>
+          <li key={e.id} className="grid gap-1.5 py-3" onClick={openOnRowClick(() => h.onOpen(e))} /* taste-ignore: clickable-div -- convenience only; the name button is the keyboard path */>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
-              <div className="grid min-w-0 gap-0.5">
+              <div className="grid min-w-0 content-start gap-0.5">
                 <NameButton endpoint={e} onOpen={h.onOpen} />
                 <BaseUrl url={e.base_url} />
               </div>

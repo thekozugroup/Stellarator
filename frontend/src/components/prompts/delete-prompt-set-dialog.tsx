@@ -44,7 +44,9 @@ export function DeletePromptSetDialog({ set, open, onOpenChange }: { set: Prompt
         <AlertDialogHeader>
           <AlertDialogTitle className="break-words">Delete “{set.name}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            Its {count(set.prompt_count, "prompt", "prompts")} and {count(set.run_count, "run", "runs")} (with their samples) are deleted too.
+            {set.run_count > 0
+              ? `Its ${count(set.prompt_count, "prompt", "prompts")} and ${count(set.run_count, "run", "runs")} (with their samples) are deleted too.`
+              : `Its ${count(set.prompt_count, "prompt", "prompts")} are deleted too.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (

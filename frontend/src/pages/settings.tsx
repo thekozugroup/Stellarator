@@ -54,6 +54,7 @@ export function SettingsPage() {
           <HuggingFaceSection settings={query.data} />
           <StorageSection settings={query.data} />
           <AppearanceSection />
+          <AboutSection settings={query.data} />
         </div>
       )}
     </Page>
@@ -95,7 +96,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
             <span>
               Set by the <span className="font-mono text-[13px]">HF_TOKEN</span> environment variable
               {settings.hf_token_hint ? <span className="text-muted-foreground"> ({settings.hf_token_hint})</span> : null}
-              <span className="mt-0.5 block text-xs text-muted-foreground">Change it where the container is started. It cannot be edited here.</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">Set where the container starts.</span>
             </span>
           ) : settings.hf_token_set ? (
             <span>
@@ -201,7 +202,15 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Needed for gated or private datasets and for pushing exports to the Hub. Create one at huggingface.co/settings/tokens.
+        For gated datasets and Hub pushes.{" "}
+        <a
+          href="https://huggingface.co/settings/tokens"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-6 items-center rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          Create a token
+        </a>
       </p>
 
       <AlertDialog open={confirmRemove} onOpenChange={(o) => !write.isPending && setConfirmRemove(o)}>
@@ -209,7 +218,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove the saved token?</AlertDialogTitle>
             <AlertDialogDescription>
-              Gated and private datasets will fail to import, and exports can’t be pushed to the Hub until you add a token again.
+              Gated imports and Hub pushes stop working.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -240,11 +249,8 @@ function StorageSection({ settings }: { settings?: Settings }) {
             <Bar className="w-56" />
           )}
         </Row>
-        <Row label="Version">
-          {settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}
-        </Row>
       </dl>
-      <p className="text-xs text-muted-foreground">Prompts, runs, samples and saved keys live in this folder. Back it up to keep your data.</p>
+      <p className="text-xs text-muted-foreground">Back up this folder to keep your data.</p>
     </Section>
   )
 }
@@ -269,8 +275,17 @@ function AppearanceSection() {
             </Label>
           ))}
         </RadioGroup>
-        <p className="text-xs text-muted-foreground">System follows your operating system’s light or dark setting.</p>
       </fieldset>
+    </Section>
+  )
+}
+
+function AboutSection({ settings }: { settings?: Settings }) {
+  return (
+    <Section title="About">
+      <dl className="grid gap-2 text-sm">
+        <Row label="Version">{settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}</Row>
+      </dl>
     </Section>
   )
 }
