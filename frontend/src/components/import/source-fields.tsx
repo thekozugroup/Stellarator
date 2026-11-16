@@ -36,7 +36,7 @@ export function HuggingFaceFields({
   const configs = Array.from(new Set(splits.map((s) => s.config)))
   const inConfig = splits.filter((s) => s.config === config)
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <Field
         id="hf-dataset"
         label="Dataset"
@@ -129,7 +129,7 @@ export function FileFields({
   const has = !!upload || uploading
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div
         onDragOver={(e) => {
           e.preventDefault()

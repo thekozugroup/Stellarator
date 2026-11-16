@@ -123,8 +123,8 @@ export function MappingFields({
           </Select>
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-4">
-        <Field id="map-offset" label="Skip first" error={offsetError}>
+      <div className="grid grid-cols-2 items-start gap-4">
+        <Field id="map-offset" label="Skip first" error={offsetError} hint="Rows to skip">
           <Input
             id="map-offset"
             inputMode="numeric"
@@ -133,7 +133,7 @@ export function MappingFields({
             placeholder="0"
             className="tabular"
             aria-invalid={offsetError ? true : undefined}
-            aria-describedby={offsetError ? "map-offset-error" : undefined}
+            aria-describedby={offsetError ? "map-offset-error" : "map-offset-hint"}
           />
         </Field>
         <Field

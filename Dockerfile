@@ -6,7 +6,10 @@
 FROM node:22-slim AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# Optional build secret "ca": see the builder stage.
+RUN --mount=type=secret,id=ca,required=false \
+    if [ -f /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; \
+    npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
