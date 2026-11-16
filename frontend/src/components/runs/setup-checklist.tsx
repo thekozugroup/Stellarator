@@ -1,7 +1,6 @@
 import { Link } from "react-router"
 import { Check } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
-import { ProgressBar } from "@/components/shared/progress-bar"
 import { Button } from "@/components/ui/button"
 import { int } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -9,7 +8,7 @@ import { useEndpoints, usePromptSets } from "./run-data"
 
 /**
  * First run: the runs table is empty, so its frame holds the three steps to a first run, each
- * marked done from real data. The next step to take is the one button.
+ * marked done from real data. The next step to take is the one button; the step marks show progress.
  */
 export function SetupChecklist() {
   const endpoints = useEndpoints()
@@ -31,7 +30,7 @@ export function SetupChecklist() {
   const steps = [
     {
       title: "Add an endpoint",
-      body: "Point Stellarator at an OpenAI-compatible server: vLLM, SGLang, llama.cpp, Ollama or a hosted API.",
+      body: "Any OpenAI-compatible server: vLLM, SGLang, llama.cpp, Ollama or a hosted API.",
       to: "/endpoints",
       action: "Add an endpoint",
       done: (endpoints.data?.length ?? 0) > 0,
@@ -39,7 +38,7 @@ export function SetupChecklist() {
     },
     {
       title: "Import prompts",
-      body: "Bring prompts from a Hugging Face dataset, a file or pasted text.",
+      body: "From Hugging Face, a file or pasted text.",
       to: "/prompts/import",
       action: "Import prompts",
       done: (sets.data?.length ?? 0) > 0,
@@ -47,31 +46,19 @@ export function SetupChecklist() {
     },
     {
       title: "Start a run",
-      body: "Pick the model, the prompt set and how many sequences to run at once.",
+      body: "",
       to: "/runs/new",
-      action: "Start a run",
+      action: "New run",
       done: false,
       doneText: "",
     },
   ]
-  const doneCount = steps.filter((s) => s.done).length
   const next = steps.findIndex((s) => !s.done)
 
   return (
     <div className="max-w-[40rem] py-2">
       <h2 className="text-base font-semibold">Set up your first run</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Runs you start appear here with their progress and status.</p>
-      <div className="mt-4 flex items-center gap-3">
-        {loading ? (
-          <Bar className="h-1.5 w-full" />
-        ) : (
-          <ProgressBar done={doneCount} total={steps.length} label={`${doneCount} of ${steps.length} steps done`} />
-        )}
-        <span className="flex-none text-xs text-muted-foreground tabular">
-          {loading ? <Bar className="h-3 w-20" /> : `${doneCount} of ${steps.length} done`}
-        </span>
-      </div>
-      <ol className="mt-5 grid gap-0 divide-y">
+      <ol className="mt-3 grid gap-0 divide-y">
         {steps.map((s, i) => (
           <li key={s.title} className="flex gap-3 py-4">
             <span
@@ -88,7 +75,11 @@ export function SetupChecklist() {
                 {s.title}
                 {s.done ? <span className="sr-only"> (done)</span> : null}
               </h3>
-              <p className="mt-0.5 text-sm text-muted-foreground">{loading ? <Bar className="w-64" /> : s.done ? s.doneText : s.body}</p>
+              {loading ? (
+                <Bar className="mt-1 w-64 max-w-full" />
+              ) : s.done || s.body ? (
+                <p className="mt-0.5 text-sm text-muted-foreground">{s.done ? s.doneText : s.body}</p>
+              ) : null}
               {!loading && !s.done ? (
                 i === next ? (
                   <Button asChild variant="outline" size="sm" className="mt-3">

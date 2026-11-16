@@ -44,7 +44,7 @@ function useDebounced<T>(value: T, ms: number): T {
 export function ExportDialog({ run, open, onOpenChange }: { run: Run; open: boolean; onOpenChange: (open: boolean) => void }) {
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS)
   const debounced = useDebounced(options, 250)
-  const preview = useQuery({
+  const preview = useQuery({ // taste-ignore: missing-states -- ExportDialogShell draws the loading, empty and error states
     queryKey: ["runs", run.id, "export-preview", debounced],
     queryFn: () => api.post<ExportPreview>(`/api/runs/${run.id}/export/preview`, debounced),
     enabled: open,

@@ -53,7 +53,7 @@ function valueTicks(max: number, integer: boolean): number[] {
 const hm = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
 const hms = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })
 
-const AXIS_TICK = { fill: "var(--muted-foreground)", fontSize: 11 }
+const AXIS_TICK = { fill: "var(--muted-foreground)", fontSize: 12 }
 
 function ChartTooltip({ active, payload }: TooltipContentProps) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
@@ -89,30 +89,32 @@ function EndLabels({ last, prev }: { last: Point; prev: Point }) {
   const tPrev = Number(yT(prev.tps))
   const sPrev = Number(yS(prev.seqs))
   if (![px, tY, sY, tPrev, sPrev].every(Number.isFinite)) return null
-  const top = plot.y + 10
+  const top = plot.y + 12
   const bottom = plot.y + plot.height - 2
 
-  // y grows downward: "up" means a smaller y.
+  // y grows downward: "up" means a smaller y. Labels sit 9 px clear of their own line.
   const goesUp = (y: number, before: number, other: number) => {
     let up = before - y > 2 ? true : y - before > 2 ? false : y <= other
-    if (up && other < y && y - other < 16) up = false
-    if (!up && other > y && other - y < 16) up = true
-    if (!up && y + 15 > bottom) up = true
-    if (up && y - 7 < top) up = false
+    if (up && other < y && y - other < 20) up = false
+    if (!up && other > y && other - y < 20) up = true
+    if (!up && y + 21 > bottom) up = true
+    if (up && y - 9 < top) up = false
     return up
   }
-  let tLabel = goesUp(tY, tPrev, sY) ? tY - 7 : tY + 15
-  let sLabel = goesUp(sY, sPrev, tY) ? sY - 7 : sY + 15
-  if (Math.abs(tLabel - sLabel) < 13) {
-    if (tLabel <= sLabel) tLabel = Math.max(top, sLabel - 14)
-    else sLabel = Math.max(top, tLabel - 14)
+  let tLabel = goesUp(tY, tPrev, sY) ? tY - 9 : tY + 21
+  let sLabel = goesUp(sY, sPrev, tY) ? sY - 9 : sY + 21
+  if (Math.abs(tLabel - sLabel) < 15) {
+    if (tLabel <= sLabel) tLabel = Math.max(top, sLabel - 16)
+    else sLabel = Math.max(top, tLabel - 16)
   }
+  // A halo in the panel's color keeps a label legible where a line passes under it.
+  const halo = { stroke: "var(--card)", strokeWidth: 4, strokeLinejoin: "round" as const, paintOrder: "stroke" as const }
   return (
-    <g aria-hidden="true" fontSize={11}>
-      <text x={px - 4} y={tLabel} textAnchor="end" fill="var(--foreground)" fontWeight={500}>
+    <g aria-hidden="true" fontSize={12}>
+      <text x={px - 4} y={tLabel} textAnchor="end" fill="var(--foreground)" fontWeight={500} {...halo}>
         tok/s
       </text>
-      <text x={px - 4} y={sLabel} textAnchor="end" fill="var(--muted-foreground)">
+      <text x={px - 4} y={sLabel} textAnchor="end" fill="var(--muted-foreground)" {...halo}>
         seqs
       </text>
     </g>
@@ -151,7 +153,7 @@ export function ThroughputChart({
           ))}
           <div className="border-t border-input/60" />
         </div>
-        <span className="absolute bottom-6 left-0 w-6 translate-y-1/2 text-right text-[11px] text-muted-foreground">0</span>
+        <span className="absolute bottom-6 left-0 w-6 translate-y-1/2 text-right text-xs text-muted-foreground">0</span>
         <p className="absolute inset-x-0 top-[37.5%] ml-8 -translate-y-1/2 px-4 text-sm text-muted-foreground">
           <span className="bg-card pr-2">Throughput appears here once the first tokens arrive.</span>
         </p>

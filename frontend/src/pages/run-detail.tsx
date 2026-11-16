@@ -13,24 +13,32 @@ import { SeqsControl } from "@/components/runs/seqs-control"
 import { ThroughputChart } from "@/components/runs/throughput-chart"
 import { Button } from "@/components/ui/button"
 import { ApiError } from "@/lib/api"
-import { count, dateTime, int, relative, time } from "@/lib/format"
+import { dateTime, int, relative, time } from "@/lib/format"
 import type { Run } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const PROBLEM = /fail|error|could ?n[o']t|unreach|refused|timed? ?out|rate limit|429|5\d\d|circuit/i
+/** The endpoint itself needs fixing: a rejected key, or a server that cannot be reached. */
+const ENDPOINT_PROBLEM = /\b40[13]\b|api key|could ?n[o']t connect|unreach|refused|resolve/i
 
 function StatusReason({ run }: { run: Run }) {
   if (!run.status_reason) return null
   const problem = run.status !== "running" && PROBLEM.test(run.status_reason)
+  const fixEndpoint = problem && run.endpoint_id !== null && ENDPOINT_PROBLEM.test(run.status_reason)
   return (
-    <p
+    <div
       className={cn(
-        "mb-6 text-sm",
+        "mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm",
         problem ? "rounded-lg bg-warning-tint px-3 py-2 text-warning-ink" : "text-muted-foreground",
       )}
     >
-      {run.status_reason}
-    </p>
+      <p className="min-w-0 flex-1 basis-64">{run.status_reason}</p>
+      {fixEndpoint ? (
+        <Button asChild variant="outline" size="sm" className="bg-background pointer-coarse:h-11">
+          <Link to={`/endpoints?edit=${run.endpoint_id}`}>Edit endpoint</Link>
+        </Button>
+      ) : null}
+    </div>
   )
 }
 
@@ -94,6 +102,10 @@ export function RunDetailPage() {
   const r = data.run
   const lostContact = live.isError
   const finished = r.status === "completed"
+  const active = isActive(r.status)
+  // A run that is not going and drew no throughput has nothing to chart; nothing can be in flight
+  // unless it is going.
+  const showChart = active || (data.metrics.length >= 2 && data.metrics.some((m) => m.tokens_per_s > 0))
 
   return (
     <Page
@@ -104,20 +116,16 @@ export function RunDetailPage() {
       }
       back={{ to: "/runs", label: "Runs" }}
       meta={
-        <span className="flex flex-col items-start gap-x-2 gap-y-1 sm:flex-row sm:flex-wrap sm:items-center">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <RunStatusPill status={r.status} failed={r.failed} />
           <span className="min-w-0 [overflow-wrap:anywhere]">
             <span className="font-mono text-[13px] text-foreground">{r.model}</span> on {r.endpoint_name}
           </span>
-          <span aria-hidden="true" className="hidden sm:inline">
-            ·
-          </span>
+          <span aria-hidden="true">·</span>
           <Link to={`/prompts/${r.prompt_set_id}`} className="underline-offset-4 hover:text-foreground hover:underline">
             {r.prompt_set_name}
           </Link>
-          <span aria-hidden="true" className="hidden sm:inline">
-            ·
-          </span>
+          <span aria-hidden="true">·</span>
           <span title={dateTime(r.created_at)}>Created {relative(r.created_at)}</span>
         </span>
       }
@@ -133,48 +141,42 @@ export function RunDetailPage() {
       ) : null}
       <StatusReason run={r} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-10">
+      <div className={cn("grid grid-cols-1 gap-6", !finished && "lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-10")}>
         <RunProgress live={data} />
-        <div className="border-t pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
-          <SeqsControl run={r} inFlight={data.in_flight} />
-        </div>
-      </div>
-
-      <div className={cn("mt-8 grid grid-cols-1 gap-6", !finished && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
-        <Panel title="Throughput" description="Output tokens per second, and the seqs setting.">
-          <ThroughputChart
-            metrics={data.metrics}
-            live={
-              isActive(r.status) && !lostContact
-                ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight, at: live.dataUpdatedAt }
-                : null
-            }
-          />
-        </Panel>
-        {/* Nothing can be in flight once a run has finished, so the chart takes the row. */}
         {!finished ? (
-          <section aria-labelledby="inflight-heading" className="flex min-h-0 flex-col rounded-xl border xl:[contain:size]">
-            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <h2 id="inflight-heading" className="text-base font-semibold">
-                In flight
-              </h2>
-              <span className="text-sm text-muted-foreground tabular">
-                {data.in_flight > 0 ? count(data.in_flight, "request", "requests") : null}
-              </span>
-            </div>
-            <div
-              tabIndex={data.sequences.length ? 0 : undefined}
-              role={data.sequences.length ? "region" : undefined}
-              aria-label={data.sequences.length ? "Sequences in flight" : undefined}
-              className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-3 xl:max-h-none"
-            >
-              <InFlightList sequences={data.sequences} inFlight={data.in_flight} samplesPerPrompt={r.params.samples_per_prompt} status={r.status} />
-            </div>
-          </section>
+          <div className="border-t pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+            <SeqsControl run={r} inFlight={data.in_flight} />
+          </div>
         ) : null}
       </div>
 
-      <div className="mt-6">
+      {showChart ? (
+        <div className={cn("mt-8 grid grid-cols-1 gap-6", active && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
+          <Panel title="Throughput">
+            <ThroughputChart
+              metrics={data.metrics}
+              live={active && !lostContact ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight, at: live.dataUpdatedAt } : null}
+            />
+          </Panel>
+          {active ? (
+            <section aria-labelledby="inflight-heading" className="flex min-h-0 flex-col rounded-xl border xl:[contain:size]">
+              <h2 id="inflight-heading" className="border-b px-4 py-3 text-base font-semibold">
+                In flight
+              </h2>
+              <div
+                tabIndex={data.sequences.length ? 0 : undefined}
+                role={data.sequences.length ? "region" : undefined}
+                aria-label={data.sequences.length ? "Sequences in flight" : undefined}
+                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-3 xl:max-h-none"
+              >
+                <InFlightList sequences={data.sequences} inFlight={data.in_flight} samplesPerPrompt={r.params.samples_per_prompt} />
+              </div>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className={showChart ? "mt-6" : "mt-8"}>
         <SamplesSection run={r} />
       </div>
 

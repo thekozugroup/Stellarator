@@ -70,7 +70,7 @@ function Facts({ sample }: { sample: Sample }) {
     ["Latency", duration(sample.latency_ms)],
     ["Time to first token", duration(sample.ttft_ms)],
     ["Attempts", int(sample.attempts)],
-    ["Completed", dateTime(sample.completed_at)],
+    [sample.status === "failed" ? "Failed" : "Completed", dateTime(sample.completed_at)],
   ]
   return (
     <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
@@ -80,12 +80,6 @@ function Facts({ sample }: { sample: Sample }) {
           <dd className="tabular">{v}</dd>
         </div>
       ))}
-      {sample.error ? (
-        <div className="contents">
-          <dt className="text-muted-foreground">Error</dt>
-          <dd className="text-destructive [overflow-wrap:anywhere]">{sample.error}</dd>
-        </div>
-      ) : null}
     </dl>
   )
 }
@@ -98,7 +92,8 @@ function Body({ sample }: { sample: Sample }) {
         <div className="grid gap-3">
           {sample.messages.map((m, i) => (
             <div key={i} className="grid gap-1">
-              <span className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</span>
+              {/* A lone user message needs no role label. */}
+              {sample.messages.length > 1 ? <span className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</span> : null}
               <ModelText text={m.content} />
             </div>
           ))}
@@ -111,13 +106,13 @@ function Body({ sample }: { sample: Sample }) {
         {sample.response ? (
           <ModelText text={sample.response} />
         ) : sample.status === "failed" ? (
-          <p className="text-sm text-muted-foreground">No response. The request failed after {count(sample.attempts, "attempt", "attempts")}; the error is below.</p>
+          <p className="text-sm text-destructive [overflow-wrap:anywhere]">{sample.error ?? "The request failed."}</p>
         ) : sample.status === "done" && sample.finish_reason === "length" ? (
-          <p className="text-sm text-warning-ink">No answer. The model hit the max tokens limit while it was still thinking.</p>
+          <p className="text-sm text-warning-ink">No answer: max tokens hit while thinking.</p>
         ) : sample.status === "done" ? (
           <p className="text-sm text-muted-foreground">The model returned an empty response.</p>
         ) : (
-          <p className="text-sm text-muted-foreground">Not finished yet. The response appears here when the request completes.</p>
+          <p className="text-sm text-muted-foreground">Not finished yet.</p>
         )}
       </Part>
 
@@ -190,6 +185,7 @@ export function SampleViewer({
         onCloseAutoFocus={onCloseAutoFocus}
         onOpenAutoFocus={(e) => {
           // Start in the reading area, so J and K work at once and no control is picked for the user.
+          // It is a scroll container, not a control, so it takes focus without a ring.
           e.preventDefault()
           bodyRef.current?.focus()
         }}
@@ -240,7 +236,7 @@ export function SampleViewer({
           ref={bodyRef}
           tabIndex={-1}
           aria-label="Sample"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 focus-visible:-outline-offset-2 sm:px-6"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 outline-none sm:px-6" /* taste-ignore: outline-removed -- tabIndex -1 scroll area focused only by script on open, never by Tab */
         >
           {sample.isError ? (
             <ErrorBlock message={`Couldn't load this sample. ${sample.error.message}`} onRetry={() => void sample.refetch()} />

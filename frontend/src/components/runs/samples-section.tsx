@@ -34,17 +34,17 @@ function filterCount(run: Run, f: SampleFilter): number {
   }
 }
 
-function emptyText(f: SampleFilter, q: string, run: Run): string {
+function emptyText(f: SampleFilter, q: string): string {
   if (q) return `No ${f === "all" ? "" : `${FILTER_LABEL[f].toLowerCase()} `}samples match “${q}”.`
   switch (f) {
     case "failed":
-      return "No failed samples. Requests that fail every attempt are listed here."
+      return "No failed samples."
     case "truncated":
-      return "No truncated samples. Responses that hit the max tokens limit are listed here."
+      return "No truncated samples."
     case "pending":
-      return isActive(run.status) ? "Nothing is waiting to be sent. The last requests are in flight." : "Nothing is waiting to be sent."
+      return "Nothing waiting."
     case "done":
-      return "No finished samples yet. They appear here as responses come back."
+      return "No finished samples yet."
     default:
       return "No samples yet."
   }
@@ -74,6 +74,9 @@ function SampleRows({
 }) {
   const spp = run.params.samples_per_prompt
   const open = (id: number) => ({ search: withParams(params, { sample: String(id) }) })
+  // A thinking trace is the norm; the column appears only to mark finished samples without one.
+  const noTrace = (s: SampleSummary) => s.status === "done" && !s.has_reasoning
+  const showThinking = items.some(noTrace)
   return (
     <>
       <table className="hidden w-full table-fixed text-sm md:table">
@@ -83,7 +86,7 @@ function SampleRows({
             <th scope="col" className="h-9 w-[5.5rem] px-4 font-normal">#</th>
             <th scope="col" className="h-9 px-3 font-normal">Prompt</th>
             <th scope="col" className="hidden h-9 px-3 font-normal lg:table-cell">Response</th>
-            <th scope="col" className="hidden h-9 w-[5.5rem] px-3 font-normal xl:table-cell">Thinking</th>
+            {showThinking ? <th scope="col" className="hidden h-9 w-[5.5rem] px-3 font-normal xl:table-cell">Thinking</th> : null}
             <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Tokens</th>
             <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Latency</th>
             <th scope="col" className="h-9 w-[7.5rem] px-4 font-normal">Status</th>
@@ -113,10 +116,13 @@ function SampleRows({
                   {s.prompt_preview || DASH}
                 </Link>
               </td>
-              <td className="hidden truncate px-3 py-2.5 text-muted-foreground lg:table-cell">
-                {s.status === "failed" && s.error ? <span className="text-destructive">{s.error}</span> : s.response_preview || DASH}
+              {/* A failed row's error is gray: the red mark in Status already says it failed. */}
+              <td className="hidden truncate px-3 py-2.5 text-muted-foreground lg:table-cell" title={s.error ?? undefined}>
+                {s.status === "failed" && s.error ? s.error : s.response_preview || DASH}
               </td>
-              <td className="hidden px-3 py-2.5 text-muted-foreground xl:table-cell">{s.has_reasoning ? "Yes" : DASH}</td>
+              {showThinking ? (
+                <td className="hidden px-3 py-2.5 text-muted-foreground xl:table-cell">{noTrace(s) ? "None" : null}</td>
+              ) : null}
               <td className={cn("px-3 py-2.5 text-right tabular", s.completion_tokens === null && "text-muted-foreground")}>
                 {int(s.completion_tokens)}
               </td>
@@ -147,9 +153,7 @@ function SampleRows({
             >
               {s.prompt_preview || DASH}
             </Link>
-            <p className="truncate text-sm text-muted-foreground">
-              {s.status === "failed" && s.error ? <span className="text-destructive">{s.error}</span> : s.response_preview || DASH}
-            </p>
+            <p className="truncate text-sm text-muted-foreground">{s.status === "failed" && s.error ? s.error : s.response_preview || DASH}</p>
           </li>
         ))}
       </ul>
@@ -329,7 +333,7 @@ export function SamplesSection({ run }: { run: Run }) {
               ) : undefined
             }
           >
-            {page > 1 && total > 0 ? `Page ${int(page)} is past the last page.` : emptyText(status, q, run)}
+            {page > 1 && total > 0 ? `Page ${int(page)} is past the last page.` : emptyText(status, q)}
           </EmptyBlock>
         </div>
       ) : (
@@ -345,9 +349,6 @@ export function SamplesSection({ run }: { run: Run }) {
           </p>
           {pages > 1 ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground tabular">
-                Page {int(page)} of {int(pages)}
-              </span>
               {page > 1 ? (
                 <Button asChild variant="outline" size="sm" className="pointer-coarse:h-11">
                   <Link to={{ search: withParams(params, { page: page - 1 > 1 ? String(page - 1) : null, sample: null }) }}>

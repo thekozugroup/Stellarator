@@ -335,10 +335,21 @@ export function ExportDialogShell({
   const skipped = data ? skippedText(data.skipped) : null
   const nothing = data?.count === 0
   const typeLabel = FILE_TYPES.find((t) => t.value === fileType)?.label ?? fileType.toUpperCase()
+  // The dialog is opened from a plain button, not a Radix trigger, so focus is returned by hand.
+  const returnTo = useRef<HTMLElement | null>(null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[56rem]">
+      <DialogContent
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => {
+          returnTo.current = document.activeElement as HTMLElement | null
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault()
+          returnTo.current?.focus()
+        }}
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[56rem]">
         <DialogHeader className="border-b px-4 py-4 pr-14 sm:px-6">
           <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
         </DialogHeader>

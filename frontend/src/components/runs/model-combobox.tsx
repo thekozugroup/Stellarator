@@ -62,7 +62,7 @@ export function ModelCombobox({
         <Command loop>
           <CommandInput value={search} onValueChange={setSearch} placeholder="Search or type a model id…" aria-label="Model id" />
           <CommandList>
-            <CommandEmpty>{models.length ? "No listed model matches." : "This endpoint listed no models. Type a model id."}</CommandEmpty>
+            <CommandEmpty>{models.length ? "No listed model matches." : "No models listed. Type a model id."}</CommandEmpty>
             {offerTyped ? (
               <CommandGroup>
                 <CommandItem

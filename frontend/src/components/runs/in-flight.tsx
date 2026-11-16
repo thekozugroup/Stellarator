@@ -4,9 +4,10 @@ import type { LiveSequence } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { sampleLabel } from "./run-data"
 
+/** Answering gets the ink and a gray dot; thinking and waiting stay gray. Copper is for the data. */
 function Phase({ phase }: { phase: LiveSequence["phase"] }) {
-  if (phase === "answering") return <Pill tone="copper">Answering</Pill>
-  if (phase === "thinking") return <Pill tone="neutral">Thinking</Pill>
+  if (phase === "answering") return <Pill tone="neutral">Answering</Pill>
+  if (phase === "thinking") return <Pill>Thinking</Pill>
   return <Pill>Waiting</Pill>
 }
 
@@ -18,25 +19,12 @@ export function InFlightList({
   sequences,
   inFlight,
   samplesPerPrompt,
-  status,
 }: {
   sequences: LiveSequence[]
   inFlight: number
   samplesPerPrompt: number
-  status: string
 }) {
-  if (!sequences.length) {
-    return (
-      <p className="py-6 text-sm text-muted-foreground">
-        Nothing in flight.{" "}
-        {status === "completed"
-          ? "The run has finished."
-          : status === "paused"
-            ? "The run is paused; resume it to send more requests."
-            : "Requests appear here as they are sent."}
-      </p>
-    )
-  }
+  if (!sequences.length) return <p className="py-6 text-sm text-muted-foreground">Nothing in flight.</p>
   return (
     <>
       <ul className="divide-y">

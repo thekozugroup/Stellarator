@@ -7,7 +7,7 @@ import { Field } from "@/components/shared/field"
 import { Page } from "@/components/shared/page"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
-import { SEGMENT_ON, runKeys, useEndpoints, usePromptSets } from "@/components/runs/run-data"
+import { SEGMENT_ON, SEQS_CHOICES, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -118,7 +118,6 @@ const SERVER_FIELD: Record<string, FieldId> = {
   "params.pause_after_failures": "pause_after",
 }
 
-const SEQS_CHOICES = [1, 4, 8, 16, 32, 64, 128, 256]
 const ON = SEGMENT_ON
 
 /** "30 min", "90 s", "1 h 30 min": a whole timeout in words. */
@@ -154,6 +153,17 @@ function fromRun(run: Run): Partial<Form> {
     timeout: String(p.request_timeout_s),
     pause_after: String(p.pause_after_failures),
   }
+}
+
+/**
+ * The model to prefill for an endpoint: the one its most recent run used, or its only listed
+ * model. Never the first of many, which would be a guess.
+ */
+function suggestedModel(ep: Endpoint, runs: Run[] | undefined): string {
+  const last = runs?.find((r) => r.endpoint_id === ep.id)
+  // A last-used model the endpoint no longer lists is likely wrong, unless it lists nothing.
+  if (last && (ep.models.length === 0 || ep.models.includes(last.model))) return last.model
+  return ep.models.length === 1 ? ep.models[0] : ""
 }
 
 function isInt(s: string) {
@@ -246,7 +256,8 @@ function toBody(f: Form): RunCreate {
 
 // ------------------------------------------------------------------ pieces
 
-function Section({ id, title, children, className }: { id: string; title: string; children: ReactNode; className?: string }) {
+function Section({ id, title, children, className }: { id: string; title?: string; children: ReactNode; className?: string }) {
+  if (!title) return <div className={cn("grid gap-5 pt-10 first:pt-0", className)}>{children}</div>
   return (
     <section aria-labelledby={id} className={cn("grid gap-5 pt-10 first:pt-0", className)}>
       <h2 id={id} className="-mb-1 text-base font-semibold">
@@ -294,7 +305,6 @@ function describe(id: string, error?: string, hint?: boolean) {
 function FormSkeleton() {
   return (
     <div className="grid max-w-[40rem] gap-5" aria-busy="true" aria-label="Loading endpoints and prompt sets">
-      <h2 className="text-base font-semibold">Model</h2>
       {["Endpoint", "Model", "Prompt set"].map((l) => (
         <div key={l} className="grid gap-1.5">
           <span className="text-sm font-medium">{l}</span>
@@ -314,7 +324,7 @@ interface Initial {
 }
 
 /** The form's first values: a previous run's settings (Run again), or URL prefills and sensible picks. */
-function initialState(eps: Endpoint[], ss: PromptSet[], source: Run | undefined, params: URLSearchParams): Initial {
+function initialState(eps: Endpoint[], ss: PromptSet[], runs: Run[] | undefined, source: Run | undefined, params: URLSearchParams): Initial {
   let form: Form = { ...DEFAULTS }
   let promptOpen = false
   let advancedOpen = false
@@ -340,7 +350,7 @@ function initialState(eps: Endpoint[], ss: PromptSet[], source: Run | undefined,
     if (pickedEp) {
       form.endpoint = String(pickedEp.id)
       form.concurrency = String(pickedEp.default_concurrency)
-      form.model = pickedEp.models[0] ?? ""
+      form.model = suggestedModel(pickedEp, runs)
     }
     const pickedSet = ss.find((s) => String(s.id) === ps) ?? (ss.length === 1 ? ss[0] : undefined)
     if (pickedSet) form.prompt_set = String(pickedSet.id)
@@ -353,6 +363,7 @@ export function NewRunPage() {
   const fromId = params.get("from")
   const endpoints = useEndpoints()
   const sets = usePromptSets()
+  const runs = useRuns()
   const source = useQuery({
     queryKey: runKeys.detail(Number(fromId)),
     queryFn: () => api.get<Run>(`/api/runs/${fromId}`),
@@ -366,13 +377,14 @@ export function NewRunPage() {
     }
   }, [])
 
-  const ready = endpoints.isSuccess && sets.isSuccess && (!fromId || source.isSuccess || source.isError)
+  // The runs list only suggests a model, so a failure to load it does not block the form.
+  const ready = endpoints.isSuccess && sets.isSuccess && !runs.isPending && (!fromId || source.isSuccess || source.isError)
 
   return (
     <Page title="New run" back={{ to: "/runs", label: "Runs" }}>
       {ready ? (
         <NewRunForm
-          initial={initialState(endpoints.data, sets.data, source.data, params)}
+          initial={initialState(endpoints.data, sets.data, runs.data, source.data, params)}
           sourceError={fromId && source.isError ? `Couldn't copy the settings of run ${fromId}. ${source.error.message} Defaults are filled in instead.` : null}
         />
       ) : endpoints.isError || sets.isError ? (
@@ -397,6 +409,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
   const queryClient = useQueryClient()
   const endpoints = useEndpoints()
   const sets = usePromptSets()
+  const runs = useRuns()
 
   const [form, setForm] = useState<Form>(initial.form)
   const [errors, setErrors] = useState<Errors>({})
@@ -438,7 +451,8 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
       ...f,
       endpoint: id,
       concurrency: ep ? String(ep.default_concurrency) : f.concurrency,
-      model: ep && f.model && ep.models.includes(f.model) ? f.model : (ep?.models[0] ?? f.model),
+      // Keep a model the new endpoint also lists, or a typed one when it lists none.
+      model: !ep || (f.model && (ep.models.includes(f.model) || ep.models.length === 0)) ? f.model : suggestedModel(ep, runs.data),
     }))
     setErrors((e) => ({ ...e, endpoint: undefined, model: undefined, concurrency: undefined }))
   }
@@ -451,7 +465,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
         setModelsNote({ ok: false, text: `Couldn't list models. ${ep.last_error ?? "The endpoint did not answer."}` })
       } else {
         setModelsNote({ ok: true, text: `Found ${count(ep.models.length, "model", "models")}.` })
-        if (!form.model && ep.models[0]) set("model", ep.models[0])
+        if (ep.models.length === 1) setForm((f) => (f.model ? f : { ...f, model: ep.models[0] }))
       }
     },
     onError: (e: Error) => setModelsNote({ ok: false, text: `Couldn't list models. ${e.message}` }),
@@ -520,6 +534,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
   }, [promptSet, samples])
 
   const defaultName = form.model && promptSet ? `${form.model} on ${promptSet.name}` : ""
+  const modelHint = modelsNote ? modelsNote.text : endpoint && !endpoint.models.length ? "No models listed. Type a model id." : null
   const cloud = endpoint?.location === "cloud"
   const timeoutS = Number(form.timeout)
 
@@ -537,13 +552,13 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
       ? [form.system_prompt.trim() ? "System prompt replaced" : null, form.user_template.trim() ? "prompt template set" : null]
           .filter(Boolean)
           .join(", ")
-      : "Prompts are sent as they are in the set."
+      : "None"
 
   return (
     <form onSubmit={submit} noValidate className="max-w-[40rem]">
       {sourceError ? <ErrorBlock className="mb-6" message={sourceError} /> : null}
 
-      <Section id="sec-model" title="Model">
+      <Section id="sec-model">
         <Field
           id="endpoint"
           label="Endpoint"
@@ -571,7 +586,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </Select>
           ) : (
             <p id="endpoint" tabIndex={-1} className="text-sm text-muted-foreground">
-              No endpoints yet. Runs send prompts to an endpoint.{" "}
+              No endpoints yet.{" "}
               <Link to="/endpoints" className="text-foreground underline underline-offset-4">
                 Add an endpoint
               </Link>
@@ -604,7 +619,8 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             onChange={(m) => set("model", m)}
             models={endpoint?.models ?? []}
             invalid={!!errors.model}
-            describedBy={errors.model ? "model-error" : "model-hint"}
+            describedBy={errors.model ? "model-error" : modelHint ? "model-hint" : undefined}
+            disabled={!endpoint}
           />
           {errors.model ? (
             <p id="model-error" className="text-sm text-destructive">
@@ -612,13 +628,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </p>
           ) : (
             <p id="model-hint" aria-live="polite" className={cn("text-xs", modelsNote && !modelsNote.ok ? "text-destructive" : "text-muted-foreground")}>
-              {modelsNote
-                ? modelsNote.text
-                : endpoint
-                  ? endpoint.models.length
-                    ? `${count(endpoint.models.length, "model", "models")} listed by this endpoint. You can also type any model id.`
-                    : "This endpoint listed no models. Type the model id, or refresh the list."
-                  : "Choose an endpoint to see its models."}
+              {modelHint}
             </p>
           )}
         </div>
@@ -645,7 +655,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </Select>
           ) : (
             <p id="prompt_set" tabIndex={-1} className="text-sm text-muted-foreground">
-              No prompt sets yet. A run sends every prompt in a set.{" "}
+              No prompt sets yet.{" "}
               <Link to="/prompts/import" className="text-foreground underline underline-offset-4">
                 Import prompts
               </Link>
@@ -654,7 +664,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
         </Field>
       </Section>
 
-      <Section id="sec-throughput" title="Throughput">
+      <Section id="sec-requests" title="Requests">
         <div className="grid gap-1.5">
           <Label htmlFor="concurrency" className="text-sm font-medium">
             Seqs
@@ -694,10 +704,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </p>
           ) : (
             <p id="concurrency-hint" className="text-xs text-muted-foreground">
-              {cloud
-                ? "How many requests to send at once. Stay under your provider's rate limit."
-                : "How many sequences your server runs at once. Match your server's max batch size (vLLM --max-num-seqs)."}{" "}
-              You can change it while the run is going.
+              {cloud ? "Stay under your provider's rate limit." : "Match your server's --max-num-seqs."} Changeable while running.
             </p>
           )}
         </div>
@@ -723,39 +730,34 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </p>
           ) : (
             <p id="samples-hint" className="text-xs text-muted-foreground">
-              Use 2 or more to collect candidates for preference pairs.
+              2 or more for preference pairs.
             </p>
           )}
         </div>
 
-        <p className="rounded-lg bg-muted px-3 py-2 text-sm tabular" aria-live="polite">
-          {total ?? <span className="text-muted-foreground">Choose a prompt set to see how many requests this run sends.</span>}
-        </p>
       </Section>
 
       <Section id="sec-sampling" title="Sampling">
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field id="temperature" label="Temperature" hint="0 to 2. Leave empty to use the server's default." error={errors.temperature}>
+          <Field id="temperature" label="Temperature" optional hint="0–2. Empty: server default." error={errors.temperature}>
             <Input
               id="temperature"
               inputMode="decimal"
               value={form.temperature}
               onChange={(e) => set("temperature", e.target.value)}
               onBlur={blur("temperature")}
-              placeholder="0.7"
               aria-invalid={!!errors.temperature || undefined}
               aria-describedby={describe("temperature", errors.temperature, true)}
               className="tabular pointer-coarse:h-11"
             />
           </Field>
-          <Field id="top_p" label="Top p" optional hint="Above 0, at most 1. Empty uses the server's default." error={errors.top_p}>
+          <Field id="top_p" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
             <Input
               id="top_p"
               inputMode="decimal"
               value={form.top_p}
               onChange={(e) => set("top_p", e.target.value)}
               onBlur={blur("top_p")}
-              placeholder="0.95"
               aria-invalid={!!errors.top_p || undefined}
               aria-describedby={describe("top_p", errors.top_p, true)}
               className="tabular pointer-coarse:h-11"
@@ -774,7 +776,6 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               value={form.max_tokens}
               onChange={(e) => set("max_tokens", e.target.value)}
               onBlur={blur("max_tokens")}
-              placeholder="8192"
               aria-invalid={!!errors.max_tokens || undefined}
               aria-describedby={errors.max_tokens ? "max_tokens-error" : "max_tokens-hint"}
               className="w-32 tabular pointer-coarse:h-11"
@@ -805,22 +806,20 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             </p>
           ) : (
             <p id="max_tokens-hint" className="text-xs text-muted-foreground">
-              Includes the thinking trace. Responses that hit it are kept and marked truncated. OpenAI reasoning models expect
-              max_completion_tokens.
+              Includes the thinking trace.
             </p>
           )}
         </div>
 
-        <Field id="seed" label="Seed" optional hint="Leave empty to send no seed." error={errors.seed} className="sm:w-1/2">
+        <Field id="seed" label="Seed" optional error={errors.seed} className="sm:w-1/2">
           <Input
             id="seed"
             inputMode="numeric"
             value={form.seed}
             onChange={(e) => set("seed", e.target.value)}
             onBlur={blur("seed")}
-            placeholder="1234"
             aria-invalid={!!errors.seed || undefined}
-            aria-describedby={describe("seed", errors.seed, true)}
+            aria-describedby={describe("seed", errors.seed)}
             className="tabular pointer-coarse:h-11"
           />
         </Field>
@@ -831,7 +830,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           id="system_prompt"
           label="System prompt"
           optional
-          hint="Replaces the system message from the prompt set, for every prompt."
+          hint="Replaces the set's system message."
           error={errors.system_prompt}
         >
           <Textarea
@@ -848,7 +847,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           id="user_template"
           label="Prompt template"
           optional
-          hint="Wraps each prompt. Put {prompt} where the prompt goes."
+          hint="Must contain {prompt}."
           error={errors.user_template}
         >
           <Textarea
@@ -870,7 +869,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           id="extra_body"
           label="Extra request body"
           optional
-          hint="JSON merged into every request body, last."
+          hint="Merged into every request."
           error={errors.extra_body}
         >
           <Textarea
@@ -902,7 +901,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               Stream responses
             </Label>
             <p id="stream-hint" className="text-xs text-muted-foreground">
-              Shows thinking and answering live and measures time to first token.
+              Needed for live progress and time to first token.
             </p>
           </div>
         </div>
@@ -935,12 +934,12 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             />
           </Field>
           <p className="-mt-3 text-xs text-muted-foreground sm:col-span-2">
-            Used to split the thinking trace from the answer when the server returns it inline.
+            Only for inline &lt;think&gt; traces.
           </p>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-3">
-          <Field id="max_attempts" label="Attempts per sample" hint="1 to 20." error={errors.max_attempts}>
+          <Field id="max_attempts" label="Attempts per sample" error={errors.max_attempts}>
             <Input
               id="max_attempts"
               inputMode="numeric"
@@ -948,11 +947,11 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onChange={(e) => set("max_attempts", e.target.value)}
               onBlur={blur("max_attempts")}
               aria-invalid={!!errors.max_attempts || undefined}
-              aria-describedby={describe("max_attempts", errors.max_attempts, true)}
+              aria-describedby={describe("max_attempts", errors.max_attempts)}
               className="tabular pointer-coarse:h-11"
             />
           </Field>
-          <Field id="timeout" label="Request timeout (s)" hint="At least 10." error={errors.timeout}>
+          <Field id="timeout" label="Request timeout (s)" error={errors.timeout}>
             <Input
               id="timeout"
               inputMode="numeric"
@@ -960,11 +959,11 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onChange={(e) => set("timeout", e.target.value)}
               onBlur={blur("timeout")}
               aria-invalid={!!errors.timeout || undefined}
-              aria-describedby={describe("timeout", errors.timeout, true)}
+              aria-describedby={describe("timeout", errors.timeout)}
               className="tabular pointer-coarse:h-11"
             />
           </Field>
-          <Field id="pause_after" label="Pause after failures" hint="In a row. 0 never pauses." error={errors.pause_after}>
+          <Field id="pause_after" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
             <Input
               id="pause_after"
               inputMode="numeric"
@@ -979,21 +978,15 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
         </div>
       </Disclosure>
 
-      <Section id="sec-name" title="Name">
-        <Field
-          id="name"
-          label="Run name"
-          optional
-          hint={defaultName ? `Leave empty to call it “${defaultName}”.` : "Leave empty to name it after the model and prompt set."}
-          error={errors.name}
-        >
+      <Section id="sec-name">
+        <Field id="name" label="Run name" optional error={errors.name}>
           <Input
             id="name"
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
             placeholder={defaultName || "Qwen3 distill, round 2"}
             maxLength={300}
-            aria-describedby={describe("name", errors.name, true)}
+            aria-describedby={describe("name", errors.name)}
             className="pointer-coarse:h-11"
           />
         </Field>
@@ -1008,7 +1001,9 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           <Button asChild variant="ghost" size="lg" className="pointer-coarse:h-11">
             <Link to="/runs">Cancel</Link>
           </Button>
-          {total ? <span className="text-sm text-muted-foreground tabular">{total}</span> : null}
+          <span className="text-sm text-muted-foreground tabular" aria-live="polite">
+            {total}
+          </span>
         </div>
       </div>
     </form>

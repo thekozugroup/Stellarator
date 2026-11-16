@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Download, MoreHorizontal, Pause, Play, RotateCcw } from "lucide-react"
@@ -38,7 +38,10 @@ function useRunUpdate(run: Run) {
   }
 }
 
-function RenameDialog({ run, open, onOpenChange }: { run: Run; open: boolean; onOpenChange: (o: boolean) => void }) {
+/** Dialogs opened from the menu give focus back to the menu button when they close. */
+type ReturnFocus = { returnFocus: () => void }
+
+function RenameDialog({ run, open, onOpenChange, returnFocus }: { run: Run; open: boolean; onOpenChange: (o: boolean) => void } & ReturnFocus) {
   const [name, setName] = useState(run.name)
   const [error, setError] = useState<string | null>(null)
   const update = useRunUpdate(run)
@@ -73,7 +76,13 @@ function RenameDialog({ run, open, onOpenChange }: { run: Run; open: boolean; on
         onOpenChange(o)
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onCloseAutoFocus={(e) => {
+          e.preventDefault()
+          returnFocus()
+        }}
+      >
         <form onSubmit={submit} noValidate className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Rename run</DialogTitle>
@@ -106,7 +115,7 @@ function RenameDialog({ run, open, onOpenChange }: { run: Run; open: boolean; on
   )
 }
 
-function DeleteDialog({ run, open, onOpenChange }: { run: Run; open: boolean; onOpenChange: (o: boolean) => void }) {
+function DeleteDialog({ run, open, onOpenChange, returnFocus }: { run: Run; open: boolean; onOpenChange: (o: boolean) => void } & ReturnFocus) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const del = useMutation({
@@ -120,7 +129,12 @@ function DeleteDialog({ run, open, onOpenChange }: { run: Run; open: boolean; on
   })
   return (
     <AlertDialog open={open} onOpenChange={(o) => !del.isPending && onOpenChange(o)}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onCloseAutoFocus={(e) => {
+          e.preventDefault()
+          returnFocus()
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle className="break-words">
             Delete run “{run.name}” and its {count(run.total, "sample", "samples")}?
@@ -158,6 +172,8 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
   const update = useRunUpdate(run)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const returnFocus = () => menuButton.current?.focus()
 
   const action = useMutation({
     mutationFn: (what: "pause" | "resume" | "retry-failed") => api.post<Run>(`/api/runs/${run.id}/${what}`),
@@ -187,7 +203,8 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
           onClick={() => action.mutate("retry-failed")}
           className="pointer-coarse:h-11"
         >
-          <RotateCcw aria-hidden="true" />
+          {/* Without its icon on phones, so a paused run's actions and menu fit one row at 390 px. */}
+          <RotateCcw aria-hidden="true" className="max-sm:hidden" />
           {busy === "retry-failed" ? "Retrying…" : paused ? "Retry failed and resume" : `Retry failed (${int(run.failed)})`}
         </Button>
       ) : null}
@@ -215,7 +232,7 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
       ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="More actions for this run" className="pointer-coarse:size-11">
+          <Button ref={menuButton} variant="ghost" size="icon" aria-label="More actions for this run" className="pointer-coarse:size-11">
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
@@ -230,8 +247,8 @@ export function RunActions({ run, onExport }: { run: Run; onExport: () => void }
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <RenameDialog run={run} open={renameOpen} onOpenChange={setRenameOpen} />
-      <DeleteDialog run={run} open={deleteOpen} onOpenChange={setDeleteOpen} />
+      <RenameDialog run={run} open={renameOpen} onOpenChange={setRenameOpen} returnFocus={returnFocus} />
+      <DeleteDialog run={run} open={deleteOpen} onOpenChange={setDeleteOpen} returnFocus={returnFocus} />
     </>
   )
 }

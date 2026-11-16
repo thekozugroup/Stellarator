@@ -1,30 +1,23 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { ChevronDown, Minus, Plus } from "lucide-react"
+import { Minus, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { api } from "@/lib/api"
 import { int } from "@/lib/format"
 import type { Run, RunLive } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { runKeys } from "./run-data"
+import { SEGMENT_ON, SEQS_CHOICES, runKeys } from "./run-data"
 
-const PRESETS = [1, 4, 8, 16, 32, 64, 128, 256]
 const MIN = 1
 const MAX = 4096
 
 /**
- * The run's one copper control. Each change is applied to the screen at once and sent to the
- * server after 400 ms of quiet; a failure puts the old value back and says why.
+ * The run's one copper control, for a run that is going or paused. Each change is applied to the
+ * screen at once and sent to the server after 400 ms of quiet; a failure puts the old value back
+ * and says why. Common values sit below as the same segmented row as on New run.
  */
 export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
   const queryClient = useQueryClient()
@@ -32,7 +25,6 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
   const [editing, setEditing] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   const settled = useRef(run.concurrency) // last value the server confirmed
-  const finished = run.status === "completed"
 
   const mutation = useMutation({
     mutationFn: (concurrency: number) => api.patch<Run>(`/api/runs/${run.id}`, { concurrency }),
@@ -78,13 +70,13 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
   const current = Number.isFinite(parsed) ? parsed : run.concurrency
   const invalid = draft.trim() !== "" && (!/^\d+$/.test(draft.trim()) || parsed < MIN || parsed > MAX)
 
-  const hint = finished
-    ? "Run finished. Run again to change seqs."
-    : run.status === "paused"
-      ? `Paused. The run sends ${int(current)} at once when it resumes.`
-      : run.status === "pausing"
-        ? `Pausing. ${int(inFlight)} still in flight.`
-        : `In flight: ${int(inFlight)} of ${int(current)}`
+  const hint = invalid
+    ? `Enter a whole number from ${MIN} to ${int(MAX)}.`
+    : run.status === "pausing"
+      ? `Pausing. ${int(inFlight)} still in flight.`
+      : run.status === "running"
+        ? `In flight: ${int(inFlight)} of ${int(current)}`
+        : null
 
   return (
     <div className="grid gap-1.5">
@@ -97,7 +89,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           variant="outline"
           size="icon"
           aria-label="Decrease seqs"
-          disabled={finished || current <= MIN}
+          disabled={current <= MIN}
           onClick={() => apply(current - 1)}
           className="pointer-coarse:size-11"
         >
@@ -110,9 +102,8 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           min={MIN}
           max={MAX}
           value={draft}
-          disabled={finished}
           aria-invalid={invalid || undefined}
-          aria-describedby="seqs-hint"
+          aria-describedby={hint ? "seqs-hint" : undefined}
           onFocus={() => setEditing(true)}
           onChange={(e) => {
             setDraft(e.target.value)
@@ -136,34 +127,34 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           variant="outline"
           size="icon"
           aria-label="Increase seqs"
-          disabled={finished || current >= MAX}
+          disabled={current >= MAX}
           onClick={() => apply(current + 1)}
           className="pointer-coarse:size-11"
         >
           <Plus aria-hidden="true" />
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={finished}>
-            <Button type="button" variant="ghost" size="sm" className="ml-0.5 text-muted-foreground pointer-coarse:h-11">
-              Presets
-              <ChevronDown aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuLabel>Set seqs to</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={String(current)} onValueChange={(v) => apply(Number(v))}>
-              {PRESETS.map((n) => (
-                <DropdownMenuRadioItem key={n} value={String(n)} className="tabular">
-                  {n}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
-      <p id="seqs-hint" className={cn("text-xs tabular", invalid ? "text-destructive" : "text-muted-foreground")}>
-        {invalid ? `Enter a whole number from ${MIN} to ${int(MAX)}.` : hint}
-      </p>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={SEQS_CHOICES.includes(current) ? String(current) : ""}
+        onValueChange={(v) => v && apply(Number(v))}
+        aria-label="Common seqs values"
+        className="flex-wrap"
+      >
+        {SEQS_CHOICES.map((n) => (
+          <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular pointer-coarse:h-11 pointer-coarse:min-w-11", SEGMENT_ON)}>
+            {n}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      {hint ? (
+        <p id="seqs-hint" className={cn("text-xs tabular", invalid ? "text-destructive" : "text-muted-foreground")}>
+          {hint}
+        </p>
+      ) : null}
     </div>
   )
 }

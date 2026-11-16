@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { Fragment, useEffect, type ReactNode } from "react"
 import { Link } from "react-router"
 import { Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
@@ -26,6 +26,32 @@ function RunProgress({ run }: { run: Run }) {
   )
 }
 
+/**
+ * The model, endpoint and prompt set under a run's name, minus what the name already says: a
+ * default name ("<model> on <set>") leaves only the endpoint.
+ */
+function RunFacts({ run }: { run: Run }) {
+  const name = run.name.toLowerCase()
+  const parts: ReactNode[] = []
+  if (!name.includes(run.model.toLowerCase())) parts.push(<span className="font-mono">{run.model}</span>)
+  parts.push(run.endpoint_name)
+  if (!name.includes(run.prompt_set_name.toLowerCase())) parts.push(run.prompt_set_name)
+  return (
+    <>
+      {parts.map((p, i) => (
+        <Fragment key={i}>
+          {i > 0 ? " · " : null}
+          {p}
+        </Fragment>
+      ))}
+    </>
+  )
+}
+
+function factsTitle(run: Run) {
+  return `${run.model} on ${run.endpoint_name} · ${run.prompt_set_name}`
+}
+
 function RunsTable({ runs }: { runs: Run[] }) {
   return (
     <>
@@ -36,7 +62,6 @@ function RunsTable({ runs }: { runs: Run[] }) {
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
               <th scope="col" className="h-10 px-4 font-normal">Name</th>
-              <th scope="col" className="hidden h-10 w-[14%] px-3 font-normal xl:table-cell">Prompt set</th>
               <th scope="col" className="h-10 w-[11rem] px-3 font-normal">Progress</th>
               <th scope="col" className="hidden h-10 w-[4rem] px-3 text-right font-normal xl:table-cell">Seqs</th>
               <th scope="col" className="h-10 w-[11.5rem] px-3 font-normal">Status</th>
@@ -54,12 +79,9 @@ function RunsTable({ runs }: { runs: Run[] }) {
                   >
                     {run.name}
                   </Link>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground" title={`${run.model} on ${run.endpoint_name}`}>
-                    <span className="font-mono">{run.model}</span> on {run.endpoint_name}
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground" title={factsTitle(run)}>
+                    <RunFacts run={run} />
                   </p>
-                </td>
-                <td className="hidden truncate px-3 py-3 text-muted-foreground xl:table-cell" title={run.prompt_set_name}>
-                  {run.prompt_set_name}
                 </td>
                 <td className="px-3 py-3">
                   <RunProgress run={run} />
@@ -90,8 +112,8 @@ function RunsTable({ runs }: { runs: Run[] }) {
                   {run.name}
                 </Link>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  <span className="font-mono">{run.model}</span>
-                  <span className="hidden sm:inline"> on {run.endpoint_name}, {relative(run.created_at)}</span>
+                  <RunFacts run={run} />
+                  <span className="hidden sm:inline"> · {relative(run.created_at)}</span>
                 </p>
               </div>
               <RunStatusPill status={run.status} failed={run.failed} />

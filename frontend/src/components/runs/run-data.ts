@@ -101,5 +101,8 @@ export function finishReasonText(reason: string | null | undefined): { text: str
 
 export const ROLE_LABEL: Record<string, string> = { system: "System", user: "User", assistant: "Assistant" }
 
+/** Common seqs values, offered as one segmented row on New run and on a run. */
+export const SEQS_CHOICES = [1, 4, 8, 16, 32, 64, 128, 256]
+
 /** The chosen option in a segmented control: a tone step, full ink and weight, so it reads without color. */
 export const SEGMENT_ON = "data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-foreground"

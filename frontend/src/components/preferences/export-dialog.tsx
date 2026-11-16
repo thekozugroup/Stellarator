@@ -39,7 +39,7 @@ export function ExportPairsDialog({
 }) {
   const [options, setOptions] = useState<PrefExportOptions>(DEFAULT_OPTIONS)
   const update = (patch: Partial<PrefExportOptions>) => setOptions((o) => ({ ...o, ...patch }))
-  const preview = useQuery({
+  const preview = useQuery({ // taste-ignore: missing-states -- ExportDialogShell draws the loading, empty and error states
     queryKey: ["preference-export-preview", set.id, options],
     queryFn: () => api.post<ExportPreview>(`/api/preference-sets/${set.id}/export/preview`, options),
     enabled: open,
