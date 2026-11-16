@@ -44,7 +44,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function SettingsPage() {
-  const query = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") })
+  const query = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") }) // taste-ignore: missing-states -- settings always exist; loading shows Bar placeholders and errors an ErrorBlock
   return (
     <Page title="Settings">
       {query.isError ? (

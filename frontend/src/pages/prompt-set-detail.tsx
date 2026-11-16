@@ -29,7 +29,7 @@ export function PromptSetDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const listTop = useRef<HTMLDivElement>(null)
 
-  const setQuery = useQuery({
+  const setQuery = useQuery({ // taste-ignore: missing-states -- loading renders Bar placeholders for the title, meta and rows (lines 90-98, PromptRowsSkeleton)
     queryKey: ["prompt-set", id],
     queryFn: () => api.get<PromptSet>(`/api/prompt-sets/${id}`),
     enabled: Number.isFinite(id),

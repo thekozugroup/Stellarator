@@ -209,7 +209,7 @@
   }
   /* Components that draw their own ring do not need the outline too. */
   [data-slot]:focus-visible {
-    outline: none;
+    outline: none; /* taste-ignore: outline-check -- every [data-slot] control draws its own focus-visible ring (ring-3 ring-ring) */
   }
   :where(button, a, [role="button"], label, summary, input[type="checkbox"], input[type="radio"]) {
     touch-action: manipulation;

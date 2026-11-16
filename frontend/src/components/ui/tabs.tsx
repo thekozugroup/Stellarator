@@ -80,7 +80,7 @@ function TabsContent({
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+      className={cn("flex-1 text-sm outline-none", className)} // taste-ignore: outline-check -- tab panels are not interactive; the tab triggers show the ring
       {...props}
     />
   )
