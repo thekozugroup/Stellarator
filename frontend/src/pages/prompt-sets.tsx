@@ -26,7 +26,7 @@ export function PromptSetsPage() {
       ) : sets.length === 0 ? (
         <div className="border-y">
           <EmptyBlock action={importLink}>
-            Prompt sets you import appear here. Bring prompts from a Hugging Face dataset, a file (Markdown, text, CSV, JSON, JSONL, Parquet) or pasted text.
+            No prompt sets yet. Import from Hugging Face, a file or pasted text.
           </EmptyBlock>
         </div>
       ) : (

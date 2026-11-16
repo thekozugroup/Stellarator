@@ -1,26 +1,36 @@
 import { useState } from "react"
 import { Link } from "react-router"
-import { Search } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
+import { Loader2, Search } from "lucide-react"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { CopyButton } from "@/components/shared/copy-button"
 import { BaseUrl } from "./base-url"
-import { CheckedAt, EndpointStatus, locationLabel } from "./endpoint-status"
+import { CheckedAt, EndpointStatus } from "./endpoint-status"
+import { useCheckEndpoint } from "./use-check-endpoint"
 import { count, int } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Endpoint } from "@/lib/types"
 
 /** Everything about one endpoint, including the model ids it serves. */
-export function EndpointDetailsSheet({ endpoint, onClose }: { endpoint: Endpoint | null; onClose: () => void }) {
+export function EndpointDetailsSheet({
+  endpoint,
+  onClose,
+  onEdit,
+}: {
+  endpoint: Endpoint | null
+  onClose: () => void
+  onEdit: (e: Endpoint) => void
+}) {
   return (
     <Sheet open={endpoint !== null} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full gap-0 sm:max-w-md">{endpoint ? <Details endpoint={endpoint} /> : null}</SheetContent>
+      <SheetContent className="w-full gap-0 sm:max-w-md">{endpoint ? <Details endpoint={endpoint} onEdit={onEdit} /> : null}</SheetContent>
     </Sheet>
   )
 }
 
-function Details({ endpoint }: { endpoint: Endpoint }) {
+function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoint) => void }) {
+  const check = useCheckEndpoint(endpoint)
   const [q, setQ] = useState("")
   const needle = q.trim().toLowerCase()
   const models = needle ? endpoint.models.filter((m) => m.toLowerCase().includes(needle)) : endpoint.models
@@ -41,8 +51,6 @@ function Details({ endpoint }: { endpoint: Endpoint }) {
         <dd>
           <CheckedAt endpoint={endpoint} />
         </dd>
-        <dt className="text-muted-foreground">Runs on</dt>
-        <dd>{locationLabel(endpoint)}</dd>
         <dt className="text-muted-foreground">Default seqs</dt>
         <dd className="tabular">{int(endpoint.default_concurrency)}</dd>
         <dt className="text-muted-foreground">Runs</dt>
@@ -54,8 +62,8 @@ function Details({ endpoint }: { endpoint: Endpoint }) {
         {endpoint.models.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {endpoint.last_ok === false
-              ? "No models listed because the last check failed. Fix the connection, then check again."
-              : "No models listed yet. Use Check now to read them from the server."}
+              ? "The last check failed."
+              : "No models listed."}
           </p>
         ) : (
           <>
@@ -91,10 +99,20 @@ function Details({ endpoint }: { endpoint: Endpoint }) {
         )}
       </div>
 
-      <div className="border-t p-4">
-        <Link to={`/runs/new?endpoint=${endpoint.id}`} className={cn(buttonVariants({ variant: "default" }), "w-full sm:w-fit")}>
-          Start a run
+      <div className="flex flex-wrap gap-2 border-t p-4">
+        <Link
+          to={`/runs/new?endpoint=${endpoint.id}`}
+          className={cn(buttonVariants({ variant: endpoint.last_ok === false ? "outline" : "default" }), "pointer-coarse:min-h-11")}
+        >
+          New run
         </Link>
+        <Button variant="outline" onClick={() => onEdit(endpoint)}>
+          Edit
+        </Button>
+        <Button variant={endpoint.last_ok === false ? "default" : "outline"} disabled={check.isPending} onClick={() => check.mutate()}>
+          {check.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+          {check.isPending ? "Checking…" : "Check now"}
+        </Button>
       </div>
     </>
   )

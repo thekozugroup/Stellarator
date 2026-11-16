@@ -5,16 +5,16 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Field } from "@/components/shared/field"
 import { ApiError, api } from "@/lib/api"
 import { count, duration } from "@/lib/format"
-import type { Endpoint, EndpointIn, EndpointLocation, EndpointTestOut } from "@/lib/types"
+import type { Endpoint, EndpointIn, EndpointTestOut } from "@/lib/types"
+import { isKeyRejected } from "./endpoint-status"
 
-const SEQS: Record<EndpointLocation, number> = { local: 16, cloud: 8 }
+const DEFAULT_SEQS = 16
 const FIELD_ORDER = ["name", "base_url", "api_key", "default_concurrency", "headers"]
 
 type HeaderRow = { id: number; key: string; value: string }
@@ -31,7 +31,7 @@ export function EndpointFormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <EndpointForm endpoint={endpoint} onDone={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -44,12 +44,10 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
   const nextId = useRef(1)
   const [name, setName] = useState(endpoint?.name ?? "")
   const [baseUrl, setBaseUrl] = useState(endpoint?.base_url ?? "")
-  const [location, setLocation] = useState<EndpointLocation>((endpoint?.location as EndpointLocation) ?? "local")
   const [apiKey, setApiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
   const [removeKey, setRemoveKey] = useState(false)
-  const [seqs, setSeqs] = useState(String(endpoint?.default_concurrency ?? SEQS.local))
-  const [seqsTouched, setSeqsTouched] = useState(editing)
+  const [seqs, setSeqs] = useState(String(endpoint?.default_concurrency ?? DEFAULT_SEQS))
   const [headers, setHeaders] = useState<HeaderRow[]>(() =>
     Object.entries(endpoint?.headers ?? {}).map(([key, value]) => ({ id: nextId.current++, key, value })),
   )
@@ -131,10 +129,10 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
     const body: Partial<EndpointIn> = {
       name: name.trim(),
       base_url: baseUrl.trim(),
-      location,
       default_concurrency: n,
       headers: headerObject(),
     }
+    if (!editing) body.location = "local"
     if (apiKey) body.api_key = apiKey
     else if (removeKey) body.api_key = ""
     save.mutate(body)
@@ -144,11 +142,11 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
   const describe = (field: string, hint: boolean) => (errors[field] ? `ep-${field}-error` : hint ? `ep-${field}-hint` : undefined)
 
   return (
-    <form onSubmit={submit} noValidate className="grid gap-4">
-      <DialogHeader>
+    <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
+      <DialogHeader className="px-4 pt-4 pr-12 pb-3">
         <DialogTitle>{editing ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
-        <DialogDescription>A model server that speaks the OpenAI chat completions API.</DialogDescription>
       </DialogHeader>
+      <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 pt-1 pb-4">
 
       <Field id="ep-name" label="Name" error={errors.name}>
         <Input
@@ -169,7 +167,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         id="ep-base_url"
         label="Base URL"
         error={errors.base_url}
-        hint="The OpenAI-compatible API root. From Docker, reach this machine at http://host.docker.internal:PORT/v1."
+        hint="From Docker, this machine is http://host.docker.internal:PORT/v1."
       >
         <Input
           id="ep-base_url"
@@ -191,32 +189,6 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         />
       </Field>
 
-      <fieldset className="grid gap-1.5">
-        <legend className="mb-1.5 text-sm font-medium">Where it runs</legend>
-        <RadioGroup
-          value={location}
-          className="grid-cols-1 gap-1 sm:grid-cols-2"
-          onValueChange={(v) => {
-            const loc = v as EndpointLocation
-            setLocation(loc)
-            if (!seqsTouched) setSeqs(String(SEQS[loc]))
-          }}
-        >
-          {(
-            [
-              ["local", "Local hardware"],
-              ["cloud", "Cloud API"],
-            ] as const
-          ).map(([value, label]) => (
-            <Label key={value} htmlFor={`ep-loc-${value}`} className="flex min-h-9 items-center gap-2.5 rounded-md border px-3 text-sm font-normal">
-              <RadioGroupItem id={`ep-loc-${value}`} value={value} />
-              {label}
-            </Label>
-          ))}
-        </RadioGroup>
-        <p className="text-xs text-muted-foreground">This only changes the suggested seqs: 16 for local hardware, 8 for a hosted API.</p>
-      </fieldset>
-
       <div className="grid gap-1.5">
         <Label htmlFor="ep-api_key" className="text-sm font-medium">
           API key<span className="font-normal text-muted-foreground"> (optional)</span>
@@ -227,9 +199,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
             type={showKey ? "text" : "password"}
             value={apiKey}
             disabled={removeKey}
-            placeholder={
-              editing && endpoint?.has_api_key ? `Saved key ${endpoint.api_key_hint ?? ""}`.trim() : "sk-012345…"
-            }
+            placeholder={editing && endpoint?.has_api_key ? undefined : "sk-012345…"}
             autoComplete="off"
             spellCheck={false}
             autoCapitalize="none"
@@ -260,7 +230,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           </p>
         ) : editing && endpoint?.has_api_key ? (
           <p id="ep-api_key-hint" className="text-xs text-muted-foreground">
-            {removeKey ? "The saved key is removed when you save." : `Leave blank to keep the saved key (${endpoint.api_key_hint ?? "saved"}).`}
+            {removeKey ? "The saved key is removed when you save." : `Saved key ${endpoint.api_key_hint ?? "set"}. Leave blank to keep it.`}
           </p>
         ) : null}
         {editing && endpoint?.has_api_key ? (
@@ -283,7 +253,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         id="ep-default_concurrency"
         label="Default seqs"
         error={errors.default_concurrency}
-        hint="How many sequences run at once when you start a run on this endpoint. You can change it per run."
+        hint="Prefilled on new runs."
       >
         <Input
           id="ep-default_concurrency"
@@ -297,7 +267,6 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           aria-describedby={describe("default_concurrency", true)}
           onChange={(e) => {
             setSeqs(e.target.value)
-            setSeqsTouched(true)
             clear("default_concurrency")
           }}
         />
@@ -392,7 +361,10 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
               ) : null}
             </div>
           ) : test ? (
-            <p className="text-destructive">{test.error ?? "The server did not answer."}</p>
+            <div className="grid gap-0.5 text-destructive">
+              {isKeyRejected(test.error) ? <p className="font-medium">Key rejected</p> : null}
+              <p>{test.error ?? "The server did not answer."}</p>
+            </div>
           ) : testError ? (
             <p className="text-destructive">{testError}</p>
           ) : null}
@@ -404,8 +376,9 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           {formError}
         </p>
       ) : null}
+      </div>
 
-      <DialogFooter>
+      <DialogFooter className="m-0 shrink-0 rounded-b-xl px-4 py-3">
         <Button type="button" variant="outline" onClick={onCancel} disabled={save.isPending}>
           Cancel
         </Button>

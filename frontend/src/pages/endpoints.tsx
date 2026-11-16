@@ -1,6 +1,8 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
@@ -17,7 +19,32 @@ export function EndpointsPage() {
   const [detailsId, setDetailsId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState<Endpoint | null>(null)
   const endpoints = query.data ?? []
+  const [params, setParams] = useSearchParams()
+  const handledEdit = useRef<string | null>(null)
   const details = endpoints.find((e) => e.id === detailsId) ?? null
+
+  // /endpoints?edit=<id> opens that endpoint's edit dialog (linked from the "key rejected" banner on a run).
+  const editParam = params.get("edit")
+  const clearEdit = () =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete("edit")
+        return next
+      },
+      { replace: true },
+    )
+  useEffect(() => {
+    if (!editParam || !query.data || handledEdit.current === editParam) return
+    handledEdit.current = editParam
+    const target = query.data.find((e) => String(e.id) === editParam)
+    if (target) setForm({ endpoint: target })
+    else {
+      toast.error("That endpoint no longer exists.")
+      clearEdit()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, query.data])
 
   const add = (
     <Button onClick={() => setForm({ endpoint: null })}>
@@ -35,7 +62,7 @@ export function EndpointsPage() {
       ) : endpoints.length === 0 ? (
         <div className="border-y">
           <EmptyBlock action={add}>
-            Add the server you want to collect data from: a vLLM, SGLang, llama.cpp, Ollama or LM Studio server on your network, or a hosted API.
+            No endpoints yet. Any OpenAI-compatible server: vLLM, SGLang, llama.cpp, Ollama, LM Studio or a hosted API.
           </EmptyBlock>
         </div>
       ) : (
@@ -47,8 +74,20 @@ export function EndpointsPage() {
         />
       )}
 
-      <EndpointFormDialog open={form !== null} endpoint={form?.endpoint ?? null} onOpenChange={(o) => !o && setForm(null)} />
-      <EndpointDetailsSheet endpoint={details} onClose={() => setDetailsId(null)} />
+      <EndpointFormDialog open={form !== null} endpoint={form?.endpoint ?? null} onOpenChange={(o) => {
+          if (o) return
+          setForm(null)
+          if (editParam) clearEdit()
+        }}
+      />
+      <EndpointDetailsSheet
+        endpoint={details}
+        onClose={() => setDetailsId(null)}
+        onEdit={(e) => {
+          setDetailsId(null)
+          setForm({ endpoint: e })
+        }}
+      />
       <DeleteEndpointDialog endpoint={deleting} onClose={() => setDeleting(null)} />
     </Page>
   )

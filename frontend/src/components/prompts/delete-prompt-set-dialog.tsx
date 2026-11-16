@@ -55,7 +55,7 @@ export function DeletePromptSetDialog({ set, open, onOpenChange }: { set: Prompt
         <AlertDialogFooter>
           <AlertDialogCancel disabled={del.isPending}>Cancel</AlertDialogCancel>
           <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>
-            {del.isPending ? "Deleting…" : "Delete prompt set"}
+            {del.isPending ? "Deleting…" : set.run_count > 0 ? `Delete set and ${count(set.run_count, "run", "runs")}` : "Delete prompt set"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

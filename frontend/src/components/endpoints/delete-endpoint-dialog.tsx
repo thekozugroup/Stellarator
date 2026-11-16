@@ -43,7 +43,7 @@ export function DeleteEndpointDialog({ endpoint, onClose }: { endpoint: Endpoint
           <AlertDialogDescription>
             {endpoint && endpoint.run_count > 0
               ? `${count(endpoint.run_count, "run", "runs")} used this endpoint. They keep their data but can’t resume.`
-              : "No runs use this endpoint. You can add it again later."}
+              : "No runs use this endpoint."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (
