@@ -36,11 +36,14 @@ All values are OKLCH. Tokens live in `frontend/src/index.css`.
 | Positive | `--positive` | 0.52 0.12 150 | 0.72 0.13 150 | completed |
 | Warning | `--warning` | 0.6 0.13 75 | 0.78 0.13 80 | truncated, paused |
 
-Status pills are a pale tint with dark text of the same hue (`--*-tint` / `--*-ink` pairs).
+Status is a word. Normal states (Done, Completed, Pending) are plain gray text; live or exceptional
+states (Running, Paused, Failed, Truncated, Thinking, Answering) add a 6 px dot at full strength
+before the word. Running is green so copper stays on data.
 
 Rules:
 
-- One accent, copper, on data. The primary button is near-black.
+- One accent, copper, on data: the progress fill, the throughput line, the chosen response, and
+  one control (the seqs input). The primary button is near-black.
 - One neutral family: true neutral, chroma 0.
 - No gradients. The only fill under a line is a flat 14% tint.
 - Red only on the failing fact: the failed count, the failed row, the error message.
@@ -60,26 +63,29 @@ Rules:
 
 - Sentence case everywhere. No uppercase tracked labels.
 - Tabular figures for every number that lines up or changes.
-- Model output (prompts, thinking, responses) is shown raw with whitespace preserved, in the sans
-  at 14 px, at most 80ch wide.
+- Model output (prompts, thinking, responses) renders as Markdown (GFM, code, KaTeX math) or raw
+  with whitespace preserved, by one Rendered/Raw switch remembered per browser. Headings inside
+  model output are at most 16 px; text at most 80ch wide.
 
 ## Layout and spacing
 
 - Spacing scale (Tailwind units): 1, 2, 3, 4, 6, 8, 12, 16 (4 to 64 px).
-- Shell: left sidebar 224 px from 768 px up; below that a top bar with a menu sheet.
+- Shell: left sidebar 224 px from 768 px up. Below that, a top bar (mark, Settings) and a bottom
+  tab bar for Runs, Prompt sets, Endpoints and Preferences, above the home-indicator inset.
 - Page padding: 16 px phone, 24 px tablet, 32 px desktop. Page column capped at 80rem.
 - Forms: one column, 40rem wide.
 
 ## Shape and elevation
 
-- Radius: 6 px controls, 8 px panels and dialogs, full for pills. Nested radii concentric.
+- Radius: `--radius` 6 px for controls; panels and dialogs 8 px (`rounded-xl`). Nested radii
+  concentric.
 - Panels: 1 px border, no shadow. Shadows only on menus, popovers, dialogs and toasts.
 
 ## Components
 
 shadcn/ui primitives (Radix), restyled through the tokens above. Buttons: `default` (near-black,
-once per view), `outline`, `ghost`, `destructive`. Status: `StatusPill` with a word and a tint,
-never color alone.
+at most once per view, chosen by state), `outline`, `ghost`, `destructive`. Overlays dim the page
+with a flat scrim, no blur. Status: see Color.
 
 ## Iconography
 
@@ -92,9 +98,21 @@ lucide-react, 16 px, 1.5 px stroke, gray, in navigation and as single affordance
 - No decorative motion. Progress bars and charts update in place; nothing redraws from zero.
 - Reduced motion: transitions on transform are removed; opacity and color remain.
 
+## Touch and platform (Apple HIG)
+
+- On touch screens every control is at least 44 x 44 pt; checkboxes, radios and switches keep
+  their size and grow an invisible hit area.
+- Safe-area insets on the top bar, tab bar and sticky action bars (`viewport-fit=cover`).
+- Back links are a chevron plus the parent screen's title.
+- Increase Contrast darkens secondary text, dividers and control edges; Reduce Motion removes
+  travel; theme follows the system unless set in Settings.
+
 ## Voice
 
-- Plain, exact, short. Buttons say verb and object ("Start run", "Import prompts").
+- Plain, exact, short. Buttons say verb and object ("Start run", "Import prompts"); a link that
+  opens the run form says "New run".
+- Every string earns its place (squint): no subtitles that restate a heading, no hints that repeat
+  a placeholder or a default, each count shown once.
 - Banned: seamless, unlock, supercharge, effortless, magic.
 
 ## Do and don't
