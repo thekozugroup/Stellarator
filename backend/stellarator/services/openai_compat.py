@@ -36,7 +36,7 @@ def build_headers(api_key: str | None, extra: dict[str, str] | None = None) -> d
 def describe_http_error(exc: Exception) -> str:
     """One sentence a person can act on."""
     if isinstance(exc, httpx.ConnectError):
-        return "Could not connect. Check the URL and that the server is running and reachable from Stellarator."
+        return "Could not connect. Check the URL and that the server is up."
     if isinstance(exc, httpx.ConnectTimeout):
         return "Connection timed out. Check the URL and network."
     if isinstance(exc, httpx.TimeoutException):

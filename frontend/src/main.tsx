@@ -27,7 +27,7 @@ createRoot(document.getElementById("root")!).render(
           <BrowserRouter>
             <App />
           </BrowserRouter>
-          <Toaster position="bottom-right" />
+          <Toaster position="bottom-right" mobileOffset={{ bottom: "calc(var(--bottom-chrome) + 8px)" }} />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

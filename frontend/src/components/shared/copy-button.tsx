@@ -16,14 +16,20 @@ export async function copyText(value: string): Promise<boolean> {
   } catch {
     /* fall through to the textarea */
   }
+  const previous = document.activeElement as HTMLElement | null
   const area = document.createElement("textarea")
   area.value = value
-  area.setAttribute("readonly", "")
+  // Not readonly: iOS Safari will not select text in a readonly field. 16 px avoids a zoom.
   area.style.position = "fixed"
+  area.style.top = "0"
+  area.style.left = "0"
+  area.style.fontSize = "16px"
   area.style.opacity = "0"
   area.style.pointerEvents = "none"
   document.body.appendChild(area)
+  area.focus({ preventScroll: true })
   area.select()
+  area.setSelectionRange(0, value.length)
   let ok = false
   try {
     ok = document.execCommand("copy")
@@ -31,6 +37,7 @@ export async function copyText(value: string): Promise<boolean> {
     ok = false
   }
   area.remove()
+  previous?.focus({ preventScroll: true })
   return ok
 }
 
