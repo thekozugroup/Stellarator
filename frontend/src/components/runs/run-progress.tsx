@@ -7,7 +7,7 @@ import { isActive } from "./run-data"
 
 function Stat({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className="min-w-0 lg:border-l lg:pl-5 lg:first:border-l-0 lg:first:pl-0">
+    <div className="min-w-0 xl:border-l xl:pl-5 xl:first:border-l-0 xl:first:pl-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className={cn("mt-0.5 text-base font-medium tabular", className)}>{children}</dd>
     </div>
@@ -36,7 +36,7 @@ export function RunProgress({ live }: { live: RunLive }) {
         ) : null}
       </p>
       <ProgressBar done={run.done} failed={run.failed} total={run.total} className="h-2" />
-      <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:flex lg:flex-wrap lg:gap-x-5">
+      <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:flex xl:flex-wrap xl:gap-x-5">
         {active ? (
           <>
             <Stat label="Output tokens/s">{int(live.tokens_per_s)}</Stat>

@@ -89,7 +89,10 @@ function RunsTable({ runs }: { runs: Run[] }) {
                 >
                   {run.name}
                 </Link>
-                <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{run.model}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  <span className="font-mono">{run.model}</span>
+                  <span className="hidden sm:inline"> on {run.endpoint_name}, {relative(run.created_at)}</span>
+                </p>
               </div>
               <RunStatusPill status={run.status} failed={run.failed} />
             </div>
@@ -113,7 +116,7 @@ function RunsLoading() {
         <span className="w-[6rem] text-right">Created</span>
       </div>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="flex h-[61px] items-center gap-4 border-t px-4 first:border-t-0 md:first:border-t">
+        <div key={i} className="flex h-[61px] items-center gap-4 border-t px-4 first:border-t-0 lg:first:border-t">
           <div className="grid flex-1 gap-1.5">
             <Bar className="w-48" />
             <Bar className="h-3 w-64 max-w-full" />
