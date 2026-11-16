@@ -36,7 +36,7 @@ function StatusReason({ run }: { run: Run }) {
 
 function DetailSkeleton() {
   return (
-    <Page title={<Bar className="h-7 w-72 max-w-full" />} back={{ to: "/runs", label: "Back to Runs" }} meta={<Bar className="w-80 max-w-full" />}>
+    <Page title={<Bar className="h-7 w-72 max-w-full" />} back={{ to: "/runs", label: "Runs" }} meta={<Bar className="w-80 max-w-full" />}>
       <div className="grid gap-3" aria-busy="true" aria-label="Loading run">
         <Bar className="h-8 w-56" />
         <Bar className="h-2 w-full" />
@@ -71,7 +71,7 @@ export function RunDetailPage() {
 
   if (!Number.isInteger(id) || (live.error instanceof ApiError && live.error.status === 404)) {
     return (
-      <Page title="Run not found" back={{ to: "/runs", label: "Back to Runs" }}>
+      <Page title="Run not found" back={{ to: "/runs", label: "Runs" }}>
         <p className="text-sm text-muted-foreground">
           There is no run with this address. It may have been deleted.{" "}
           <Link to="/runs" className="text-foreground underline underline-offset-4">
@@ -84,7 +84,7 @@ export function RunDetailPage() {
   if (live.isPending) return <DetailSkeleton />
   if (!live.data) {
     return (
-      <Page title="Run" back={{ to: "/runs", label: "Back to Runs" }}>
+      <Page title="Run" back={{ to: "/runs", label: "Runs" }}>
         <ErrorBlock message={`Couldn't load this run. ${live.error?.message ?? ""}`} onRetry={() => void live.refetch()} />
       </Page>
     )
@@ -102,7 +102,7 @@ export function RunDetailPage() {
           {r.name}
         </span>
       }
-      back={{ to: "/runs", label: "Back to Runs" }}
+      back={{ to: "/runs", label: "Runs" }}
       meta={
         <span className="flex flex-col items-start gap-x-2 gap-y-1 sm:flex-row sm:flex-wrap sm:items-center">
           <RunStatusPill status={r.status} failed={r.failed} />

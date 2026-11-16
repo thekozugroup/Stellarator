@@ -369,7 +369,7 @@ export function NewRunPage() {
   const ready = endpoints.isSuccess && sets.isSuccess && (!fromId || source.isSuccess || source.isError)
 
   return (
-    <Page title="New run" back={{ to: "/runs", label: "Back to Runs" }}>
+    <Page title="New run" back={{ to: "/runs", label: "Runs" }}>
       {ready ? (
         <NewRunForm
           initial={initialState(endpoints.data, sets.data, source.data, params)}
