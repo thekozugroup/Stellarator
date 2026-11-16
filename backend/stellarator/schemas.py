@@ -164,7 +164,7 @@ class ImportMapping(BaseModel):
     # Column holding the prompt: a string, or a list of chat messages (OpenAI {role, content}
     # or ShareGPT {from, value}). None = auto-detect.
     prompt_field: str | None = None
-    # Optional column holding a system prompt.
+    # Optional column holding a system prompt. None = detect automatically, "" = none.
     system_field: str | None = None
     # For text and Markdown sources.
     split_mode: SplitMode = "auto"
@@ -441,6 +441,7 @@ class Candidate(BaseModel):
     response: str | None
     finish_reason: str | None
     completion_tokens: int | None
+    reasoning_tokens: int | None = None  # when the server reported it
 
 
 class PreferenceItem(BaseModel):

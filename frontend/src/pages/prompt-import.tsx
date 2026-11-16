@@ -92,9 +92,8 @@ export function ImportPromptsPage() {
   const mapping: ImportMapping = useMemo(() => {
     const m: ImportMapping = { split_mode: splitMode, offset: offsetN ?? 0, limit: limitN && limitN > 0 ? limitN : null, dedupe }
     if (promptField !== undefined) m.prompt_field = promptField
-    // The server treats a missing system column as "detect one". Pointing it at the prompt column
-    // is how "None" is expressed (the server drops a system column equal to the prompt column).
-    if (systemField === null) m.system_field = promptField ?? detectedPrompt ?? null
+    // undefined = let the server detect a system column; "" = explicitly none.
+    if (systemField === null) m.system_field = ""
     else if (systemField !== undefined) m.system_field = systemField
     return m
   }, [splitMode, offsetN, limitN, dedupe, promptField, systemField, detectedPrompt])

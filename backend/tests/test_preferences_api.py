@@ -119,6 +119,7 @@ async def _sample(
             response=f"answer {run_id}/{prompt.idx}/{sample_idx}" if status == "done" else None,
             finish_reason=finish_reason if status == "done" else None,
             completion_tokens=100 + sample_idx if status == "done" else None,
+            reasoning_tokens=60 + sample_idx if status == "done" else None,
         )
         s.add(sample)
         await s.commit()
@@ -283,6 +284,7 @@ async def test_items_pages_in_prompt_order_with_candidates(env):
     assert cands[2]["reasoning"] == f"thinking {run_b}/2/0"
     assert cands[2]["response"] == f"answer {run_b}/2/0"
     assert cands[0]["completion_tokens"] == 100 and cands[1]["completion_tokens"] == 101
+    assert cands[0]["reasoning_tokens"] == 60 and cands[1]["reasoning_tokens"] == 61
 
 
 async def test_items_filter_and_query_count(env):

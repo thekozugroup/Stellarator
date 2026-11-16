@@ -323,6 +323,7 @@ export interface Candidate {
   response: string | null
   finish_reason: string | null
   completion_tokens: number | null
+  reasoning_tokens?: number | null
 }
 
 export interface PreferenceItem {

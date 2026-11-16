@@ -139,6 +139,7 @@ async def _build_items(
                 Sample.response,
                 Sample.finish_reason,
                 Sample.completion_tokens,
+                Sample.reasoning_tokens,
             ).where(
                 Sample.prompt_id.in_(prompt_ids),
                 Sample.run_id.in_(list(run_by_id)),
@@ -169,6 +170,7 @@ async def _build_items(
                         response=s.response,
                         finish_reason=s.finish_reason,
                         completion_tokens=s.completion_tokens,
+                        reasoning_tokens=s.reasoning_tokens,
                     )
                     for s in cands
                 ],

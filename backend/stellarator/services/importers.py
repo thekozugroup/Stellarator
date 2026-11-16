@@ -919,12 +919,14 @@ class Plan:
 def resolve_plan(schema: Schema, sample: list[dict[str, Any]], mapping: ImportMapping) -> tuple[Plan | None, str | None, str | None]:
     """(plan or None when no column fits, prompt_field, system_field). Raises on a bad explicit field."""
     names = schema.names()
+    # system_field: None = detect automatically, "" = no system column.
+    no_system = mapping.system_field == ""
     for label, f in (("prompt", mapping.prompt_field), ("system", mapping.system_field)):
-        if f is not None and f not in names:
+        if f and f not in names:
             shown = ", ".join(names[:12]) + (", …" if len(names) > 12 else "")
             raise ImportProblem(f"There is no column called '{f}' to use as the {label}. Columns are: {shown}.")
     prompt_field = mapping.prompt_field or auto_prompt_field(schema, sample)
-    system_field = mapping.system_field or auto_system_field(schema, prompt_field)
+    system_field = None if no_system else (mapping.system_field or auto_system_field(schema, prompt_field))
     if system_field == prompt_field:
         system_field = None
     if prompt_field is None:

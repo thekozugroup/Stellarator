@@ -101,10 +101,19 @@ async def test_errors_map_to_messages():
         assert e.value.status == 404
         assert e.value.message == "No dataset called o/missing on Hugging Face. Check the name."
     with respx.mock(assert_all_called=False) as router:
+        # Gated: datasets-server says 401, but the Hub API shows the dataset.
         router.get(f"{BASE}/splits").respond(401, json={"error": "gated"})
+        router.get("https://huggingface.co/api/datasets/o/gated").respond(200, json={"id": "o/gated"})
         with pytest.raises(imp.ImportProblem) as e:
             await hf.fetch_preview("o/gated", None, None)
         assert e.value.status == 403 and "token" in e.value.message
+    with respx.mock(assert_all_called=False) as router:
+        # Missing: datasets-server and the Hub API both say 401.
+        router.get(f"{BASE}/splits").respond(401, json={"error": "nope"})
+        router.get("https://huggingface.co/api/datasets/o/none").respond(401, json={"error": "nope"})
+        with pytest.raises(imp.ImportProblem) as e:
+            await hf.fetch_preview("o/none", None, None)
+        assert e.value.status == 404 and e.value.message.startswith("No dataset called o/none")
     with respx.mock(assert_all_called=False) as router:
         mock_ok(router)
         with pytest.raises(imp.ImportProblem) as e:

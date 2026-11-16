@@ -62,6 +62,16 @@ def _upstream_message(resp: httpx.Response) -> str:
     return msg[:200] if msg else f"status {resp.status_code}"
 
 
+async def _hub_visible(dataset: str, headers: dict[str, str]) -> bool:
+    """True when the Hub API shows this dataset (it exists, even if gated). Errs towards True."""
+    try:
+        async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+            resp = await client.get(f"https://huggingface.co/api/datasets/{dataset}")
+    except httpx.HTTPError:
+        return True
+    return resp.status_code == 200
+
+
 async def _get(path: str, params: dict[str, str], *, dataset: str, exists: bool, what: str) -> dict[str, Any]:
     """GET from the datasets-server. `exists` says the dataset is known to exist, so a 404 means
     this endpoint has nothing for it rather than that the name is wrong."""
@@ -84,6 +94,20 @@ async def _get(path: str, params: dict[str, str], *, dataset: str, exists: bool,
         return data if isinstance(data, dict) else {}
     code = resp.status_code
     if code in (401, 403):
+        # The datasets-server answers 401 both for gated datasets and for names that do not exist.
+        # The Hub API shows metadata for gated datasets, so ask it which case this is.
+        if not exists and not await _hub_visible(dataset, headers):
+            raise ImportProblem(
+                f"No dataset called {dataset} on Hugging Face. Check the name. If it is private, "
+                "add a token with access in Settings.",
+                404,
+            )
+        if headers.get("Authorization"):
+            raise ImportProblem(
+                "Your Hugging Face token can't read this dataset. Accept its terms on the dataset page, "
+                "or use a token with access.",
+                403,
+            )
         raise ImportProblem("This dataset needs a Hugging Face token with access. Add one in Settings.", 403)
     if code == 404 and not exists:
         raise ImportProblem(f"No dataset called {dataset} on Hugging Face. Check the name.", 404)
