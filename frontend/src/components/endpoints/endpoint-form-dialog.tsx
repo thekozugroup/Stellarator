@@ -284,7 +284,6 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         label="Default seqs"
         error={errors.default_concurrency}
         hint="How many sequences run at once when you start a run on this endpoint. You can change it per run."
-        className="max-w-40"
       >
         <Input
           id="ep-default_concurrency"
@@ -293,7 +292,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           min={1}
           max={4096}
           value={seqs}
-          className="tabular"
+          className="tabular max-w-40"
           aria-invalid={!!errors.default_concurrency}
           aria-describedby={describe("default_concurrency", true)}
           onChange={(e) => {
