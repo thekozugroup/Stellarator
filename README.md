@@ -30,7 +30,7 @@ Docker details, DGX Spark notes and network options are in [docs/docker.md](docs
 1. **Add an endpoint.** Any server that speaks the OpenAI chat completions API: vLLM, SGLang,
    llama.cpp, Ollama, LM Studio, TensorRT-LLM, NIM, or a hosted API. A model server on the same
    machine as Docker is at `http://host.docker.internal:<port>/v1`. Stellarator lists the models it
-   serves.
+   serves and checks that the API key is accepted (some servers list models without a key).
 2. **Import prompts.** From a Hugging Face dataset (by name, with config, split and column
    choice), or a file: Markdown, plain text, CSV, TSV, JSON, JSONL or Parquet. You can also paste
    text. Text and Markdown are split into prompts by separator lines, headings, list items, blank
@@ -44,7 +44,9 @@ Docker details, DGX Spark notes and network options are in [docs/docker.md](docs
    pauses itself after repeated failures in a row instead of burning through the prompt set. Runs
    can be paused, resumed and have their failed samples retried. A run interrupted by a restart is
    paused and resumes where it stopped.
-5. **Export.** Download or push to the Hugging Face Hub.
+5. **Read the results.** Prompts, thinking traces and responses render as Markdown, with tables,
+   code and LaTeX math, or as raw text with one switch.
+6. **Export.** Download or push to the Hugging Face Hub.
 
 ## Thinking traces
 
@@ -91,6 +93,12 @@ set against several models. Create a preference set from those runs, then for ea
 candidate chosen and one rejected (keys 1 to 9 and Shift+1 to 9, J and K to move). To pair runs
 wholesale, use "Auto-pair by run": every prompt gets the first run's response as chosen and the
 second run's as rejected.
+
+## Using it from a phone
+
+The web app works on an iPhone or Android phone on the same network: a tab bar for the four main
+screens, 44 pt touch targets, and it can be added to the home screen. Copy buttons work over plain
+http on a LAN address.
 
 ## Development
 
