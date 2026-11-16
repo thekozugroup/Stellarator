@@ -1,26 +1,31 @@
 import { cn } from "@/lib/utils"
 import type { RunStatus, SampleStatus } from "@/lib/types"
 
-type Tone = "neutral" | "copper" | "positive" | "negative" | "warning"
+/**
+ * Status as a word, with a small dot at full strength when the state needs attention or is live.
+ * Normal states ("Done", "Completed", "Pending") are plain gray text: a mark is for exceptions.
+ * Color never carries meaning alone; the word is always there.
+ */
+type Tone = "plain" | "neutral" | "copper" | "positive" | "negative" | "warning"
 
-const toneClass: Record<Tone, string> = {
-  neutral: "bg-muted text-muted-foreground",
-  copper: "bg-copper-tint text-copper-ink",
-  positive: "bg-positive-tint text-positive-ink",
-  negative: "bg-negative-tint text-negative-ink",
-  warning: "bg-warning-tint text-warning-ink",
+const dotClass: Record<Exclude<Tone, "plain">, string> = {
+  neutral: "bg-muted-foreground",
+  copper: "bg-copper",
+  positive: "bg-positive",
+  negative: "bg-destructive",
+  warning: "bg-warning",
 }
 
-/** A pale tint with dark text of the same hue, always carrying a word. Never shrinks. */
-export function Pill({ tone = "neutral", children, className }: { tone?: Tone; children: React.ReactNode; className?: string }) {
+export function Pill({ tone = "plain", children, className }: { tone?: Tone; children: React.ReactNode; className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 flex-none items-center rounded-full px-2 text-xs font-medium whitespace-nowrap",
-        toneClass[tone],
+        "inline-flex flex-none items-center gap-1.5 text-sm whitespace-nowrap",
+        tone === "plain" ? "text-muted-foreground" : "text-foreground",
         className,
       )}
     >
+      {tone !== "plain" ? <span aria-hidden="true" className={cn("size-1.5 flex-none rounded-full", dotClass[tone])} /> : null}
       {children}
     </span>
   )
@@ -30,7 +35,7 @@ const runTone: Record<RunStatus, Tone> = {
   running: "copper",
   pausing: "warning",
   paused: "warning",
-  completed: "neutral",
+  completed: "plain",
 }
 
 const runLabel: Record<RunStatus, string> = {
@@ -46,9 +51,9 @@ export function RunStatusPill({ status, failed = 0 }: { status: RunStatus; faile
 }
 
 const sampleTone: Record<SampleStatus, Tone> = {
-  pending: "neutral",
+  pending: "plain",
   running: "copper",
-  done: "neutral",
+  done: "plain",
   failed: "negative",
 }
 

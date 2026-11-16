@@ -85,7 +85,7 @@ export function CandidateCard({
         </div>
       </header>
 
-      <div className="grid gap-4 px-4 py-4">
+      <div className="grid min-w-0 gap-4 px-4 py-4 [&>*]:min-w-0">
         {truncated ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Pill tone="warning">Truncated</Pill>

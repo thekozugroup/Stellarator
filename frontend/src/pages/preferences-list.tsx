@@ -52,7 +52,7 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
   return (
     <>
       {/* Desktop and tablet: a table. */}
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
@@ -100,7 +100,7 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
       </div>
 
       {/* Phone: stacked rows with the name, the progress and the context. */}
-      <ul className="md:hidden">
+      <ul className="lg:hidden">
         {sets.map((set) => (
           <li key={set.id} className="border-t first:border-t-0">
             <Link to={`/preferences/${set.id}`} className="grid gap-2 px-4 py-3 active:bg-muted">

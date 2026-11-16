@@ -6,8 +6,8 @@ import { sampleLabel } from "./run-data"
 
 function Phase({ phase }: { phase: LiveSequence["phase"] }) {
   if (phase === "answering") return <Pill tone="copper">Answering</Pill>
-  if (phase === "thinking") return <Pill>Thinking</Pill>
-  return <span className="flex-none text-xs whitespace-nowrap text-muted-foreground">Waiting</span>
+  if (phase === "thinking") return <Pill tone="neutral">Thinking</Pill>
+  return <Pill>Waiting</Pill>
 }
 
 /**

@@ -438,7 +438,7 @@ function Review({ set }: { set: PreferenceSet }) {
           </div>
         </div>
         <PromptView messages={item.messages} />
-        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
           {item.candidates.map((c, n) => (
             <CandidateCard
               key={c.sample_id}
