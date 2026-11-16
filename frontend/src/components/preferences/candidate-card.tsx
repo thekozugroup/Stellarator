@@ -45,11 +45,11 @@ export function CandidateCard({
       className={cn(
         "min-w-0 rounded-lg border bg-card",
         mark === "chosen" && "border-copper ring-1 ring-copper",
-        mark === "rejected" && "border-input",
+        mark === "rejected" && "border-foreground/40",
       )}
     >
       <header className="sticky top-14 z-10 flex flex-wrap items-start gap-x-3 gap-y-2 rounded-t-lg border-b bg-card px-4 py-3 md:top-0">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
+        <div className="flex min-w-0 flex-[1_1_13rem] items-start gap-3">
           <h3 id={headingId} className="text-base leading-6 font-semibold tabular">
             <span className="sr-only">Response </span>
             {label}
@@ -94,7 +94,7 @@ export function CandidateCard({
 
         {candidate.reasoning ? (
           <Collapsible>
-            <CollapsibleTrigger className="group/trace -mx-1 inline-flex min-h-8 items-center gap-1.5 rounded-md px-1 text-sm text-muted-foreground hover:text-foreground">
+            <CollapsibleTrigger className="group/trace -mx-1 inline-flex min-h-8 items-center gap-1.5 rounded-md px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               <ChevronRight
                 aria-hidden="true"
                 className="size-4 transition-transform duration-150 ease-out group-data-[state=open]/trace:rotate-90"
@@ -154,13 +154,13 @@ function MarkButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium whitespace-nowrap select-none",
+        "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium whitespace-nowrap select-none pointer-coarse:h-11 pointer-coarse:px-4",
         "transition-[background-color,border-color,color] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         pressed
           ? kind === "chosen"
-            ? "border-copper bg-copper-tint text-copper-ink"
-            : "border-foreground bg-muted text-foreground"
+            ? "border-copper bg-copper text-background"
+            : "border-foreground bg-foreground text-background"
           : "border-input bg-background text-foreground hover:bg-muted",
       )}
     >

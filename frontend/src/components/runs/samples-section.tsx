@@ -106,8 +106,9 @@ function SampleRows({
                 <Link
                   to={open(s.id)}
                   state={{ viewer: true }}
+                  data-sample-link={s.id}
                   title={s.prompt_preview}
-                  className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+                  className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                 >
                   {s.prompt_preview || DASH}
                 </Link>
@@ -116,7 +117,9 @@ function SampleRows({
                 {s.status === "failed" && s.error ? <span className="text-destructive">{s.error}</span> : s.response_preview || DASH}
               </td>
               <td className="hidden px-3 py-2.5 text-muted-foreground xl:table-cell">{s.has_reasoning ? "Yes" : DASH}</td>
-              <td className="px-3 py-2.5 text-right tabular">{int(s.completion_tokens)}</td>
+              <td className={cn("px-3 py-2.5 text-right tabular", s.completion_tokens === null && "text-muted-foreground")}>
+                {int(s.completion_tokens)}
+              </td>
               <td className="px-3 py-2.5 text-right text-muted-foreground tabular">{duration(s.latency_ms)}</td>
               <td className="px-4 py-2.5">
                 <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
@@ -139,7 +142,8 @@ function SampleRows({
             <Link
               to={open(s.id)}
               state={{ viewer: true }}
-              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+              data-sample-link={s.id}
+              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
             >
               {s.prompt_preview || DASH}
             </Link>
@@ -187,6 +191,16 @@ export function SamplesSection({ run }: { run: Run }) {
   const sampleId = sampleParam && /^\d+$/.test(sampleParam) ? Number(sampleParam) : null
 
   const query = useMemo(() => ({ status, q, page }), [status, q, page])
+
+  // A new page starts at the top of the table, not at the pagination row it was asked from.
+  const sectionRef = useRef<HTMLElement>(null)
+  const shownPage = useRef(page)
+  useEffect(() => {
+    if (shownPage.current === page) return
+    shownPage.current = page
+    const el = sectionRef.current
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" })
+  }, [page])
   const samples = useSamplePage(run.id, query, isActive(run.status))
 
   // Search: typed text goes to the URL after 300 ms; the URL wins when it changes elsewhere (Back).
@@ -219,6 +233,17 @@ export function SamplesSection({ run }: { run: Run }) {
   const prevId = idx > 0 ? items[idx - 1].id : null
   const nextId = idx >= 0 && idx < items.length - 1 ? items[idx + 1].id : null
 
+  // The sheet opens from the URL, not from a trigger, so focus is returned by hand to the row of
+  // the sample last shown (J and K may have moved it).
+  const lastShown = useRef<number | null>(null)
+  if (sampleId !== null) lastShown.current = sampleId
+  const returnFocus = (e: Event) => {
+    e.preventDefault()
+    const links = document.querySelectorAll<HTMLElement>(`[data-sample-link="${lastShown.current}"]`)
+    const visible = Array.from(links).find((el) => el.offsetParent !== null)
+    ;(visible ?? document.getElementById("samples-heading"))?.focus()
+  }
+
   const closeViewer = () => {
     if ((location.state as { viewer?: boolean } | null)?.viewer) navigate(-1)
     else setParams((p) => new URLSearchParams(withParams(p, { sample: null }).slice(1)), { replace: true })
@@ -227,12 +252,12 @@ export function SamplesSection({ run }: { run: Run }) {
     navigate({ search: withParams(params, { sample: String(id) }) }, { replace: true, state: location.state })
 
   return (
-    <section aria-labelledby="samples-heading" className="rounded-xl border">
+    <section ref={sectionRef} aria-labelledby="samples-heading" className="scroll-mt-4 rounded-xl border">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 pt-3 pb-3">
-        <h2 id="samples-heading" className="text-base font-semibold">
+        <h2 id="samples-heading" tabIndex={-1} className="text-base font-semibold">
           Samples
         </h2>
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             type="search"
@@ -254,8 +279,8 @@ export function SamplesSection({ run }: { run: Run }) {
         </div>
       </div>
 
-      <nav aria-label="Filter samples by status" className="overflow-x-auto px-4 pb-3">
-        <ul className="inline-flex min-w-max gap-0.5 rounded-lg bg-muted p-[3px]">
+      <nav aria-label="Filter samples by status" className="px-4 pb-3">
+        <ul className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-[3px]">
           {SAMPLE_FILTERS.map((f) => {
             const active = f === status
             const n = filterCount(run, f)
@@ -263,7 +288,6 @@ export function SamplesSection({ run }: { run: Run }) {
               <li key={f}>
                 <Link
                   to={{ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) }}
-                  replace
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-coarse:h-10",
@@ -360,6 +384,7 @@ export function SamplesSection({ run }: { run: Run }) {
         nextId={nextId}
         onStep={stepViewer}
         onClose={closeViewer}
+        onCloseAutoFocus={returnFocus}
       />
     </section>
   )

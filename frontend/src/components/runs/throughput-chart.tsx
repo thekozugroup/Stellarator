@@ -23,7 +23,7 @@ interface Point {
   active: number
 }
 
-const STEPS_S = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
+const STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
 
 /** Round time ticks: the smallest step that gives at most six labels, landing on whole steps. */
 function timeTicks(min: number, max: number): { ticks: number[]; step: number } {
@@ -55,7 +55,7 @@ const hms = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-dig
 
 const AXIS_TICK = { fill: "var(--muted-foreground)", fontSize: 11 }
 
-function ChartTooltip({ active, payload }: TooltipContentProps<number, string>) {
+function ChartTooltip({ active, payload }: TooltipContentProps) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
   if (!p) return null
   return (
@@ -74,10 +74,10 @@ function ChartTooltip({ active, payload }: TooltipContentProps<number, string>) 
 }
 
 /**
- * Names each line at its right end instead of a legend. The upper line's name goes above it and
- * the lower line's below it, so the two never collide.
+ * Names each line at its right end instead of a legend. A label sits on the side its line comes
+ * from the other way (above a rising end, below a falling one), never across the other line.
  */
-function EndLabels({ last }: { last: Point }) {
+function EndLabels({ last, prev }: { last: Point; prev: Point }) {
   const x = useXAxisScale()
   const yT = useYAxisScale("tps")
   const yS = useYAxisScale("seqs")
@@ -86,18 +86,26 @@ function EndLabels({ last }: { last: Point }) {
   const px = Number(x(last.t))
   const tY = Number(yT(last.tps))
   const sY = Number(yS(last.seqs))
-  if (![px, tY, sY].every(Number.isFinite)) return null
-  const bottom = plot.y + plot.height
-  const tpsUpper = tY <= sY
-  const place = (y: number, upper: boolean) => {
-    if (upper) return Math.max(plot.y + 10, y - 7)
-    return y + 15 > bottom - 2 ? y - 7 : y + 15
+  const tPrev = Number(yT(prev.tps))
+  const sPrev = Number(yS(prev.seqs))
+  if (![px, tY, sY, tPrev, sPrev].every(Number.isFinite)) return null
+  const top = plot.y + 10
+  const bottom = plot.y + plot.height - 2
+
+  // y grows downward: "up" means a smaller y.
+  const goesUp = (y: number, before: number, other: number) => {
+    let up = before - y > 2 ? true : y - before > 2 ? false : y <= other
+    if (up && other < y && y - other < 16) up = false
+    if (!up && other > y && other - y < 16) up = true
+    if (!up && y + 15 > bottom) up = true
+    if (up && y - 7 < top) up = false
+    return up
   }
-  let tLabel = place(tY, tpsUpper)
-  let sLabel = place(sY, !tpsUpper)
+  let tLabel = goesUp(tY, tPrev, sY) ? tY - 7 : tY + 15
+  let sLabel = goesUp(sY, sPrev, tY) ? sY - 7 : sY + 15
   if (Math.abs(tLabel - sLabel) < 13) {
-    if (tpsUpper) tLabel = Math.max(plot.y + 10, sLabel - 14)
-    else sLabel = Math.max(plot.y + 10, tLabel - 14)
+    if (tLabel <= sLabel) tLabel = Math.max(top, sLabel - 14)
+    else sLabel = Math.max(top, tLabel - 14)
   }
   return (
     <g aria-hidden="true" fontSize={11}>
@@ -145,8 +153,8 @@ export function ThroughputChart({
           <div className="border-t border-input/60" />
         </div>
         <span className="absolute bottom-6 left-0 w-6 translate-y-1/2 text-right text-[11px] text-muted-foreground">0</span>
-        <p className="absolute inset-x-0 top-1/2 ml-8 -translate-y-1/2 px-4 text-sm text-muted-foreground">
-          Throughput appears here once the first tokens arrive.
+        <p className="absolute inset-x-0 top-[37.5%] ml-8 -translate-y-1/2 px-4 text-sm text-muted-foreground">
+          <span className="bg-card pr-2">Throughput appears here once the first tokens arrive.</span>
         </p>
       </div>
     )
@@ -231,7 +239,7 @@ export function ThroughputChart({
             activeDot={false}
             isAnimationActive={false}
           />
-          <EndLabels last={last} />
+          <EndLabels last={last} prev={data[Math.max(0, data.length - 3)]} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

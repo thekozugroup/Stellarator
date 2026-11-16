@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Link } from "react-router"
 import { Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
@@ -29,17 +30,17 @@ function RunsTable({ runs }: { runs: Run[] }) {
   return (
     <>
       {/* Tablet and desktop: a table. The name link covers its row. */}
-      <div className="hidden overflow-hidden rounded-lg border md:block">
+      <div className="hidden overflow-hidden rounded-lg border lg:block">
         <table className="w-full table-fixed text-sm">
           <caption className="sr-only">Runs, newest first</caption>
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
               <th scope="col" className="h-10 px-4 font-normal">Name</th>
-              <th scope="col" className="hidden h-10 w-[18%] px-3 font-normal lg:table-cell">Prompt set</th>
-              <th scope="col" className="h-10 w-[13rem] px-3 font-normal">Progress</th>
-              <th scope="col" className="hidden h-10 w-[4.5rem] px-3 text-right font-normal lg:table-cell">Seqs</th>
-              <th scope="col" className="h-10 w-[12rem] px-3 font-normal">Status</th>
-              <th scope="col" className="h-10 w-[8rem] px-4 text-right font-normal">Created</th>
+              <th scope="col" className="hidden h-10 w-[14%] px-3 font-normal xl:table-cell">Prompt set</th>
+              <th scope="col" className="h-10 w-[11rem] px-3 font-normal">Progress</th>
+              <th scope="col" className="hidden h-10 w-[4rem] px-3 text-right font-normal xl:table-cell">Seqs</th>
+              <th scope="col" className="h-10 w-[11.5rem] px-3 font-normal">Status</th>
+              <th scope="col" className="h-10 w-[8.5rem] px-4 text-right font-normal">Created</th>
             </tr>
           </thead>
           <tbody>
@@ -49,7 +50,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
                   <Link
                     to={`/runs/${run.id}`}
                     title={run.name}
-                    className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+                    className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                   >
                     {run.name}
                   </Link>
@@ -57,13 +58,13 @@ function RunsTable({ runs }: { runs: Run[] }) {
                     <span className="font-mono">{run.model}</span> on {run.endpoint_name}
                   </p>
                 </td>
-                <td className="hidden truncate px-3 py-3 text-muted-foreground lg:table-cell" title={run.prompt_set_name}>
+                <td className="hidden truncate px-3 py-3 text-muted-foreground xl:table-cell" title={run.prompt_set_name}>
                   {run.prompt_set_name}
                 </td>
                 <td className="px-3 py-3">
                   <RunProgress run={run} />
                 </td>
-                <td className="hidden px-3 py-3 text-right tabular lg:table-cell">{int(run.concurrency)}</td>
+                <td className="hidden px-3 py-3 text-right tabular xl:table-cell">{int(run.concurrency)}</td>
                 <td className="px-3 py-3">
                   <RunStatusPill status={run.status} failed={run.failed} />
                 </td>
@@ -77,14 +78,14 @@ function RunsTable({ runs }: { runs: Run[] }) {
       </div>
 
       {/* Phone: one row per run with its name, progress and status. */}
-      <ul className="divide-y border-y md:hidden">
+      <ul className="divide-y border-y lg:hidden">
         {runs.map((run) => (
-          <li key={run.id} className="relative py-3 has-[a:focus-visible]:bg-muted/60">
+          <li key={run.id} className="relative py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link
                   to={`/runs/${run.id}`}
-                  className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+                  className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                 >
                   {run.name}
                 </Link>
@@ -105,9 +106,9 @@ function RunsTable({ runs }: { runs: Run[] }) {
 function RunsLoading() {
   return (
     <div className="overflow-hidden rounded-lg border" aria-busy="true" aria-label="Loading runs">
-      <div className="hidden h-10 items-center gap-4 px-4 text-xs text-muted-foreground md:flex">
+      <div className="hidden h-10 items-center gap-4 px-4 text-xs text-muted-foreground lg:flex">
         <span className="flex-1">Name</span>
-        <span className="w-[13rem]">Progress</span>
+        <span className="w-[11rem]">Progress</span>
         <span className="w-[11.5rem]">Status</span>
         <span className="w-[6rem] text-right">Created</span>
       </div>
@@ -117,14 +118,14 @@ function RunsLoading() {
             <Bar className="w-48" />
             <Bar className="h-3 w-64 max-w-full" />
           </div>
-          <div className="hidden w-[13rem] gap-1.5 md:grid">
+          <div className="hidden w-[11rem] gap-1.5 lg:grid">
             <Bar className="w-24" />
             <Bar className="h-1.5 w-full" />
           </div>
-          <span className="hidden w-[11.5rem] md:block">
+          <span className="hidden w-[11.5rem] lg:block">
             <Bar className="h-5 w-20 rounded-full" />
           </span>
-          <span className="hidden w-[6rem] text-right md:block">
+          <span className="hidden w-[6rem] text-right lg:block">
             <Bar className="w-16" />
           </span>
         </div>
@@ -135,6 +136,13 @@ function RunsLoading() {
 
 export function RunsListPage() {
   const runs = useRuns()
+  const running = runs.data?.filter((r) => r.status === "running").length ?? 0
+  useEffect(() => {
+    document.title = running ? `Runs · ${running} running · Stellarator` : "Runs · Stellarator"
+    return () => {
+      document.title = "Stellarator"
+    }
+  }, [running])
 
   return (
     <Page

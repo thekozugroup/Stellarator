@@ -26,10 +26,32 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """A timestamp stored as UTC and always read back timezone-aware.
+
+    SQLite has no time zone type, so a plain UTCDateTime() comes back naive and the API
+    would send times without an offset, which browsers read as local time.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect):  # noqa: ARG002
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value: datetime | None, dialect):  # noqa: ARG002
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Base(DeclarativeBase):
@@ -49,12 +71,12 @@ class Endpoint(Base):
     # Extra HTTP headers sent with every request, e.g. {"HTTP-Referer": "..."}
     headers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     models: Mapped[list[Any]] = mapped_column(JSON, default=list)  # last fetched model ids
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     last_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UTCDateTime(), default=utcnow, onupdate=utcnow
     )
 
 
@@ -69,7 +91,7 @@ class PromptSet(Base):
     # "prompt_field": "question"} or {"filename": "prompts.md", "format": "markdown", ...}
     source: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     prompt_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     prompts: Mapped[list[Prompt]] = relationship(
         back_populates="prompt_set", cascade="all, delete-orphan", passive_deletes=True
@@ -127,9 +149,9 @@ class Run(Base):
     # Seconds spent in the running state, summed across resumes. Used for averages and ETA.
     active_seconds: Mapped[float] = mapped_column(Float, default=0.0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 # Sample statuses
@@ -163,7 +185,7 @@ class Sample(Base):
     ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # time to first token
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class RunMetric(Base):
@@ -174,7 +196,7 @@ class RunMetric(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
-    t: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    t: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     tokens_per_s: Mapped[float] = mapped_column(Float, default=0.0)  # output tokens per second
     samples_per_min: Mapped[float] = mapped_column(Float, default=0.0)
     active: Mapped[int] = mapped_column(Integer, default=0)  # requests in flight
@@ -190,7 +212,7 @@ class PreferenceSet(Base):
     name: Mapped[str] = mapped_column(String(300))
     prompt_set_id: Mapped[int] = mapped_column(ForeignKey("prompt_sets.id", ondelete="CASCADE"))
     run_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class PreferencePair(Base):
@@ -205,9 +227,9 @@ class PreferencePair(Base):
     chosen_sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id", ondelete="CASCADE"))
     rejected_sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id", ondelete="CASCADE"))
     source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | rule
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UTCDateTime(), default=utcnow, onupdate=utcnow
     )
 
 

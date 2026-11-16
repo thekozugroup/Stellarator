@@ -82,6 +82,10 @@ class EngineConflict(Exception):
     """The action does not fit the run's current state. The message is one sentence for the user."""
 
 
+class _Interrupted(Exception):
+    """A sample waiting to retry was stopped by a pause; it goes back to pending."""
+
+
 def preview(text: str | None, limit: int = PREVIEW_CHARS) -> str:
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
@@ -186,6 +190,16 @@ class Writer:
     # ---- the loop
 
     async def _loop(self) -> None:
+        try:
+            await self._run()
+        finally:
+            # Never leave a flush() waiting on a writer that is gone.
+            while not self.queue.empty():
+                op = self.queue.get_nowait()
+                if op.kind == "flush" and op.future is not None and not op.future.done():
+                    op.future.set_result(None)
+
+    async def _run(self) -> None:
         while True:
             first = await self.queue.get()
             batch = [first]
@@ -327,6 +341,7 @@ class RunTask:
         self.refill_lock = asyncio.Lock()
         self.workers: set[asyncio.Task] = set()
         self.idle = asyncio.Event()
+        self.halt = asyncio.Event()  # set while pausing: samples waiting to retry give up their slot
         self.in_flight: dict[int, _Seq] = {}
         self.buffer: deque[_Item] = deque()
         self.claimed: set[int] = set()  # buffered, in flight, or finished but not yet committed
@@ -335,6 +350,7 @@ class RunTask:
         self.finalizing = False
         self.cancelled = False
         self.unflushed = 0  # finished samples not yet committed
+        self.dispatched = 0  # samples sent by this task
         self.consecutive_failures = 0
         self.last_error: str | None = None
 
@@ -372,7 +388,7 @@ class RunTask:
             ),
             limits=httpx.Limits(max_connections=None, max_keepalive_connections=None),
         )
-        stale_rescans = 0
+        rescanned_at = -1  # value of self.dispatched when we last rescanned for leftovers
         try:
             self._write_metric()
             self.metrics_task = asyncio.create_task(self._metrics_loop())
@@ -394,9 +410,10 @@ class RunTask:
                         final = RUN_PAUSED
                         break
                     pending = await self._count_pending()
-                    if pending and stale_rescans < 3:
-                        # Pending samples we have not seen (e.g. retried while running): scan again.
-                        stale_rescans += 1
+                    if pending and self.dispatched != rescanned_at:
+                        # Pending samples behind the cursor (e.g. returned while pausing): scan again.
+                        # Stop when a full pass dispatched nothing, so this can never spin.
+                        rescanned_at = self.dispatched
                         self._rescan()
                         continue
                     self.finalizing = True
@@ -449,6 +466,7 @@ class RunTask:
             return
         self.status = RUN_PAUSING
         self.reason = reason
+        self.halt.set()
         self._release_buffer()
         await _update_run(self.run_id, status=RUN_PAUSING, status_reason=reason)
 
@@ -457,8 +475,9 @@ class RunTask:
             return
         self.status = RUN_RUNNING
         self.reason = None
+        self.halt.clear()
         self.consecutive_failures = 0
-        self.active_mark = time.monotonic() if not self.workers else self.active_mark
+        self._rescan()  # samples interrupted while pausing went back to pending behind the cursor
         await _update_run(self.run_id, status=RUN_RUNNING, status_reason=None, finished_at=None)
         self._spawn()
 
@@ -550,6 +569,7 @@ class RunTask:
 
     async def _process(self, item: _Item) -> None:
         seq = _Seq(item, time.monotonic())
+        self.dispatched += 1
         self.in_flight[item.sample_id] = seq
         self.writer.mark_running(self.run_id, item.sample_id)
         trip: str | None = None
@@ -565,9 +585,13 @@ class RunTask:
                 caps=self.caps,
                 progress=seq.progress,
                 on_progress=self._on_progress,
+                sleep=self._backoff,
             )
         except GenerationFailed as exc:
             trip = self._finish_failed(item, exc.message, exc.attempts)
+        except _Interrupted:
+            self.in_flight.pop(item.sample_id, None)
+            self.writer.reset(self, item.sample_id)
         except asyncio.CancelledError:
             self.in_flight.pop(item.sample_id, None)
             self.writer.reset(self, item.sample_id)
@@ -584,6 +608,16 @@ class RunTask:
         if trip is not None:
             async with self.lock:
                 await self._pause_locked(trip)
+
+    async def _backoff(self, delay: float) -> None:
+        """Wait before a retry, unless the run starts pausing: then give the slot up."""
+        if self.status != RUN_RUNNING:
+            raise _Interrupted
+        try:
+            await asyncio.wait_for(self.halt.wait(), delay)
+        except TimeoutError:
+            return
+        raise _Interrupted
 
     def _finish_done(self, item: _Item, r: GenerationResult) -> None:
         truncated = r.finish_reason == "length"

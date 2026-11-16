@@ -7,7 +7,6 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-os.environ.setdefault("STELLARATOR_DATA_DIR", tempfile.mkdtemp(prefix="stellarator-exp-"))
 
 import httpx
 import pyarrow.parquet as pq
@@ -26,11 +25,10 @@ app.include_router(exports.router)
 
 @pytest.fixture
 async def client(monkeypatch):
-    if "stellarator-exp-" not in str(config.DATA_DIR) and "pytest" not in str(config.DATA_DIR):
-        pytest.skip("refusing to reset a non-temporary data dir")
+    # conftest.py points STELLARATOR_DATA_DIR at a fresh temp dir shared by the whole session, so
+    # create tables if needed and never drop them; every test builds its own rows.
     monkeypatch.setattr("stellarator.services.settings.ENV_HF_TOKEN", None)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
         yield c
@@ -218,7 +216,7 @@ class FakeApi:
 
 async def set_token(value="hf_x"):
     async with SessionLocal() as s:
-        s.add(Setting(key="hf_token", value=value))
+        await s.merge(Setting(key="hf_token", value=value))
         await s.commit()
 
 

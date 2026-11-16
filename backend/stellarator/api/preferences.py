@@ -7,6 +7,7 @@ candidates can be paired; those are the set's prompts.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +41,11 @@ from ..schemas import (
 router = APIRouter(prefix="/api", tags=["preferences"])
 
 ItemFilter = Literal["all", "undecided", "decided"]
+
+
+def _utc(dt: datetime) -> datetime:
+    """SQLite hands back naive datetimes; they are stored in UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -113,7 +119,7 @@ async def _to_out(
         runs=[{"id": r.id, "name": r.name, "model": r.model} for r in runs],
         prompt_count=await _prompt_count(session, run_ids),
         decided=decided,
-        created_at=ps.created_at,
+        created_at=_utc(ps.created_at),
     )
 
 
@@ -282,8 +288,13 @@ async def list_items(
         query = query.where(PreferencePair.id.is_(None))
     elif filter == "decided":
         query = query.where(PreferencePair.id.is_not(None))
-    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
-    rows = (await session.execute(query.order_by(Prompt.idx, Prompt.id).offset(offset).limit(limit))).all()
+    # The total rides along as a window count, so the eligible-prompt grouping runs once.
+    paged = query.add_columns(func.count().over().label("total")).order_by(Prompt.idx, Prompt.id)
+    rows = (await session.execute(paged.offset(offset).limit(limit))).all()
+    if rows:
+        total = rows[0].total
+    else:  # past the end: count on its own
+        total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     items = await _build_items(session, runs, rows)
     return Page[PreferenceItem](items=items, total=total, offset=offset, limit=limit)
 

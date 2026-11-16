@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
@@ -11,8 +11,15 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { int, middle, relative } from "@/lib/format"
 import type { PreferenceSet, Run } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 function Progress({ set, className }: { set: PreferenceSet; className?: string }) {
+  if (set.prompt_count === 0)
+    return (
+      <p className={cn("text-sm text-muted-foreground", className)} title="No prompt has two finished responses yet">
+        Nothing to compare yet
+      </p>
+    )
   return (
     <div className={className}>
       <p className="tabular text-sm whitespace-nowrap">
@@ -137,6 +144,13 @@ export function PreferencesPage() {
   const sets = useQuery({ queryKey: prefKeys.list, queryFn: () => api.get<PreferenceSet[]>("/api/preference-sets") })
   const runs = useQuery({ queryKey: ["runs"], queryFn: () => api.get<Run[]>("/api/runs") })
   const noRuns = runs.isSuccess && runs.data.length === 0
+
+  useEffect(() => {
+    document.title = "Preferences · Stellarator"
+    return () => {
+      document.title = "Stellarator"
+    }
+  }, [])
 
   return (
     <Page

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { api, ApiError } from "@/lib/api"
-import { count, int, middle } from "@/lib/format"
+import { count, int } from "@/lib/format"
 import type { PreferenceSet, Run } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { prefKeys, shortModel } from "./queries"
@@ -62,7 +62,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const runsQuery = useQuery({ queryKey: ["runs"], queryFn: () => api.get<Run[]>("/api/runs") })
-  const runs = runsQuery.data ?? []
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data])
   const groups = useMemo(() => groupRuns(runs), [runs])
 
   const [selected, setSelected] = useState<number[]>([])
@@ -72,7 +72,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
   const nameRef = useRef<HTMLInputElement>(null)
   const runsRef = useRef<HTMLFieldSetElement>(null)
 
-  const selectedRuns = runs.filter((r) => selected.includes(r.id))
+  const selectedRuns = selected.map((id) => runs.find((r) => r.id === id)).filter((r): r is Run => !!r)
   const lockedSet = selectedRuns[0]?.prompt_set_id ?? null
   const lockedSetName = selectedRuns[0]?.prompt_set_name ?? ""
   const shownName = nameTouched ? name : suggestName(selectedRuns)
@@ -212,11 +212,9 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
                                 className="mt-0.5"
                               />
                               <span className="grid min-w-0 flex-1 gap-0.5">
-                                <span className="truncate text-sm" title={run.name}>
-                                  {run.name}
-                                </span>
-                                <span className="truncate font-mono text-[13px] text-muted-foreground" title={run.model}>
-                                  {middle(run.model, 48)}
+                                <span className="text-sm break-words">{run.name}</span>
+                                <span className="font-mono text-[13px] text-muted-foreground [overflow-wrap:anywhere]">
+                                  {run.model}
                                 </span>
                               </span>
                               <span className="grid flex-none justify-items-end gap-0.5 text-right">

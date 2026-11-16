@@ -7,7 +7,7 @@ import { Field } from "@/components/shared/field"
 import { Page } from "@/components/shared/page"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
-import { runKeys, useEndpoints, usePromptSets } from "@/components/runs/run-data"
+import { SEGMENT_ON, runKeys, useEndpoints, usePromptSets } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -119,6 +119,15 @@ const SERVER_FIELD: Record<string, FieldId> = {
 }
 
 const SEQS_CHOICES = [1, 4, 8, 16, 32, 64, 128, 256]
+const ON = SEGMENT_ON
+
+/** "30 min", "90 s", "1 h 30 min": a whole timeout in words. */
+function seconds(s: number): string {
+  if (s % 3600 === 0) return `${int(s / 3600)} h`
+  if (s >= 3600 && s % 60 === 0) return `${int(Math.floor(s / 3600))} h ${int((s % 3600) / 60)} min`
+  if (s % 60 === 0) return `${int(s / 60)} min`
+  return duration(s * 1000)
+}
 
 const str = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v))
 
@@ -239,8 +248,8 @@ function toBody(f: Form): RunCreate {
 
 function Section({ id, title, children, className }: { id: string; title: string; children: ReactNode; className?: string }) {
   return (
-    <section aria-labelledby={id} className={cn("grid gap-5 pt-8 first:pt-0", className)}>
-      <h2 id={id} className="text-base font-semibold">
+    <section aria-labelledby={id} className={cn("grid gap-5 pt-10 first:pt-0", className)}>
+      <h2 id={id} className="-mb-1 text-base font-semibold">
         {title}
       </h2>
       {children}
@@ -262,7 +271,7 @@ function Disclosure({
   children: ReactNode
 }) {
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange} className="pt-8">
+    <Collapsible open={open} onOpenChange={onOpenChange} className="pt-10">
       <h2 className="text-base font-semibold">
         <CollapsibleTrigger className="group -mx-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:text-foreground">
           <ChevronRight
@@ -273,7 +282,7 @@ function Disclosure({
         </CollapsibleTrigger>
       </h2>
       {!open ? <p className="mt-1 pl-6 text-sm text-muted-foreground">{summary}</p> : null}
-      <CollapsibleContent className="grid gap-5 pt-5">{children}</CollapsibleContent>
+      <CollapsibleContent className="grid gap-5 pt-4">{children}</CollapsibleContent>
     </Collapsible>
   )
 }
@@ -320,6 +329,13 @@ export function NewRunPage() {
   const [focusTarget, setFocusTarget] = useState<FieldId | null>(null)
   const [modelsNote, setModelsNote] = useState<{ ok: boolean; text: string } | null>(null)
   const initialized = useRef(false)
+
+  useEffect(() => {
+    document.title = "New run · Stellarator"
+    return () => {
+      document.title = "Stellarator"
+    }
+  }, [])
 
   // Fill the form once everything it depends on has loaded: URL prefills, or a previous run's settings.
   const ready = endpoints.isSuccess && sets.isSuccess && (!fromId || source.isSuccess || source.isError)
@@ -478,7 +494,7 @@ export function NewRunPage() {
   const advancedSummary = [
     form.stream ? "Streaming" : "Not streaming",
     count(Number(form.max_attempts) || 0, "attempt", "attempts") + " per sample",
-    Number.isFinite(timeoutS) && timeoutS > 0 ? `${duration(timeoutS * 1000)} timeout` : null,
+    Number.isFinite(timeoutS) && timeoutS > 0 ? `${seconds(timeoutS)} timeout` : null,
     Number(form.pause_after) > 0 ? `pause after ${int(Number(form.pause_after))} failures in a row` : "never pause on failures",
     form.extra_body.trim() ? "extra request body set" : null,
   ]
@@ -651,7 +667,7 @@ export function NewRunPage() {
                   className="flex-wrap"
                 >
                   {SEQS_CHOICES.map((n) => (
-                    <ToggleGroupItem key={n} value={String(n)} className="min-w-9 tabular pointer-coarse:h-11 pointer-coarse:min-w-11">
+                    <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular pointer-coarse:h-11 pointer-coarse:min-w-11", ON)}>
                       {n}
                     </ToggleGroupItem>
                   ))}
@@ -760,10 +776,10 @@ export function NewRunPage() {
                   onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
                   aria-labelledby="max_tokens_field-label"
                 >
-                  <ToggleGroupItem value="max_tokens" className="font-mono text-xs pointer-coarse:h-11">
+                  <ToggleGroupItem value="max_tokens" className={cn("font-mono text-xs pointer-coarse:h-11", ON)}>
                     max_tokens
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs pointer-coarse:h-11">
+                  <ToggleGroupItem value="max_completion_tokens" className={cn("font-mono text-xs pointer-coarse:h-11", ON)}>
                     max_completion_tokens
                   </ToggleGroupItem>
                 </ToggleGroup>

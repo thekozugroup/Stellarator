@@ -106,15 +106,13 @@ function Body({ sample }: { sample: Sample }) {
 
       {sample.reasoning ? <Thinking key={sample.id} sample={sample} /> : null}
 
-      <Part
-        title="Response"
-        meta={sample.completion_tokens !== null ? count(sample.completion_tokens, "token", "tokens") : undefined}
-        copy={sample.response ? { value: sample.response, label: "Copy response" } : undefined}
-      >
+      <Part title="Response" copy={sample.response ? { value: sample.response, label: "Copy response" } : undefined}>
         {sample.response ? (
           <p className="model-text">{sample.response}</p>
         ) : sample.status === "failed" ? (
           <p className="text-sm text-muted-foreground">No response. The request failed after {count(sample.attempts, "attempt", "attempts")}; the error is below.</p>
+        ) : sample.status === "done" && sample.finish_reason === "length" ? (
+          <p className="text-sm text-warning-ink">No answer. The model hit the max tokens limit while it was still thinking.</p>
         ) : sample.status === "done" ? (
           <p className="text-sm text-muted-foreground">The model returned an empty response.</p>
         ) : (
@@ -156,6 +154,7 @@ export function SampleViewer({
   nextId,
   onStep,
   onClose,
+  onCloseAutoFocus,
 }: {
   sampleId: number | null
   samplesPerPrompt: number
@@ -163,6 +162,8 @@ export function SampleViewer({
   nextId: number | null
   onStep: (id: number) => void
   onClose: () => void
+  /** Where focus goes when the sheet closes: the row of the sample last shown. */
+  onCloseAutoFocus: (e: Event) => void
 }) {
   const sample = useSample(sampleId)
   const s = sample.data && sample.data.id === sampleId ? sample.data : undefined
@@ -184,6 +185,7 @@ export function SampleViewer({
       <SheetContent
         side="right"
         onKeyDown={onKeyDown}
+        onCloseAutoFocus={onCloseAutoFocus}
         className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[45rem]"
       >
         <SheetHeader className="gap-2 border-b px-4 py-3 pr-14 sm:px-6">

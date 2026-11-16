@@ -59,11 +59,14 @@ export function InFlightList({
             {s.tail ? (
               <div
                 className={cn(
-                  "mt-2 flex h-[calc(2*1.6em+0.75rem)] flex-col justify-end overflow-hidden rounded-md bg-muted px-2.5 py-1.5 text-[13px] leading-[1.6]",
+                  "mt-2 rounded-md bg-muted px-2.5 py-1.5 text-[13px] leading-[1.6]",
                   s.phase === "thinking" ? "text-muted-foreground" : "text-foreground",
                 )}
               >
-                <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{s.tail.trimStart()}</p>
+                {/* At most the newest two lines: older text leaves through the top edge. */}
+                <div className="flex max-h-[3.2em] flex-col justify-end overflow-hidden">
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{s.tail.trimStart()}</p>
+                </div>
               </div>
             ) : null}
           </li>

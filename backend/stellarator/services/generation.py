@@ -18,7 +18,7 @@ import random
 import re
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -422,9 +422,11 @@ class _Accumulator:
         p.tokens += 1
         if p.phase != phase:
             p.phase = phase
-            p.tail = text[-TAIL_CHARS:]
-        else:
+            p.tail = text.lstrip()[-TAIL_CHARS:]
+        elif p.tail:
             p.tail = (p.tail + text)[-TAIL_CHARS:]
+        else:  # the tail is for display: no leading blank lines
+            p.tail = text.lstrip()[-TAIL_CHARS:]
         if self.on_progress is not None:
             self.on_progress(p, 1)
 
@@ -461,6 +463,11 @@ class _Accumulator:
                 return
             if mode == "think":
                 after = head[len(self.think_open) :]
+                idx = after.find(self.think_close) if self.think_close else -1
+                if idx >= 0:  # open and close in one go
+                    self.progress.tail = ""
+                    self._emit("answering", after[idx + len(self.think_close) :].lstrip())
+                    return
                 self.progress.phase = "thinking"
                 self.progress.tail = ""
                 self._emit("thinking", after)
@@ -614,7 +621,7 @@ class _Accumulator:
         self.feed_event(data)
         self.done = True
 
-    def result(self, attempts: int, latency_ms: int) -> GenerationResult:
+    def result(self, attempts: int, latency_ms: int, streamed: bool = True) -> GenerationResult:
         if self.saw_reasoning:
             reasoning: str | None = "".join(self.reasoning_parts)
         elif self.details_parts:
@@ -637,7 +644,7 @@ class _Accumulator:
             completion_tokens=_int_or_none(usage.get("completion_tokens")),
             reasoning_tokens=_int_or_none(reasoning_tokens),
             latency_ms=latency_ms,
-            ttft_ms=self.ttft_ms,
+            ttft_ms=self.ttft_ms if streamed else None,  # unknown when the answer came in one piece
             attempts=attempts,
             chunks=self.chunks,
         )
@@ -678,7 +685,8 @@ async def _attempt(
                 body=text[:2000],
             )
         ctype = resp.headers.get("content-type", "").lower()
-        if "text/event-stream" in ctype or (body.get("stream") and "json" not in ctype):
+        streamed = "text/event-stream" in ctype or bool(body.get("stream") and "json" not in ctype)
+        if streamed:
             await acc.read_sse(resp)
             if not acc.done and acc.finish_reason is None:
                 raise GenerationError(
@@ -694,7 +702,7 @@ async def _attempt(
                 ) from None
             acc.read_message(data)
     latency_ms = int((time.perf_counter() - t0) * 1000)
-    return acc.result(attempt, latency_ms)
+    return acc.result(attempt, latency_ms, streamed)
 
 
 def _mentions_stream_options(err: GenerationError) -> bool:
