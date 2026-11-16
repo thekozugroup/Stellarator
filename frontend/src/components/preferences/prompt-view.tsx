@@ -29,7 +29,7 @@ export function PromptView({ messages }: { messages: Message[] }) {
       <div className={cn("relative grid gap-4 px-4 py-3", folded && "max-h-72 overflow-hidden")}>
         {messages.map((m, n) => (
           <div key={n} className="grid gap-1">
-            <p className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</p>
+            {messages.length > 1 ? <p className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</p> : null}
             <ModelText text={text(m.content)} className="text-sm" />
           </div>
         ))}
@@ -42,7 +42,7 @@ export function PromptView({ messages }: { messages: Message[] }) {
             aria-expanded={open}
             className="min-h-8 rounded-md text-sm font-medium text-foreground underline-offset-2 hover:underline"
           >
-            {open ? "Fold the prompt" : "Show the full prompt"}
+            {open ? "Show less" : "Show all"}
           </button>
         </div>
       ) : null}

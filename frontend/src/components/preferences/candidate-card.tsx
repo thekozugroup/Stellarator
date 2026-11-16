@@ -24,6 +24,7 @@ export function CandidateCard({
   label,
   position,
   mark,
+  showModel,
   showSample,
   disabled,
   onMark,
@@ -32,13 +33,18 @@ export function CandidateCard({
   label: string
   position: number
   mark: Mark | null
+  showModel: boolean
   showSample: boolean
   disabled?: boolean
   onMark: (mark: Mark) => void
 }) {
   const truncated = candidate.finish_reason === "length"
   const headingId = `cand-${candidate.sample_id}`
-  const sampleNote = showSample ? `, sample ${int(candidate.sample_idx + 1)}` : ""
+  // Name only what tells the cards apart: the model when the set compares several, else the sample,
+  // else the run.
+  const sample = `Sample ${int(candidate.sample_idx + 1)}`
+  const identity = showModel ? candidate.model : showSample ? sample : candidate.run_name
+  const sampleNote = showModel && showSample ? sample : null
   return (
     <article
       aria-labelledby={headingId}
@@ -56,13 +62,13 @@ export function CandidateCard({
             {label}
           </h3>
           <div className="min-w-0 pt-px">
-            <p className="truncate font-mono text-[13px] leading-5" title={candidate.model}>
-              {middle(candidate.model, 52)}
+            <p
+              className={cn("truncate text-[13px] leading-5", showModel && "font-mono")}
+              title={showModel ? candidate.model : candidate.run_name}
+            >
+              {showModel ? middle(identity, 52) : identity}
             </p>
-            <p className="truncate text-xs text-muted-foreground" title={`${candidate.run_name}${sampleNote}`}>
-              {candidate.run_name}
-              {sampleNote}
-            </p>
+            {sampleNote ? <p className="truncate text-xs text-muted-foreground">{sampleNote}</p> : null}
           </div>
         </div>
         <div role="group" aria-label={`Mark response ${label}`} className="flex flex-none gap-1.5">
@@ -87,9 +93,8 @@ export function CandidateCard({
 
       <div className="grid min-w-0 gap-4 px-4 py-4 [&>*]:min-w-0">
         {truncated ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div>
             <Pill tone="warning">Truncated</Pill>
-            <span className="text-muted-foreground">Stopped at the token limit before finishing.</span>
           </div>
         ) : null}
 
@@ -144,12 +149,12 @@ function MarkButton({
   label: string
 }) {
   const Icon = kind === "chosen" ? Check : X
-  const word = kind === "chosen" ? "Chosen" : "Rejected"
+  const word = kind === "chosen" ? "Choose" : "Reject"
   return (
     <button
       type="button"
       aria-pressed={pressed}
-      aria-label={`${word}: response ${label}`}
+      aria-label={`${word} response ${label}`}
       aria-keyshortcuts={keyHint}
       title={keyHint ? `${word} (${keyHint})` : word}
       disabled={disabled}
@@ -158,14 +163,15 @@ function MarkButton({
         "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium whitespace-nowrap select-none pointer-coarse:h-11 pointer-coarse:px-4",
         "transition-[background-color,border-color,color] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // Pressed reads as selected by its border and icon, never as the heaviest fill on screen.
         pressed
           ? kind === "chosen"
-            ? "border-copper bg-copper text-background"
-            : "border-foreground bg-foreground text-background"
+            ? "border-copper bg-copper-tint text-foreground ring-1 ring-copper"
+            : "border-foreground bg-background text-foreground ring-1 ring-foreground"
           : "border-input bg-background text-foreground hover:bg-muted",
       )}
     >
-      <Icon aria-hidden="true" className={cn("size-4", !pressed && "text-muted-foreground")} />
+      <Icon aria-hidden="true" className={cn("size-4", pressed ? "stroke-[2.5]" : "text-muted-foreground")} />
       {word}
     </button>
   )
