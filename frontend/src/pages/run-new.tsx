@@ -414,8 +414,8 @@ export function NewRunPage() {
     mutationFn: (body: RunCreate) => api.post<Run>("/api/runs", body),
     onSuccess: (run) => {
       void queryClient.invalidateQueries({ queryKey: runKeys.list })
-      queryClient.invalidateQueries({ queryKey: ["endpoints"] })
-      queryClient.invalidateQueries({ queryKey: ["prompt-sets"] })
+      void queryClient.invalidateQueries({ queryKey: ["endpoints"] })
+      void queryClient.invalidateQueries({ queryKey: ["prompt-sets"] })
       navigate(`/runs/${run.id}`)
     },
     onError: (e: Error) => {
@@ -423,7 +423,7 @@ export function NewRunPage() {
         const mapped: Errors = {}
         const unmapped: string[] = []
         for (const [path, msg] of Object.entries(e.fields)) {
-          const id = SERVER_FIELD[path] ?? (path.startsWith("params.") ? undefined : undefined)
+          const id = SERVER_FIELD[path]
           if (id) mapped[id] = msg
           else unmapped.push(msg)
         }

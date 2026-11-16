@@ -228,14 +228,14 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
             value={apiKey}
             disabled={removeKey}
             placeholder={
-              editing && endpoint?.has_api_key ? `Leave blank to keep the saved key (${endpoint.api_key_hint ?? "saved"})` : "sk-012345…"
+              editing && endpoint?.has_api_key ? `Saved key ${endpoint.api_key_hint ?? ""}`.trim() : "sk-012345…"
             }
             autoComplete="off"
             spellCheck={false}
             autoCapitalize="none"
             className="pr-10 font-mono text-[13px]"
             aria-invalid={!!errors.api_key}
-            aria-describedby={errors.api_key ? "ep-api_key-error" : undefined}
+            aria-describedby={errors.api_key ? "ep-api_key-error" : editing && endpoint?.has_api_key ? "ep-api_key-hint" : undefined}
             onChange={(e) => {
               setApiKey(e.target.value)
               clear("api_key")
@@ -254,7 +254,15 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
             {showKey ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
           </Button>
         </div>
-        {errors.api_key ? <p id="ep-api_key-error" className="text-sm text-destructive">{errors.api_key}</p> : null}
+        {errors.api_key ? (
+          <p id="ep-api_key-error" className="text-sm text-destructive">
+            {errors.api_key}
+          </p>
+        ) : editing && endpoint?.has_api_key ? (
+          <p id="ep-api_key-hint" className="text-xs text-muted-foreground">
+            {removeKey ? "The saved key is removed when you save." : `Leave blank to keep the saved key (${endpoint.api_key_hint ?? "saved"}).`}
+          </p>
+        ) : null}
         {editing && endpoint?.has_api_key ? (
           <Label htmlFor="ep-remove-key" className="flex min-h-8 items-center gap-2 text-sm font-normal">
             <Checkbox
