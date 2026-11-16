@@ -3,7 +3,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { int } from "@/lib/format"
 import type { ColumnInfo, ImportPreview, SplitMode } from "@/lib/types"
 import { SPLIT_OPTIONS, splitHint } from "./helpers"
 
@@ -120,7 +119,7 @@ export function MappingFields({
         </Field>
       )}
       <div className="grid grid-cols-2 items-start gap-4">
-        <Field id="map-offset" label="Skip rows" error={offsetError}>
+        <Field id="map-offset" label={tabular ? "Skip rows" : "Skip prompts"} error={offsetError}>
           <Input
             id="map-offset"
             inputMode="numeric"
@@ -131,12 +130,7 @@ export function MappingFields({
             aria-describedby={offsetError ? "map-offset-error" : undefined}
           />
         </Field>
-        <Field
-          id="map-limit"
-          label="Import at most"
-          error={limitError}
-          hint={preview.total_rows !== null ? `of ${int(preview.total_rows)} rows` : undefined}
-        >
+        <Field id="map-limit" label="Import at most" error={limitError}>
           <Input
             id="map-limit"
             inputMode="numeric"
@@ -145,16 +139,14 @@ export function MappingFields({
             placeholder="All"
             className="tabular"
             aria-invalid={limitError ? true : undefined}
-            aria-describedby={limitError ? "map-limit-error" : preview.total_rows !== null ? "map-limit-hint" : undefined}
+            aria-describedby={limitError ? "map-limit-error" : undefined}
           />
         </Field>
       </div>
-      <div className="flex items-center gap-2.5">
+      <Label htmlFor="map-dedupe" className="flex min-h-9 items-center gap-2.5 text-sm font-medium pointer-coarse:min-h-11">
         <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
-        <Label htmlFor="map-dedupe" className="text-sm font-medium">
-          Remove duplicate prompts
-        </Label>
-      </div>
+        Remove duplicate prompts
+      </Label>
     </div>
   )
 }

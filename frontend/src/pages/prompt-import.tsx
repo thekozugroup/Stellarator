@@ -33,10 +33,10 @@ function useDebounced<T>(value: T, ms: number): T {
   return v
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <section className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <h2 className="text-base font-semibold">{title}</h2>
+      {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
       {children}
     </section>
   )
@@ -306,7 +306,7 @@ export function ImportPromptsPage() {
 
         {data ? (
           <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-0 p-0 lg:col-start-1 lg:row-start-2">
-            <Section title="Mapping">
+            <Section title={data.columns.length > 0 ? "Mapping" : undefined}>
               <MappingFields
                 preview={data}
                 promptField={promptField}

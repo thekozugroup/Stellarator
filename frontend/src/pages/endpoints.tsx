@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useSearchParams } from "react-router"
+import { useNavigate, useSearchParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
@@ -20,16 +20,21 @@ export function EndpointsPage() {
   const [deleting, setDeleting] = useState<Endpoint | null>(null)
   const endpoints = query.data ?? []
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const handledEdit = useRef<string | null>(null)
   const details = endpoints.find((e) => e.id === detailsId) ?? null
 
   // /endpoints?edit=<id> opens that endpoint's edit dialog (linked from the "key rejected" banner on a run).
   const editParam = params.get("edit")
+  const focusKey = params.get("focus") === "key"
+  const returnParam = params.get("return")
+  const returnTo = returnParam && returnParam.startsWith("/") && !returnParam.startsWith("//") ? returnParam : null
   const clearEdit = () =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev)
         next.delete("edit")
+        next.delete("focus")
         return next
       },
       { replace: true },
@@ -77,8 +82,10 @@ export function EndpointsPage() {
       <EndpointFormDialog open={form !== null} endpoint={form?.endpoint ?? null} onOpenChange={(o) => {
           if (o) return
           setForm(null)
-          if (editParam) clearEdit()
+          if (returnTo && editParam) navigate(returnTo)
+          else if (editParam) clearEdit()
         }}
+        focusKey={focusKey && !!editParam}
       />
       <EndpointDetailsSheet
         endpoint={details}

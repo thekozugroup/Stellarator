@@ -167,7 +167,7 @@ export function FileFields({
               </p>
             </div>
             <Button type="button" variant="outline" size="sm" disabled={uploading} asChild>
-              <label htmlFor="import-file" className="cursor-pointer">
+              <label htmlFor="import-file" className="cursor-pointer pointer-coarse:min-h-11">
                 Replace file
               </label>
             </Button>
@@ -218,7 +218,7 @@ export function PasteFields({ value, onChange }: { value: string; onChange: (v: 
         placeholder={"Explain how a stellarator confines plasma.\n---\nWrite a haiku about copper coils."}
         rows={10}
         spellCheck={false}
-        className="min-h-48 font-mono text-[13px] md:text-[13px]"
+        className="min-h-48 font-mono pointer-fine:text-[13px]"
         aria-describedby="paste-text-hint"
       />
     </Field>

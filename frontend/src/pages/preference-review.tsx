@@ -24,6 +24,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
@@ -438,7 +442,7 @@ function Review({ set }: { set: PreferenceSet }) {
   } else {
     body = (
       <Fragment key={item.prompt_id}>
-        <div className="mb-3 flex items-center justify-between gap-x-4 gap-y-1">
+        <div className="mb-2 flex items-center justify-between gap-x-4 gap-y-1 sm:mb-3">
           <h2 id="review-question" ref={headingRef} tabIndex={-1} className="tabular text-sm text-muted-foreground focus:outline-none">
             <span className="sr-only">Which response is better for this prompt? </span>
             Prompt {int(item.prompt_idx + 1)}
@@ -480,9 +484,11 @@ function Review({ set }: { set: PreferenceSet }) {
 
   return (
     <Page
+      // On a phone the tab bar already goes back, so the back link, the meta line and the top padding give way to the first response.
+      className="max-sm:pt-3 max-sm:[&>a]:hidden max-sm:[&>header]:mb-3"
       title={set.name}
       back={{ to: "/preferences", label: "Preferences" }}
-      meta={<SetMeta set={set} />}
+      meta={<div className="max-sm:hidden"><SetMeta set={set} /></div>}
       actions={
         <>
           {set.runs.length >= 2 ? (
@@ -490,7 +496,9 @@ function Review({ set }: { set: PreferenceSet }) {
               Auto-pair by run…
             </Button>
           ) : null}
-          <Button onClick={() => setExportOpen(true)}>Export pairs…</Button>
+          <Button className="max-sm:hidden" onClick={() => setExportOpen(true)}>
+            Export pairs…
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
@@ -498,6 +506,18 @@ function Review({ set }: { set: PreferenceSet }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <div className="sm:hidden">
+                <DropdownMenuLabel>Show prompts</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as ItemFilter)}>
+                  {(["undecided", "decided", "all"] as const).map((f) => (
+                    <DropdownMenuRadioItem key={f} value={f}>
+                      {FILTER_LABEL[f]} <span className="tabular text-muted-foreground">{int(counts[f])}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setExportOpen(true)}>Export pairs…</DropdownMenuItem>
+              </div>
               {set.runs.length >= 2 ? (
                 <DropdownMenuItem className="sm:hidden" onSelect={() => setAutoOpen(true)}>
                   Auto-pair by run…
@@ -512,7 +532,7 @@ function Review({ set }: { set: PreferenceSet }) {
         </>
       }
     >
-      <div className="mb-4 sm:mb-6">
+      <div className="mb-4 max-sm:hidden sm:mb-6">
         <ToggleGroup
           type="single"
           variant="outline"

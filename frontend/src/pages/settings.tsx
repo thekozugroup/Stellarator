@@ -155,7 +155,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
                 autoComplete="off"
                 spellCheck={false}
                 autoCapitalize="none"
-                className="pr-10 font-mono text-[13px]"
+                className="pr-10 font-mono pointer-fine:text-[13px]"
                 aria-invalid={!!error}
                 aria-describedby={error ? "hf-token-error" : undefined}
                 onChange={(e) => {
@@ -201,13 +201,13 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
         </p>
       ) : null}
 
-      <p className="text-xs text-muted-foreground">
-        For gated datasets and Hub pushes.{" "}
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        For gated datasets and Hub pushes.
         <a
           href="https://huggingface.co/settings/tokens"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-6 items-center rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+          className="inline-flex min-h-6 items-center rounded-sm text-foreground pointer-coarse:min-h-11 pointer-coarse:rounded-md pointer-coarse:border pointer-coarse:px-3 underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
         >
           Create a token
         </a>
@@ -269,7 +269,7 @@ function AppearanceSection() {
               ["system", "System"],
             ] as const
           ).map(([value, label]) => (
-            <Label key={value} htmlFor={`theme-${value}`} className="flex min-h-9 items-center gap-2.5 rounded-md border px-3 text-sm font-normal">
+            <Label key={value} htmlFor={`theme-${value}`} className="flex min-h-9 items-center gap-2.5 rounded-md border px-3 text-sm font-normal pointer-coarse:min-h-11">
               <RadioGroupItem id={`theme-${value}`} value={value} />
               {label}
             </Label>

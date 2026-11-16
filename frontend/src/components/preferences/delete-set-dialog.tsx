@@ -44,8 +44,7 @@ export function DeleteSetDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="break-words">Delete ‘{set.name}’?</AlertDialogTitle>
           <AlertDialogDescription>
-            This deletes the preference set and its {count(set.decided, "pair", "pairs")}. The runs and their
-            responses are kept, so you can make a new set from them.
+            Its {count(set.decided, "pair", "pairs")} are deleted. Runs and responses are kept.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {del.isError ? <ErrorBlock message={del.error.message} /> : null}

@@ -109,9 +109,6 @@ function AutoPairForm({ set, onDone }: { set: PreferenceSet; onDone: () => void 
     if (!run.isPending) run.mutate()
   }
 
-  const chosenRun = set.runs.find((r) => String(r.id) === chosen)
-  const rejectedRun = set.runs.find((r) => String(r.id) === rejected)
-
   return (
     <form onSubmit={submit} noValidate className="grid gap-4">
       <DialogHeader>
@@ -167,13 +164,6 @@ function AutoPairForm({ set, onDone }: { set: PreferenceSet; onDone: () => void 
           </div>
         </div>
       )}
-
-      {chosenRun && rejectedRun ? (
-        <p className="text-sm text-muted-foreground">
-          Prefers <span className="text-foreground">{chosenRun.name}</span> over{" "}
-          <span className="text-foreground">{rejectedRun.name}</span> on every prompt both answered.
-        </p>
-      ) : null}
 
       {run.isError ? <ErrorBlock message={run.error.message} /> : null}
 

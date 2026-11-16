@@ -4,6 +4,15 @@ import { count, DASH, relative } from "@/lib/format"
 /** The server answered but refused the key (the backend words it "The server rejected the API key (401)"). */
 export const isKeyRejected = (error: string | null | undefined) => !!error && /^the server rejected the api key/i.test(error)
 
+/** The server's own words after "The server rejected the API key (401)": ": User not found." becomes "401: User not found." */
+export function serverReason(error: string | null | undefined) {
+  if (!error) return null
+  const m = error.match(/\((\d{3})\)\s*[:.\-–]?\s*(.*)$/s)
+  if (!m) return null
+  const body = m[2].trim()
+  return body ? `${m[1]}: ${body}` : m[1]
+}
+
 /** "N models" / "Key rejected" / "Unreachable" + the reason / "Not checked". Red only on the failing fact. */
 export function EndpointStatus({ endpoint, detail = true }: { endpoint: Endpoint; detail?: boolean }) {
   if (endpoint.last_ok === null) {
@@ -12,12 +21,14 @@ export function EndpointStatus({ endpoint, detail = true }: { endpoint: Endpoint
   if (endpoint.last_ok) {
     return <span className="tabular">{count(endpoint.models.length, "model", "models")}</span>
   }
+  const rejected = isKeyRejected(endpoint.last_error)
+  const reason = rejected ? serverReason(endpoint.last_error) : endpoint.last_error
   return (
     <span className="grid gap-0.5">
-      <span className="font-medium text-destructive">{isKeyRejected(endpoint.last_error) ? "Key rejected" : "Unreachable"}</span>
-      {detail && endpoint.last_error ? (
-        <span title={endpoint.last_error} className="line-clamp-3 max-w-[34ch] text-xs text-muted-foreground">
-          {endpoint.last_error}
+      <span className="font-medium text-destructive">{rejected ? "Key rejected" : "Unreachable"}</span>
+      {detail && reason ? (
+        <span title={endpoint.last_error ?? undefined} className="line-clamp-3 max-w-[34ch] text-xs text-muted-foreground">
+          {reason}
         </span>
       ) : null}
     </span>

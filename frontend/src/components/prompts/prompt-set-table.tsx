@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router"
+import { Link } from "react-router"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Bar } from "@/components/shared/block-states"
 import { count, int, relative } from "@/lib/format"
@@ -8,7 +8,6 @@ import { describeSource } from "./source"
 const head = "text-xs font-normal text-muted-foreground"
 
 export function PromptSetTable({ sets }: { sets: PromptSet[] }) {
-  const navigate = useNavigate()
   return (
     <>
       <div className="hidden md:block">
@@ -26,13 +25,10 @@ export function PromptSetTable({ sets }: { sets: PromptSet[] }) {
             {sets.map((s) => (
               <TableRow
                 key={s.id}
-                className="cursor-pointer"
-                onClick={(ev) => {
-                  if (!(ev.target as HTMLElement).closest("a, button")) navigate(`/prompts/${s.id}`)
-                }}
+                className="relative"
               >
                 <TableCell className="max-w-0 min-w-56 py-3 whitespace-normal">
-                  <Link to={`/prompts/${s.id}`} title={s.name} className="line-clamp-2 rounded-sm font-medium break-words underline-offset-4 hover:underline">
+                  <Link to={`/prompts/${s.id}`} title={s.name} className="line-clamp-2 rounded-sm font-medium break-words underline-offset-4 after:absolute after:inset-0 after:content-[''] hover:underline">
                     {s.name}
                   </Link>
                 </TableCell>

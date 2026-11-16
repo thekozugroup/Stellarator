@@ -24,14 +24,24 @@ export function EndpointFormDialog({
   open,
   endpoint,
   onOpenChange,
+  focusKey = false,
 }: {
   open: boolean
   endpoint: Endpoint | null
   onOpenChange: (open: boolean) => void
+  /** Open with the API key field focused (linked from a rejected-key banner). */
+  focusKey?: boolean
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        onOpenAutoFocus={(ev) => {
+          if (!focusKey) return
+          ev.preventDefault()
+          document.getElementById("ep-api_key")?.focus()
+        }}
+      >
         <EndpointForm endpoint={endpoint} onDone={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -167,7 +177,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         id="ep-base_url"
         label="Base URL"
         error={errors.base_url}
-        hint="From Docker, this machine is http://host.docker.internal:PORT/v1."
+        hint={/^https?:\/\/(localhost|127\.0\.0\.1)\b/i.test(baseUrl.trim()) ? "From Docker, this machine is http://host.docker.internal:PORT/v1." : undefined}
       >
         <Input
           id="ep-base_url"
@@ -178,7 +188,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           autoComplete="off"
           spellCheck={false}
           autoCapitalize="none"
-          className="font-mono text-[13px]"
+          className="font-mono pointer-fine:text-[13px]"
           aria-invalid={!!errors.base_url}
           aria-describedby={describe("base_url", true)}
           onChange={(e) => {
@@ -203,7 +213,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
             autoComplete="off"
             spellCheck={false}
             autoCapitalize="none"
-            className="pr-10 font-mono text-[13px]"
+            className="pr-10 font-mono pointer-fine:text-[13px]"
             aria-invalid={!!errors.api_key}
             aria-describedby={errors.api_key ? "ep-api_key-error" : editing && endpoint?.has_api_key ? "ep-api_key-hint" : undefined}
             onChange={(e) => {
@@ -234,7 +244,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           </p>
         ) : null}
         {editing && endpoint?.has_api_key ? (
-          <Label htmlFor="ep-remove-key" className="flex min-h-8 items-center gap-2 text-sm font-normal">
+          <Label htmlFor="ep-remove-key" className="flex min-h-9 items-center gap-2 text-sm font-normal pointer-coarse:min-h-11">
             <Checkbox
               id="ep-remove-key"
               checked={removeKey}
@@ -273,7 +283,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
       </Field>
 
       <Collapsible open={headersOpen} onOpenChange={setHeadersOpen}>
-        <CollapsibleTrigger className="flex min-h-8 items-center gap-1.5 rounded-md text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none">
+        <CollapsibleTrigger className="flex min-h-9 pointer-coarse:min-h-11 items-center gap-1.5 rounded-md text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none">
           <ChevronRight className={`size-4 text-muted-foreground transition-transform duration-150 ${headersOpen ? "rotate-90" : ""}`} aria-hidden="true" />
           Headers
           <span className="font-normal text-muted-foreground">
@@ -290,7 +300,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
                   placeholder="X-Org-Id"
                   spellCheck={false}
                   autoCapitalize="none"
-                  className="font-mono text-[13px]"
+                  className="font-mono pointer-fine:text-[13px]"
                   onChange={(e) => {
                     setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, key: e.target.value } : r)))
                     staleTest()
@@ -302,7 +312,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
                   placeholder="value"
                   spellCheck={false}
                   autoCapitalize="none"
-                  className="font-mono text-[13px]"
+                  className="font-mono pointer-fine:text-[13px]"
                   onChange={(e) => {
                     setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, value: e.target.value } : r)))
                     staleTest()
