@@ -484,8 +484,9 @@ function Review({ set }: { set: PreferenceSet }) {
 
   return (
     <Page
-      // On a phone the tab bar already goes back, so the back link, the meta line and the top padding give way to the first response.
-      className="max-sm:pt-3 max-sm:[&>a]:hidden max-sm:[&>header]:mb-3"
+      // On a phone the meta line and the top padding give way to the first response. The back link
+      // stays: a nested screen keeps its chevron back to the parent (HIG).
+      className="max-sm:pt-2 max-sm:[&>a]:mb-0 max-sm:[&>header]:mb-3"
       title={set.name}
       back={{ to: "/preferences", label: "Preferences" }}
       meta={<div className="max-sm:hidden"><SetMeta set={set} /></div>}
