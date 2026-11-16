@@ -1,7 +1,8 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react"
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
+import { ModelText, TextModeToggle } from "@/components/shared/model-text"
 import { SampleStatusPill } from "@/components/shared/status-pill"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -49,7 +50,7 @@ function Thinking({ sample }: { sample: Sample }) {
       </div>
       <CollapsibleContent>
         <div className="mt-2 rounded-lg bg-muted px-3 py-2.5 text-muted-foreground">
-          <p className="model-text">{text}</p>
+          <ModelText text={text} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -98,7 +99,7 @@ function Body({ sample }: { sample: Sample }) {
           {sample.messages.map((m, i) => (
             <div key={i} className="grid gap-1">
               <span className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</span>
-              <p className="model-text">{m.content}</p>
+              <ModelText text={m.content} />
             </div>
           ))}
         </div>
@@ -108,7 +109,7 @@ function Body({ sample }: { sample: Sample }) {
 
       <Part title="Response" copy={sample.response ? { value: sample.response, label: "Copy response" } : undefined}>
         {sample.response ? (
-          <p className="model-text">{sample.response}</p>
+          <ModelText text={sample.response} />
         ) : sample.status === "failed" ? (
           <p className="text-sm text-muted-foreground">No response. The request failed after {count(sample.attempts, "attempt", "attempts")}; the error is below.</p>
         ) : sample.status === "done" && sample.finish_reason === "length" ? (
@@ -166,6 +167,7 @@ export function SampleViewer({
   onCloseAutoFocus: (e: Event) => void
 }) {
   const sample = useSample(sampleId)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const s = sample.data && sample.data.id === sampleId ? sample.data : undefined
 
   function onKeyDown(e: KeyboardEvent) {
@@ -186,6 +188,11 @@ export function SampleViewer({
         side="right"
         onKeyDown={onKeyDown}
         onCloseAutoFocus={onCloseAutoFocus}
+        onOpenAutoFocus={(e) => {
+          // Start in the reading area, so J and K work at once and no control is picked for the user.
+          e.preventDefault()
+          bodyRef.current?.focus()
+        }}
         className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[45rem]"
       >
         <SheetHeader className="gap-2 border-b px-4 py-3 pr-14 sm:px-6">
@@ -201,7 +208,7 @@ export function SampleViewer({
           <SheetDescription className="sr-only">
             The prompt, thinking trace and response of one sample. Press J for the next sample and K for the previous one.
           </SheetDescription>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -226,9 +233,15 @@ export function SampleViewer({
               <ChevronRight aria-hidden="true" />
               <Kbd className="ml-1 hidden sm:inline-flex">J</Kbd>
             </Button>
+            <TextModeToggle className="ml-auto" />
           </div>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+        <div
+          ref={bodyRef}
+          tabIndex={-1}
+          aria-label="Sample"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 outline-none sm:px-6"
+        >
           {sample.isError ? (
             <ErrorBlock message={`Couldn't load this sample. ${sample.error.message}`} onRetry={() => void sample.refetch()} />
           ) : s ? (

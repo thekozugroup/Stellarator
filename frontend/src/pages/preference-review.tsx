@@ -1,3 +1,4 @@
+import { TextModeToggle } from "@/components/shared/model-text"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -429,9 +430,12 @@ function Review({ set }: { set: PreferenceSet }) {
           <h2 id="review-question" ref={headingRef} tabIndex={-1} className="text-base font-semibold focus:outline-none">
             Which response is better for this prompt?
           </h2>
-          <p className="tabular text-xs text-muted-foreground">
-            Prompt {int(item.prompt_idx + 1)} in {set.prompt_set_name}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="tabular text-xs text-muted-foreground">
+              Prompt {int(item.prompt_idx + 1)} in {set.prompt_set_name}
+            </p>
+            <TextModeToggle />
+          </div>
         </div>
         <PromptView messages={item.messages} />
         <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">

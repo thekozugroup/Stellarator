@@ -236,7 +236,9 @@ export function SamplesSection({ run }: { run: Run }) {
   // The sheet opens from the URL, not from a trigger, so focus is returned by hand to the row of
   // the sample last shown (J and K may have moved it).
   const lastShown = useRef<number | null>(null)
-  if (sampleId !== null) lastShown.current = sampleId
+  useEffect(() => {
+    if (sampleId !== null) lastShown.current = sampleId
+  }, [sampleId])
   const returnFocus = (e: Event) => {
     e.preventDefault()
     const links = document.querySelectorAll<HTMLElement>(`[data-sample-link="${lastShown.current}"]`)

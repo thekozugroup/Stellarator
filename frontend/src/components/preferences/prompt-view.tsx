@@ -1,3 +1,4 @@
+import { ModelText } from "@/components/shared/model-text"
 import { useState } from "react"
 import type { Message } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -29,7 +30,7 @@ export function PromptView({ messages }: { messages: Message[] }) {
         {messages.map((m, n) => (
           <div key={n} className="grid gap-1">
             <p className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</p>
-            <div className="model-text text-sm">{text(m.content)}</div>
+            <ModelText text={text(m.content)} className="text-sm" />
           </div>
         ))}
       </div>

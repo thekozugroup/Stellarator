@@ -1,3 +1,4 @@
+import { ModelText } from "@/components/shared/model-text"
 import { Check, ChevronRight, X } from "lucide-react"
 import { Pill } from "@/components/shared/status-pill"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -105,7 +106,7 @@ export function CandidateCard({
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="mt-2 max-h-[32rem] overflow-y-auto overscroll-contain rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
-                <div className="model-text">{candidate.reasoning}</div>
+                <ModelText text={candidate.reasoning} />
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -114,7 +115,7 @@ export function CandidateCard({
         )}
 
         {candidate.response?.trim() ? (
-          <div className="model-text text-sm">{candidate.response}</div>
+          <ModelText text={candidate.response} className="text-sm" />
         ) : (
           <p className="text-sm text-muted-foreground">The model returned an empty response.</p>
         )}

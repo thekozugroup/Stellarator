@@ -1,3 +1,4 @@
+import { TextModeToggle } from "@/components/shared/model-text"
 import { useEffect, useRef, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
@@ -134,9 +135,12 @@ export function PromptSetDetailPage() {
             className="pl-8"
           />
         </div>
-        <p className="text-sm text-muted-foreground tabular" aria-live="polite">
-          {data ? (total ? `Showing ${int(first)}–${int(last)} of ${int(total)}` : "Showing 0 of 0") : <Bar className="w-40" />}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground tabular" aria-live="polite">
+            {data ? (total ? `Showing ${int(first)}–${int(last)} of ${int(total)}` : "Showing 0 of 0") : <Bar className="w-40" />}
+          </p>
+          <TextModeToggle />
+        </div>
       </div>
 
       {prompts.isError && !data ? (

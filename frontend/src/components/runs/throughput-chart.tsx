@@ -129,14 +129,13 @@ export function ThroughputChart({
   live,
 }: {
   metrics: MetricPoint[]
-  /** The current rate and setting, appended as "now" while the run is going. */
-  live?: { tps: number; seqs: number; active: number } | null
+  /** The current rate and setting and when they were read, appended as the newest point while the run is going. */
+  live?: { tps: number; seqs: number; active: number; at: number } | null
 }) {
   const data = useMemo<Point[]>(() => {
     const pts = metrics.map((m) => ({ t: Date.parse(m.t), tps: m.tokens_per_s, seqs: m.concurrency, active: m.active }))
-    if (live && pts.length) {
-      const now = Date.now()
-      if (now > pts[pts.length - 1].t + 500) pts.push({ t: now, tps: live.tps, seqs: live.seqs, active: live.active })
+    if (live && pts.length && live.at > pts[pts.length - 1].t + 500) {
+      pts.push({ t: live.at, tps: live.tps, seqs: live.seqs, active: live.active })
     }
     return pts
   }, [metrics, live])

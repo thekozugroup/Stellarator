@@ -1,3 +1,4 @@
+import { ModelText } from "@/components/shared/model-text"
 import { useLayoutEffect, useRef, useState } from "react"
 import { oneLine, promptText } from "@/lib/format"
 import type { Prompt } from "@/lib/types"
@@ -33,7 +34,7 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
         {open && system ? (
           <div className="mb-2">
             <p className="text-xs text-muted-foreground">System message</p>
-            <p className="model-text rounded-md bg-muted px-3 py-2 text-sm">{system.content}</p>
+            <ModelText text={system.content} className="rounded-md bg-muted px-3 py-2 text-sm" />
           </div>
         ) : null}
         {open && others.length ? (
@@ -41,15 +42,19 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
             {others.map((m, i) => (
               <div key={i}>
                 <p className="text-xs text-muted-foreground capitalize">{m.role}</p>
-                <p className="model-text text-sm">{m.content}</p>
+                <ModelText text={m.content} className="text-sm" />
               </div>
             ))}
           </div>
         ) : null}
         {open && (system || others.length) ? <p className="text-xs text-muted-foreground">User</p> : null}
-        <p ref={ref} className={`model-text text-sm ${open ? "" : "line-clamp-3"}`}>
-          {text || <span className="text-muted-foreground">This prompt has no user text.</span>}
-        </p>
+        {open && text ? (
+          <ModelText text={text} className="text-sm" />
+        ) : (
+          <p ref={ref} className="model-text line-clamp-3 text-sm">
+            {text || <span className="text-muted-foreground">This prompt has no user text.</span>}
+          </p>
+        )}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {system && !open ? <span>Has a system message</span> : null}
           {meta ? (

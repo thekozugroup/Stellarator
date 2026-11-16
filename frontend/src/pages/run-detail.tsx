@@ -144,7 +144,11 @@ export function RunDetailPage() {
         <Panel title="Throughput" description="Output tokens per second, and the seqs setting.">
           <ThroughputChart
             metrics={data.metrics}
-            live={isActive(r.status) && !lostContact ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight } : null}
+            live={
+              isActive(r.status) && !lostContact
+                ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight, at: live.dataUpdatedAt }
+                : null
+            }
           />
         </Panel>
         {/* Nothing can be in flight once a run has finished, so the chart takes the row. */}
