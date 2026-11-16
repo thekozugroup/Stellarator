@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Data and secrets
+/data/
+*.db
+*.db-shm
+*.db-wal
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+backend/stellarator/static/

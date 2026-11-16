@@ -1,0 +1,241 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --color-copper: var(--copper);
+    --color-copper-tint: var(--copper-tint);
+    --color-copper-ink: var(--copper-ink);
+    --color-positive: var(--positive);
+    --color-positive-tint: var(--positive-tint);
+    --color-positive-ink: var(--positive-ink);
+    --color-negative-tint: var(--negative-tint);
+    --color-negative-ink: var(--negative-ink);
+    --color-warning: var(--warning);
+    --color-warning-tint: var(--warning-tint);
+    --color-warning-ink: var(--warning-ink);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+  Stellarator tokens. See DESIGN.md. True neutral grays (chroma 0); coil copper is the one accent
+  and goes on data. Every value below is a role; components use the roles, never raw colors.
+*/
+:root {
+    color-scheme: light;
+    --radius: 0.375rem;
+
+    --background: oklch(0.99 0 0);
+    --foreground: oklch(0.2 0 0);
+    --card: oklch(0.99 0 0);
+    --card-foreground: oklch(0.2 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.2 0 0);
+    --primary: oklch(0.22 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.955 0 0);
+    --secondary-foreground: oklch(0.22 0 0);
+    --muted: oklch(0.965 0 0);
+    --muted-foreground: oklch(0.48 0 0);
+    --accent: oklch(0.945 0 0);
+    --accent-foreground: oklch(0.2 0 0);
+    --border: oklch(0.91 0 0);
+    --input: oklch(0.62 0 0);
+    --ring: oklch(0.56 0.15 45);
+
+    --copper: oklch(0.56 0.15 45);
+    --copper-tint: oklch(0.95 0.03 50);
+    --copper-ink: oklch(0.42 0.11 45);
+    --destructive: oklch(0.55 0.2 27);
+    --negative-tint: oklch(0.955 0.025 27);
+    --negative-ink: oklch(0.43 0.15 27);
+    --positive: oklch(0.52 0.12 150);
+    --positive-tint: oklch(0.955 0.035 150);
+    --positive-ink: oklch(0.36 0.08 150);
+    --warning: oklch(0.6 0.13 75);
+    --warning-tint: oklch(0.955 0.045 85);
+    --warning-ink: oklch(0.42 0.09 70);
+
+    --chart-1: var(--copper);
+    --chart-2: oklch(0.45 0 0);
+    --chart-3: oklch(0.7 0 0);
+    --chart-4: oklch(0.32 0 0);
+    --chart-5: oklch(0.82 0 0);
+    --chart-grid: oklch(0.92 0 0);
+
+    --sidebar: oklch(0.97 0 0);
+    --sidebar-foreground: oklch(0.2 0 0);
+    --sidebar-primary: oklch(0.22 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.925 0 0);
+    --sidebar-accent-foreground: oklch(0.2 0 0);
+    --sidebar-border: oklch(0.91 0 0);
+    --sidebar-ring: oklch(0.56 0.15 45);
+}
+
+.dark {
+    color-scheme: dark;
+    --background: oklch(0.165 0 0);
+    --foreground: oklch(0.93 0 0);
+    --card: oklch(0.165 0 0);
+    --card-foreground: oklch(0.93 0 0);
+    --popover: oklch(0.225 0 0);
+    --popover-foreground: oklch(0.93 0 0);
+    --primary: oklch(0.93 0 0);
+    --primary-foreground: oklch(0.2 0 0);
+    --secondary: oklch(0.25 0 0);
+    --secondary-foreground: oklch(0.93 0 0);
+    --muted: oklch(0.215 0 0);
+    --muted-foreground: oklch(0.7 0 0);
+    --accent: oklch(0.26 0 0);
+    --accent-foreground: oklch(0.93 0 0);
+    --border: oklch(0.28 0 0);
+    --input: oklch(0.5 0 0);
+    --ring: oklch(0.72 0.14 52);
+
+    --copper: oklch(0.72 0.14 52);
+    --copper-tint: oklch(0.3 0.05 50);
+    --copper-ink: oklch(0.88 0.07 55);
+    --destructive: oklch(0.68 0.18 25);
+    --negative-tint: oklch(0.3 0.07 25);
+    --negative-ink: oklch(0.88 0.07 25);
+    --positive: oklch(0.72 0.13 150);
+    --positive-tint: oklch(0.3 0.05 150);
+    --positive-ink: oklch(0.88 0.08 150);
+    --warning: oklch(0.78 0.13 80);
+    --warning-tint: oklch(0.32 0.05 80);
+    --warning-ink: oklch(0.9 0.08 85);
+
+    --chart-1: var(--copper);
+    --chart-2: oklch(0.7 0 0);
+    --chart-3: oklch(0.5 0 0);
+    --chart-4: oklch(0.85 0 0);
+    --chart-5: oklch(0.38 0 0);
+    --chart-grid: oklch(0.26 0 0);
+
+    --sidebar: oklch(0.19 0 0);
+    --sidebar-foreground: oklch(0.93 0 0);
+    --sidebar-primary: oklch(0.93 0 0);
+    --sidebar-primary-foreground: oklch(0.2 0 0);
+    --sidebar-accent: oklch(0.255 0 0);
+    --sidebar-accent-foreground: oklch(0.93 0 0);
+    --sidebar-border: oklch(0.27 0 0);
+    --sidebar-ring: oklch(0.72 0.14 52);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  html {
+    @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground text-sm antialiased;
+    line-height: 1.5;
+    font-feature-settings: "kern";
+  }
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+  p, li, dd {
+    text-wrap: pretty;
+  }
+  a {
+    text-underline-offset: 0.18em;
+  }
+  table, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background-color: var(--copper-tint);
+    color: var(--copper-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Components that draw their own ring do not need the outline too. */
+  [data-slot]:focus-visible {
+    outline: none;
+  }
+  :where(button, a, [role="button"], label, summary, input[type="checkbox"], input[type="radio"]) {
+    touch-action: manipulation;
+  }
+  @media (pointer: coarse) {
+    :where(input, select, textarea) {
+      font-size: max(16px, 1em);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-property: opacity, color, background-color, border-color !important;
+    }
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Raw model text: prompts, thinking traces, responses. Whitespace preserved, never reflowed. */
+@utility model-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  max-width: 80ch;
+}
