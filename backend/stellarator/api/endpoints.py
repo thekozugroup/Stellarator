@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models import Endpoint, Run
 from ..schemas import EndpointIn, EndpointOut, EndpointPatch, EndpointTestIn, EndpointTestOut
-from ..services.openai_compat import describe_http_error, list_models
+from ..services.openai_compat import check_key, describe_http_error, list_models
 from ..services.settings import key_hint
 
 router = APIRouter(prefix="/api/endpoints", tags=["endpoints"])
@@ -53,8 +53,9 @@ async def _check(ep: Endpoint) -> None:
     try:
         models, _ = await list_models(ep.base_url, ep.api_key, ep.headers)
         ep.models = models
-        ep.last_ok = True
-        ep.last_error = None
+        key_error = await check_key(ep.base_url, ep.api_key, ep.headers)
+        ep.last_ok = key_error is None
+        ep.last_error = key_error
     except (httpx.HTTPError, ValueError) as exc:
         ep.last_ok = False
         ep.last_error = describe_http_error(exc)
@@ -86,7 +87,8 @@ async def test_endpoint(body: EndpointTestIn, session: AsyncSession = Depends(ge
         api_key = saved.api_key if saved else None
     try:
         models, latency = await list_models(body.base_url, api_key, body.headers)
-        return EndpointTestOut(ok=True, models=models, latency_ms=latency, error=None)
+        key_error = await check_key(body.base_url, api_key, body.headers)
+        return EndpointTestOut(ok=key_error is None, models=models, latency_ms=latency, error=key_error)
     except (httpx.HTTPError, ValueError) as exc:
         return EndpointTestOut(ok=False, models=[], latency_ms=None, error=describe_http_error(exc))
 

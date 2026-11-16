@@ -32,7 +32,7 @@ export function Pill({ tone = "plain", children, className }: { tone?: Tone; chi
 }
 
 const runTone: Record<RunStatus, Tone> = {
-  running: "copper",
+  running: "positive",
   pausing: "warning",
   paused: "warning",
   completed: "plain",
@@ -45,14 +45,13 @@ const runLabel: Record<RunStatus, string> = {
   completed: "Completed",
 }
 
-export function RunStatusPill({ status, failed = 0 }: { status: RunStatus; failed?: number }) {
-  if (status === "completed" && failed > 0) return <Pill tone="negative">Completed with failures</Pill>
+export function RunStatusPill({ status }: { status: RunStatus; failed?: number }) {
   return <Pill tone={runTone[status]}>{runLabel[status]}</Pill>
 }
 
 const sampleTone: Record<SampleStatus, Tone> = {
   pending: "plain",
-  running: "copper",
+  running: "positive",
   done: "plain",
   failed: "negative",
 }

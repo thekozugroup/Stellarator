@@ -76,3 +76,41 @@ async def list_models(
     if not ids and isinstance(data, dict) and isinstance(data.get("models"), list):
         ids = [str(m.get("name") or m.get("model")) for m in data["models"] if isinstance(m, dict)]
     return sorted(set(ids), key=str.lower), latency
+
+
+async def check_key(
+    base_url: str, api_key: str | None, headers: dict[str, str] | None = None, timeout: float = 15
+) -> str | None:
+    """Return a sentence when the server rejects the API key, else None.
+
+    Some servers (OpenRouter, for one) list models without checking the key, so a working
+    GET /models proves nothing about it. This sends an empty chat request instead: servers check
+    the key before they read the body, so 401 or 403 means the key was rejected, and any other
+    answer (400, 404, 422) means it was accepted. Nothing is generated; max_tokens is 1 in case a
+    lenient server tries anyway. Network errors return None: the models check reports those.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{api_root(base_url)}/chat/completions",
+                headers=build_headers(api_key, headers),
+                json={"model": "", "messages": [], "max_tokens": 1},
+            )
+    except httpx.HTTPError:
+        return None
+    if resp.status_code in (401, 403):
+        sentence = describe_http_error(httpx.HTTPStatusError("", request=resp.request, response=resp))
+        detail = _server_message(resp)
+        return f"{sentence[:-1]}: {detail}" if detail and sentence.endswith(".") else sentence
+    return None
+
+
+def _server_message(resp: httpx.Response) -> str | None:
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    err = body.get("error") if isinstance(body, dict) else None
+    msg = err.get("message") if isinstance(err, dict) else (err if isinstance(err, str) else None)
+    msg = (msg or (body.get("message") if isinstance(body, dict) else None) or "").strip()
+    return msg[:160] or None

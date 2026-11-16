@@ -1,14 +1,12 @@
 import { Suspense } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
-import { useTheme } from "next-themes"
-import { Cable, FileText, GitCompareArrows, Monitor, Moon, Play, Settings, Sun } from "lucide-react"
+import { Cable, FileText, GitCompareArrows, Play, Settings } from "lucide-react"
 import { Logo } from "@/components/logo"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 
 const NAV = [
   { to: "/runs", label: "Runs", short: "Runs", icon: Play },
-  { to: "/prompts", label: "Prompt sets", short: "Prompts", icon: FileText },
+  { to: "/prompts", label: "Prompt sets", short: "Prompt sets", icon: FileText },
   { to: "/endpoints", label: "Endpoints", short: "Endpoints", icon: Cable },
   { to: "/preferences", label: "Preferences", short: "Preferences", icon: GitCompareArrows },
 ]
@@ -38,32 +36,6 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
-function ThemeSwitch() {
-  const { theme, setTheme } = useTheme()
-  return (
-    <ToggleGroup
-      type="single"
-      size="sm"
-      variant="outline"
-      spacing={0}
-      value={theme ?? "system"}
-      onValueChange={(v) => v && setTheme(v)}
-      aria-label="Theme"
-      className="w-full"
-    >
-      <ToggleGroupItem value="light" aria-label="Light theme" title="Light" className="flex-1">
-        <Sun aria-hidden="true" />
-      </ToggleGroupItem>
-      <ToggleGroupItem value="dark" aria-label="Dark theme" title="Dark" className="flex-1">
-        <Moon aria-hidden="true" />
-      </ToggleGroupItem>
-      <ToggleGroupItem value="system" aria-label="Match system theme" title="System" className="flex-1">
-        <Monitor aria-hidden="true" />
-      </ToggleGroupItem>
-    </ToggleGroup>
-  )
-}
-
 function Brand() {
   return (
     <NavLink to="/runs" className="flex items-center gap-2 rounded-md px-1 py-1 pointer-coarse:min-h-11 text-[15px] font-semibold tracking-[-0.01em]">
@@ -89,7 +61,6 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
         <Settings className="size-4" strokeWidth={1.75} aria-hidden="true" />
         Settings
       </NavLink>
-      <ThemeSwitch />
     </div>
   )
 }

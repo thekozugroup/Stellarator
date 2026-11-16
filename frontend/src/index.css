@@ -345,20 +345,25 @@
 
 @layer base {
   @media (pointer: coarse) {
+    /* Every control that is laid out as a box (buttons, link-buttons, triggers, tabs, menu items,
+       fields). Inline text links are untouched: min-height does not apply to inline boxes. */
     :where(
-        [data-slot="button"],
-        [data-slot="toggle"],
-        [data-slot="toggle-group-item"],
-        [data-slot="select-trigger"],
-        [data-slot="tabs-trigger"],
-        [data-slot="input"],
-        [data-slot="dropdown-menu-item"],
-        [data-slot="select-item"],
-        [data-slot="command-item"]
-      ) {
+        button,
+        a[href],
+        summary,
+        input:not([type="checkbox"], [type="radio"]),
+        select,
+        [role="button"],
+        [role="tab"],
+        [role="menuitem"],
+        [role="menuitemradio"],
+        [role="option"],
+        [role="combobox"],
+        [data-slot="toggle-group-item"]
+      ):not(.md *, .sr-only, [data-touch="inline"], [role="checkbox"], [role="radio"], [role="switch"], [data-slot="checkbox"], [data-slot="radio-group-item"], [data-slot="switch"]) {
       min-height: 44px;
     }
-    :where([data-slot="button"][data-size^="icon"], [data-slot="toggle-group-item"]) {
+    :where([data-size^="icon"], [data-slot="toggle-group-item"], [data-slot="dropdown-menu-trigger"]):not(.md *) {
       min-width: 44px;
     }
     /* Small marks keep their look; their hit area grows invisibly. */
