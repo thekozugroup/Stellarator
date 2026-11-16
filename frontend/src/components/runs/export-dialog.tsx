@@ -71,13 +71,10 @@ export function ExportDialog({ run, open, onOpenChange }: { run: Run; open: bool
       <OptionGroup legend="Samples">
         <CheckOption checked={options.exclude_truncated} onChange={(v) => set("exclude_truncated", v)} label="Skip truncated responses" />
         <CheckOption checked={options.require_reasoning} onChange={(v) => set("require_reasoning", v)} label="Only samples with a thinking trace" />
-        <CheckOption
-          checked={options.first_sample_only}
-          onChange={(v) => set("first_sample_only", v)}
-          label="First sample per prompt only"
-          disabled={singleSample}
-          hint={singleSample ? "This run takes one sample per prompt." : undefined}
-        />
+        {/* A run that takes one sample per prompt has no others to leave out. */}
+        {!singleSample ? (
+          <CheckOption checked={options.first_sample_only} onChange={(v) => set("first_sample_only", v)} label="First sample per prompt only" />
+        ) : null}
         <CheckOption checked={options.include_system} onChange={(v) => set("include_system", v)} label="Include system prompt" />
       </OptionGroup>
       <FileTypeGroup value={options.file_type} onChange={(v) => set("file_type", v)} />

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ApiError, api } from "@/lib/api"
@@ -58,10 +57,32 @@ function skippedText(skipped: Record<string, number>): string | null {
 
 export function OptionGroup({ legend, children }: { legend: string; children: ReactNode }) {
   return (
-    <fieldset className="grid min-w-0 gap-3">
-      <legend className="mb-3 text-sm font-semibold">{legend}</legend>
+    <fieldset className="grid min-w-0 gap-3 pointer-coarse:gap-0">
+      <legend className="mb-3 text-sm font-semibold pointer-coarse:mb-1">{legend}</legend>
       {children}
     </fieldset>
+  )
+}
+
+/**
+ * One option as a whole-row label: the dot or box, its name and an optional one-line hint. The row
+ * takes the tap, and on touch screens it is at least 44 px tall.
+ */
+function OptionRow({ id, label, hint, control }: { id: string; label: ReactNode; hint?: ReactNode; control: ReactNode }) {
+  return (
+    <label htmlFor={id} className="flex items-start gap-3 pointer-coarse:min-h-11 pointer-coarse:py-3 has-disabled:opacity-50">
+      {control}
+      <span className="grid gap-0.5">
+        <span id={`${id}-label`} className="text-sm leading-snug">
+          {label}
+        </span>
+        {hint ? (
+          <span id={`${id}-hint`} className="text-xs text-muted-foreground">
+            {hint}
+          </span>
+        ) : null}
+      </span>
+    </label>
   )
 }
 
@@ -80,23 +101,25 @@ export function ChoiceGroup<T extends string>({
   const uid = useId()
   return (
     <OptionGroup legend={legend}>
-      <RadioGroup value={value} onValueChange={(v) => onChange(v as T)} className="gap-3">
+      <RadioGroup value={value} onValueChange={(v) => onChange(v as T)} className="gap-3 pointer-coarse:gap-0">
         {choices.map((c) => {
           const id = `${uid}-${c.value}`
           return (
-            <div key={c.value} className="flex items-start gap-3">
-              <RadioGroupItem id={id} value={c.value} className="mt-0.5" aria-describedby={c.hint ? `${id}-hint` : undefined} />
-              <div className="grid gap-0.5">
-                <Label htmlFor={id} className="text-sm leading-snug font-medium">
-                  {c.label}
-                </Label>
-                {c.hint ? (
-                  <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-                    {c.hint}
-                  </p>
-                ) : null}
-              </div>
-            </div>
+            <OptionRow
+              key={c.value}
+              id={id}
+              label={<span className="font-medium">{c.label}</span>}
+              hint={c.hint}
+              control={
+                <RadioGroupItem
+                  id={id}
+                  value={c.value}
+                  className="mt-0.5"
+                  aria-labelledby={`${id}-label`}
+                  aria-describedby={c.hint ? `${id}-hint` : undefined}
+                />
+              }
+            />
           )
         })}
       </RadioGroup>
@@ -119,26 +142,22 @@ export function CheckOption({
 }) {
   const id = useId()
   return (
-    <div className="flex items-start gap-3">
-      <Checkbox
-        id={id}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(c) => onChange(c === true)}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className="mt-0.5"
-      />
-      <div className="grid gap-0.5">
-        <Label htmlFor={id} className="text-sm leading-snug font-normal">
-          {label}
-        </Label>
-        {hint ? (
-          <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-            {hint}
-          </p>
-        ) : null}
-      </div>
-    </div>
+    <OptionRow
+      id={id}
+      label={label}
+      hint={hint}
+      control={
+        <Checkbox
+          id={id}
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(c) => onChange(c === true)}
+          aria-labelledby={`${id}-label`}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          className="mt-0.5"
+        />
+      }
+    />
   )
 }
 
@@ -158,7 +177,7 @@ export function FileTypeGroup({ value, onChange }: { value: FileType; onChange: 
         aria-labelledby={id}
       >
         {FILE_TYPES.map((t) => (
-          <ToggleGroupItem key={t.value} value={t.value} className={cn("px-3 pointer-coarse:h-11", SEGMENT_ON)}>
+          <ToggleGroupItem key={t.value} value={t.value} className={cn("px-3", SEGMENT_ON)}>
             {t.label}
           </ToggleGroupItem>
         ))}
@@ -206,7 +225,7 @@ function HubPush({
     return (
       <p className="text-sm text-muted-foreground">
         Pushing needs a Hugging Face token with write access.{" "}
-        <Link to="/settings" className="text-foreground underline underline-offset-4">
+        <Link to="/settings" className="inline-flex items-center text-foreground underline underline-offset-4">
           Add a token in Settings
         </Link>
       </p>
@@ -245,7 +264,7 @@ function HubPush({
             autoCorrect="off"
             aria-invalid={!!errors.repo_id || undefined}
             aria-describedby={errors.repo_id ? `${repoId}-error` : `${repoId}-hint`}
-            className="font-mono pointer-coarse:h-11"
+            className="font-mono"
           />
         </Field>
         <Field id={splitId} label="Split" error={errors.split}>
@@ -261,7 +280,7 @@ function HubPush({
             autoCapitalize="none"
             aria-invalid={!!errors.split || undefined}
             aria-describedby={errors.split ? `${splitId}-error` : undefined}
-            className="font-mono pointer-coarse:h-11"
+            className="font-mono"
           />
         </Field>
       </div>
@@ -284,7 +303,6 @@ function HubPush({
           disabled={!!disabledReasonId}
           aria-describedby={disabledReasonId}
           aria-disabled={mutation.isPending || undefined}
-          className="pointer-coarse:h-11"
         >
           {mutation.isPending ? "Pushing…" : "Push dataset"}
         </Button>
@@ -416,19 +434,19 @@ export function ExportDialogShell({
             </p>
           ) : null}
           <DialogClose asChild>
-            <Button type="button" variant="outline" className="pointer-coarse:h-11">
+            <Button type="button" variant="outline">
               Cancel
             </Button>
           </DialogClose>
           {data && data.count > 0 ? (
-            <Button asChild className="pointer-coarse:h-11">
+            <Button asChild>
               <a href={downloadHref} download={data.filename} title={data.filename}>
                 <Download aria-hidden="true" />
                 Download {typeLabel}
               </a>
             </Button>
           ) : (
-            <Button type="button" disabled aria-describedby={nothing ? emptyId : undefined} className="pointer-coarse:h-11">
+            <Button type="button" disabled aria-describedby={nothing ? emptyId : undefined}>
               <Download aria-hidden="true" />
               Download {typeLabel}
             </Button>

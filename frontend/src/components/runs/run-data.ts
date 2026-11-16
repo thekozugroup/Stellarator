@@ -1,5 +1,6 @@
 /** Queries, keys and wording shared by the run screens. */
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { isKeyRejected } from "@/components/endpoints/endpoint-status"
 import { api, qs } from "@/lib/api"
 import type { Endpoint, Page, PromptSet, Run, RunLive, Sample, SampleSummary, Settings } from "@/lib/types"
 
@@ -100,6 +101,25 @@ export function finishReasonText(reason: string | null | undefined): { text: str
 }
 
 export const ROLE_LABEL: Record<string, string> = { system: "System", user: "User", assistant: "Assistant" }
+
+/** "Key rejected" or "Unreachable" when the endpoint's last check failed; null when it passed or never ran. */
+export function endpointTrouble(ep: Endpoint | undefined): "Key rejected" | "Unreachable" | null {
+  if (!ep || ep.last_ok !== false) return null
+  return isKeyRejected(ep.last_error) ? "Key rejected" : "Unreachable"
+}
+
+/**
+ * The endpoints screen with one endpoint's edit form open, focused on the field that needs fixing
+ * (the API key, or the URL when the server was unreachable); Save or Cancel comes back to `returnTo`.
+ */
+export function editEndpointHref(id: number, returnTo: string, focus: "key" | "url" | null = "key"): string {
+  return `/endpoints?edit=${id}${focus ? `&focus=${focus}` : ""}&return=${encodeURIComponent(returnTo).replace(/%2F/g, "/")}`
+}
+
+/** Which edit field fixes this trouble. */
+export function troubleField(trouble: "Key rejected" | "Unreachable" | null): "key" | "url" | null {
+  return trouble === "Key rejected" ? "key" : trouble === "Unreachable" ? "url" : null
+}
 
 /** Common seqs values, offered as one segmented row on New run and on a run. */
 export const SEQS_CHOICES = [1, 4, 8, 16, 32, 64, 128, 256]

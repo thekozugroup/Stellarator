@@ -24,22 +24,22 @@ export function EndpointFormDialog({
   open,
   endpoint,
   onOpenChange,
-  focusKey = false,
+  focusField = null,
 }: {
   open: boolean
   endpoint: Endpoint | null
   onOpenChange: (open: boolean) => void
-  /** Open with the API key field focused (linked from a rejected-key banner). */
-  focusKey?: boolean
+  /** Open with this field focused: "api_key" after a rejected key, "base_url" when unreachable. */
+  focusField?: "api_key" | "base_url" | null
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
         onOpenAutoFocus={(ev) => {
-          if (!focusKey) return
+          if (!focusField) return
           ev.preventDefault()
-          document.getElementById("ep-api_key")?.focus()
+          document.getElementById(`ep-${focusField}`)?.focus()
         }}
       >
         <EndpointForm endpoint={endpoint} onDone={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />

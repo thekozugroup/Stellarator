@@ -61,18 +61,28 @@ function withParams(params: URLSearchParams, changes: Record<string, string | nu
   return s ? `?${s}` : "?"
 }
 
+/** The status word a row shows: Truncated for a done sample cut off at max tokens. */
+function statusWord(s: SampleSummary): string {
+  if (s.status === "done" && s.finish_reason === "length") return FILTER_LABEL.truncated
+  return s.status === "running" ? "In flight" : FILTER_LABEL[s.status]
+}
+
 function SampleRows({
   items,
   run,
   params,
   selected,
+  filter,
 }: {
   items: SampleSummary[]
   run: Run
   params: URLSearchParams
   selected: number | null
+  filter: SampleFilter
 }) {
   const spp = run.params.samples_per_prompt
+  // Under a one-status tab every row would repeat the tab's name, so the status goes.
+  const showStatus = filter === "all" || items.some((s) => statusWord(s) !== FILTER_LABEL[filter])
   const open = (id: number) => ({ search: withParams(params, { sample: String(id) }) })
   // A thinking trace is the norm; the column appears only to mark finished samples without one.
   const noTrace = (s: SampleSummary) => s.status === "done" && !s.has_reasoning
@@ -88,8 +98,8 @@ function SampleRows({
             <th scope="col" className="hidden h-9 px-3 font-normal lg:table-cell">Response</th>
             {showThinking ? <th scope="col" className="hidden h-9 w-[5.5rem] px-3 font-normal xl:table-cell">Thinking</th> : null}
             <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Tokens</th>
-            <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Latency</th>
-            <th scope="col" className="h-9 w-[7.5rem] px-4 font-normal">Status</th>
+            <th scope="col" className={cn("h-9 w-[6rem] text-right font-normal", showStatus ? "px-3" : "pr-4 pl-3")}>Latency</th>
+            {showStatus ? <th scope="col" className="h-9 w-[7.5rem] px-4 font-normal">Status</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -107,6 +117,7 @@ function SampleRows({
               </td>
               <td className="px-3 py-2.5">
                 <Link
+                  data-touch="inline"
                   to={open(s.id)}
                   state={{ viewer: true }}
                   data-sample-link={s.id}
@@ -126,10 +137,12 @@ function SampleRows({
               <td className={cn("px-3 py-2.5 text-right tabular", s.completion_tokens === null && "text-muted-foreground")}>
                 {int(s.completion_tokens)}
               </td>
-              <td className="px-3 py-2.5 text-right text-muted-foreground tabular">{duration(s.latency_ms)}</td>
-              <td className="px-4 py-2.5">
-                <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
-              </td>
+              <td className={cn("py-2.5 text-right text-muted-foreground tabular", showStatus ? "px-3" : "pr-4 pl-3")}>{duration(s.latency_ms)}</td>
+              {showStatus ? (
+                <td className="px-4 py-2.5">
+                  <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -140,12 +153,13 @@ function SampleRows({
           <li key={s.id} className={cn("relative px-4 py-3 has-[a:focus-visible]:bg-muted/60", selected === s.id && "bg-muted")}>
             <div className="flex items-center gap-2 text-xs">
               <span className="font-mono text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</span>
-              <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
+              {showStatus ? <SampleStatusPill status={s.status} finishReason={s.finish_reason} /> : null}
               <span className="ml-auto text-muted-foreground tabular">
                 {s.completion_tokens !== null ? `${int(s.completion_tokens)} tokens` : null}
               </span>
             </div>
             <Link
+              data-touch="inline"
               to={open(s.id)}
               state={{ viewer: true }}
               data-sample-link={s.id}
@@ -280,7 +294,7 @@ export function SamplesSection({ run }: { run: Run }) {
             enterKeyHint="search"
             autoComplete="off"
             spellCheck={false}
-            className="pl-8 pointer-coarse:h-11"
+            className="pl-8"
           />
         </div>
       </div>
@@ -296,7 +310,7 @@ export function SamplesSection({ run }: { run: Run }) {
                   to={{ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-coarse:h-10",
+                    "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors duration-150",
                     active ? "bg-background font-medium text-foreground shadow-sm dark:bg-accent" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -338,7 +352,7 @@ export function SamplesSection({ run }: { run: Run }) {
         </div>
       ) : (
         <div className={cn("transition-opacity duration-150", samples.isPlaceholderData && "opacity-60")}>
-          <SampleRows items={items} run={run} params={params} selected={sampleId} />
+          <SampleRows items={items} run={run} params={params} selected={sampleId} filter={status} />
         </div>
       )}
 
@@ -350,27 +364,27 @@ export function SamplesSection({ run }: { run: Run }) {
           {pages > 1 ? (
             <div className="flex items-center gap-2">
               {page > 1 ? (
-                <Button asChild variant="outline" size="sm" className="pointer-coarse:h-11">
+                <Button asChild variant="outline" size="sm">
                   <Link to={{ search: withParams(params, { page: page - 1 > 1 ? String(page - 1) : null, sample: null }) }}>
                     <ChevronLeft aria-hidden="true" />
                     Previous
                   </Link>
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" disabled className="pointer-coarse:h-11">
+                <Button variant="outline" size="sm" disabled>
                   <ChevronLeft aria-hidden="true" />
                   Previous
                 </Button>
               )}
               {page < pages ? (
-                <Button asChild variant="outline" size="sm" className="pointer-coarse:h-11">
+                <Button asChild variant="outline" size="sm">
                   <Link to={{ search: withParams(params, { page: String(page + 1), sample: null }) }}>
                     Next
                     <ChevronRight aria-hidden="true" />
                   </Link>
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" disabled className="pointer-coarse:h-11">
+                <Button variant="outline" size="sm" disabled>
                   Next
                   <ChevronRight aria-hidden="true" />
                 </Button>

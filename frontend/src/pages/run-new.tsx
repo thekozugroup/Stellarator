@@ -7,7 +7,7 @@ import { Field } from "@/components/shared/field"
 import { Page } from "@/components/shared/page"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
-import { SEGMENT_ON, SEQS_CHOICES, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
+import { SEGMENT_ON, SEQS_CHOICES, editEndpointHref, endpointTrouble, troubleField, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ApiError, api } from "@/lib/api"
-import { count, duration, int } from "@/lib/format"
+import { count, dateTime, duration, int } from "@/lib/format"
 import type { Endpoint, PromptSet, Run, RunCreate } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -536,6 +536,13 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
   const defaultName = form.model && promptSet ? `${form.model} on ${promptSet.name}` : ""
   const modelHint = modelsNote ? modelsNote.text : endpoint && !endpoint.models.length ? "No models listed. Type a model id." : null
   const cloud = endpoint?.location === "cloud"
+  const trouble = endpointTrouble(endpoint)
+  // Prompt sets that share a name are told apart by when they were imported.
+  const sharedNames = useMemo(() => {
+    const seen = new Map<string, number>()
+    for (const s of sets.data ?? []) seen.set(s.name, (seen.get(s.name) ?? 0) + 1)
+    return seen
+  }, [sets.data])
   const timeoutS = Number(form.timeout)
 
   const advancedSummary = [
@@ -563,25 +570,44 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           id="endpoint"
           label="Endpoint"
           error={errors.endpoint}
-          hint={endpoint ? <span className="font-mono">{endpoint.base_url}</span> : undefined}
+          hint={
+            endpoint && trouble ? (
+              <span className="text-sm">
+                <span className="text-destructive">{trouble === "Key rejected" ? "Key rejected at last check." : "Unreachable at last check."}</span>{" "}
+                <Link
+                  to={editEndpointHref(endpoint.id, `/runs/new?endpoint=${endpoint.id}${form.prompt_set ? `&prompt_set=${form.prompt_set}` : ""}`, troubleField(trouble))}
+                  className="inline-flex items-center text-foreground underline underline-offset-4"
+                >
+                  Edit endpoint
+                </Link>
+              </span>
+            ) : endpoint ? (
+              <span className="font-mono">{endpoint.base_url}</span>
+            ) : undefined
+          }
         >
           {endpoints.data?.length ? (
             <Select value={form.endpoint} onValueChange={chooseEndpoint}>
               <SelectTrigger
                 id="endpoint"
-                className="w-full pointer-coarse:h-11"
+                className="w-full min-w-0"
                 aria-invalid={!!errors.endpoint || undefined}
                 aria-describedby={describe("endpoint", errors.endpoint, !!endpoint)}
               >
-                <SelectValue placeholder="Choose an endpoint" />
+                {/* The field shows the name alone; a failed check is said once, in the line below. */}
+                <SelectValue placeholder="Choose an endpoint">{endpoint ? <span className="truncate">{endpoint.name}</span> : undefined}</SelectValue>
               </SelectTrigger>
-              <SelectContent position="popper">
-                {endpoints.data.map((e) => (
-                  <SelectItem key={e.id} value={String(e.id)}>
-                    <span className="truncate">{e.name}</span>
-                    <span className="text-muted-foreground">{e.location === "cloud" ? "Cloud" : "Local"}</span>
-                  </SelectItem>
-                ))}
+              <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
+                {endpoints.data.map((e) => {
+                  const t = endpointTrouble(e)
+                  return (
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      <span className="min-w-0 break-words">
+                        {e.name} <span className={t ? "text-destructive" : "text-muted-foreground"}>· {t ?? (e.location === "cloud" ? "Cloud" : "Local")}</span>
+                      </span>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           ) : (
@@ -638,17 +664,30 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             <Select value={form.prompt_set} onValueChange={(v) => set("prompt_set", v)}>
               <SelectTrigger
                 id="prompt_set"
-                className="w-full pointer-coarse:h-11"
+                className="w-full min-w-0"
                 aria-invalid={!!errors.prompt_set || undefined}
                 aria-describedby={describe("prompt_set", errors.prompt_set)}
               >
-                <SelectValue placeholder="Choose a prompt set" />
+                {/* The field shows the name and size; the import date only helps tell same-named sets apart in the list. */}
+                <SelectValue placeholder="Choose a prompt set">
+                  {promptSet ? (
+                    <>
+                      <span className="truncate">{promptSet.name}</span>
+                      <span className="text-muted-foreground tabular">· {count(promptSet.prompt_count, "prompt", "prompts")}</span>
+                    </>
+                  ) : undefined}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent position="popper">
+              <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
                 {sets.data.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>
-                    <span className="truncate">{s.name}</span>
-                    <span className="text-muted-foreground tabular">{count(s.prompt_count, "prompt", "prompts")}</span>
+                    <span className="min-w-0 break-words">
+                      {s.name}{" "}
+                      <span className="text-muted-foreground tabular">
+                        · {count(s.prompt_count, "prompt", "prompts")}
+                        {(sharedNames.get(s.name) ?? 0) > 1 ? ` · ${dateTime(s.created_at)}` : null}
+                      </span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -692,7 +731,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               className="flex-wrap"
             >
               {SEQS_CHOICES.map((n) => (
-                <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular pointer-coarse:h-11 pointer-coarse:min-w-11", ON)}>
+                <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular", ON)}>
                   {n}
                 </ToggleGroupItem>
               ))}
@@ -748,7 +787,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("temperature")}
               aria-invalid={!!errors.temperature || undefined}
               aria-describedby={describe("temperature", errors.temperature, true)}
-              className="tabular pointer-coarse:h-11"
+              className="tabular"
             />
           </Field>
           <Field id="top_p" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
@@ -760,7 +799,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("top_p")}
               aria-invalid={!!errors.top_p || undefined}
               aria-describedby={describe("top_p", errors.top_p, true)}
-              className="tabular pointer-coarse:h-11"
+              className="tabular"
             />
           </Field>
         </div>
@@ -778,7 +817,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("max_tokens")}
               aria-invalid={!!errors.max_tokens || undefined}
               aria-describedby={errors.max_tokens ? "max_tokens-error" : "max_tokens-hint"}
-              className="w-32 tabular pointer-coarse:h-11"
+              className="w-32 tabular"
             />
             <span id="max_tokens_field-label" className="text-sm text-muted-foreground">
               sent as
@@ -792,10 +831,10 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
               aria-labelledby="max_tokens_field-label"
             >
-              <ToggleGroupItem value="max_tokens" className={cn("font-mono text-xs pointer-coarse:h-11", ON)}>
+              <ToggleGroupItem value="max_tokens" className={cn("font-mono text-xs", ON)}>
                 max_tokens
               </ToggleGroupItem>
-              <ToggleGroupItem value="max_completion_tokens" className={cn("font-mono text-xs pointer-coarse:h-11", ON)}>
+              <ToggleGroupItem value="max_completion_tokens" className={cn("font-mono text-xs", ON)}>
                 max_completion_tokens
               </ToggleGroupItem>
             </ToggleGroup>
@@ -820,7 +859,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             onBlur={blur("seed")}
             aria-invalid={!!errors.seed || undefined}
             aria-describedby={describe("seed", errors.seed)}
-            className="tabular pointer-coarse:h-11"
+            className="tabular"
           />
         </Field>
       </Section>
@@ -884,7 +923,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             autoCorrect="off"
             aria-invalid={!!errors.extra_body || undefined}
             aria-describedby={describe("extra_body", errors.extra_body, true)}
-            className="min-h-20 font-mono text-[13px] md:text-[13px]"
+            className="min-h-20 font-mono md:text-[13px]"
           />
         </Field>
 
@@ -917,7 +956,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               autoCapitalize="none"
               aria-invalid={!!errors.think_open || undefined}
               aria-describedby={describe("think_open", errors.think_open)}
-              className="font-mono pointer-coarse:h-11"
+              className="font-mono"
             />
           </Field>
           <Field id="think_close" label="Thinking closes with" error={errors.think_close}>
@@ -930,7 +969,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               autoCapitalize="none"
               aria-invalid={!!errors.think_close || undefined}
               aria-describedby={describe("think_close", errors.think_close)}
-              className="font-mono pointer-coarse:h-11"
+              className="font-mono"
             />
           </Field>
           <p className="-mt-3 text-xs text-muted-foreground sm:col-span-2">
@@ -948,7 +987,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("max_attempts")}
               aria-invalid={!!errors.max_attempts || undefined}
               aria-describedby={describe("max_attempts", errors.max_attempts)}
-              className="tabular pointer-coarse:h-11"
+              className="tabular"
             />
           </Field>
           <Field id="timeout" label="Request timeout (s)" error={errors.timeout}>
@@ -960,7 +999,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("timeout")}
               aria-invalid={!!errors.timeout || undefined}
               aria-describedby={describe("timeout", errors.timeout)}
-              className="tabular pointer-coarse:h-11"
+              className="tabular"
             />
           </Field>
           <Field id="pause_after" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
@@ -972,7 +1011,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onBlur={blur("pause_after")}
               aria-invalid={!!errors.pause_after || undefined}
               aria-describedby={describe("pause_after", errors.pause_after, true)}
-              className="tabular pointer-coarse:h-11"
+              className="tabular"
             />
           </Field>
         </div>
@@ -987,7 +1026,6 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             placeholder={defaultName || "Qwen3 distill, round 2"}
             maxLength={300}
             aria-describedby={describe("name", errors.name)}
-            className="pointer-coarse:h-11"
           />
         </Field>
       </Section>
@@ -995,10 +1033,10 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
       <div className="mt-8 grid gap-4 border-t pt-6">
         {formError ? <ErrorBlock message={formError} /> : null}
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" size="lg" aria-disabled={start.isPending || undefined} className="px-4 pointer-coarse:h-11">
+          <Button type="submit" size="lg" aria-disabled={start.isPending || undefined} className="px-4">
             {start.isPending ? "Starting…" : "Start run"}
           </Button>
-          <Button asChild variant="ghost" size="lg" className="pointer-coarse:h-11">
+          <Button asChild variant="ghost" size="lg">
             <Link to="/runs">Cancel</Link>
           </Button>
           <span className="text-sm text-muted-foreground tabular" aria-live="polite">

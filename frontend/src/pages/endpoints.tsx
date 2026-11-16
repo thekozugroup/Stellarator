@@ -26,7 +26,8 @@ export function EndpointsPage() {
 
   // /endpoints?edit=<id> opens that endpoint's edit dialog (linked from the "key rejected" banner on a run).
   const editParam = params.get("edit")
-  const focusKey = params.get("focus") === "key"
+  const focusParam = params.get("focus")
+  const focusField = focusParam === "key" ? "api_key" : focusParam === "url" ? "base_url" : null
   const returnParam = params.get("return")
   const returnTo = returnParam && returnParam.startsWith("/") && !returnParam.startsWith("//") ? returnParam : null
   const clearEdit = () =>
@@ -85,7 +86,7 @@ export function EndpointsPage() {
           if (returnTo && editParam) navigate(returnTo)
           else if (editParam) clearEdit()
         }}
-        focusKey={focusKey && !!editParam}
+        focusField={editParam ? focusField : null}
       />
       <EndpointDetailsSheet
         endpoint={details}

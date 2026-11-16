@@ -91,7 +91,6 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           aria-label="Decrease seqs"
           disabled={current <= MIN}
           onClick={() => apply(current - 1)}
-          className="pointer-coarse:size-11"
         >
           <Minus aria-hidden="true" />
         </Button>
@@ -119,7 +118,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           }}
           className={cn(
             "h-8 w-20 border-copper text-center text-base font-medium text-copper-ink tabular md:text-base dark:border-copper",
-            "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none pointer-coarse:h-11",
+            "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           )}
         />
         <Button
@@ -129,7 +128,6 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           aria-label="Increase seqs"
           disabled={current >= MAX}
           onClick={() => apply(current + 1)}
-          className="pointer-coarse:size-11"
         >
           <Plus aria-hidden="true" />
         </Button>
@@ -145,7 +143,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
         className="flex-wrap"
       >
         {SEQS_CHOICES.map((n) => (
-          <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular pointer-coarse:h-11 pointer-coarse:min-w-11", SEGMENT_ON)}>
+          <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular", SEGMENT_ON)}>
             {n}
           </ToggleGroupItem>
         ))}

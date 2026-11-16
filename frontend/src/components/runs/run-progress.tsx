@@ -44,12 +44,17 @@ export function RunProgress({ live }: { live: RunLive }) {
           </>
         ) : (
           <>
-            <Stat label="Avg output tokens/s">{avgTps !== null ? int(avgTps) : DASH}</Stat>
-            <Stat label="Avg samples/min">{avgSpm !== null ? dec1(avgSpm) : DASH}</Stat>
+            {/* With nothing done there is no rate to average and nothing generated. */}
+            {run.done > 0 ? (
+              <>
+                <Stat label="Avg output tokens/s">{avgTps !== null ? int(avgTps) : DASH}</Stat>
+                <Stat label="Avg samples/min">{avgSpm !== null ? dec1(avgSpm) : DASH}</Stat>
+              </>
+            ) : null}
             <Stat label={finished ? "Took" : "Run time"}>{run.active_seconds > 0 ? duration(run.active_seconds * 1000) : DASH}</Stat>
           </>
         )}
-        <Stat label="Tokens generated">{int(run.completion_tokens)}</Stat>
+        {active || run.done > 0 ? <Stat label="Tokens generated">{int(run.completion_tokens)}</Stat> : null}
         {/* A finished run's seqs can no longer change, so it is a plain figure here. */}
         {finished ? <Stat label="Seqs">{int(run.concurrency)}</Stat> : null}
       </dl>

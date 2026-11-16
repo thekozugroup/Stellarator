@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Kbd } from "@/components/ui/kbd"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { count, dateTime, duration, int } from "@/lib/format"
+import { DASH, count, dateTime, duration, int } from "@/lib/format"
 import type { Sample } from "@/lib/types"
 import { ROLE_LABEL, finishReasonText, sampleLabel, useSample } from "./run-data"
 
@@ -64,14 +64,17 @@ function Facts({ sample }: { sample: Sample }) {
     sample.completion_tokens !== null ? `${int(sample.completion_tokens)} completion` : null,
     sample.reasoning_tokens !== null ? `${int(sample.reasoning_tokens)} reasoning` : null,
   ].filter(Boolean)
-  const rows: [string, ReactNode][] = [
-    ["Finish reason", finish ? <span className={finish.warn ? "text-warning-ink" : undefined}>{finish.text}</span> : "–"],
-    ["Tokens", tokenParts.length ? tokenParts.join(" · ") : "–"],
-    ["Latency", duration(sample.latency_ms)],
-    ["Time to first token", duration(sample.ttft_ms)],
-    ["Attempts", int(sample.attempts)],
-    [sample.status === "failed" ? "Failed" : "Completed", dateTime(sample.completed_at)],
+  const failed = sample.status === "failed"
+  const all: [string, ReactNode, boolean][] = [
+    ["Finish reason", finish ? <span className={finish.warn ? "text-warning-ink" : undefined}>{finish.text}</span> : DASH, !!finish],
+    ["Tokens", tokenParts.length ? tokenParts.join(" · ") : DASH, tokenParts.length > 0],
+    ["Latency", duration(sample.latency_ms), sample.latency_ms !== null],
+    ["Time to first token", duration(sample.ttft_ms), sample.ttft_ms !== null],
+    ["Attempts", int(sample.attempts), true],
+    [failed ? "Failed" : "Completed", dateTime(sample.completed_at), !!sample.completed_at],
   ]
+  // A failed request has no finish reason, tokens or timings: leave those rows out instead of a column of dashes.
+  const rows = all.filter(([, , known]) => known || !failed)
   return (
     <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
       {rows.map(([k, v]) => (
@@ -211,7 +214,6 @@ export function SampleViewer({
               size="sm"
               disabled={prevId === null}
               onClick={() => prevId !== null && onStep(prevId)}
-              className="pointer-coarse:h-11"
             >
               <ChevronLeft aria-hidden="true" />
               Previous
@@ -223,7 +225,6 @@ export function SampleViewer({
               size="sm"
               disabled={nextId === null}
               onClick={() => nextId !== null && onStep(nextId)}
-              className="pointer-coarse:h-11"
             >
               Next
               <ChevronRight aria-hidden="true" />

@@ -49,7 +49,6 @@ export function NumberStepper({
         aria-label={`Decrease ${name}`}
         disabled={disabled || current <= min}
         onClick={() => set(current - step)}
-        className="pointer-coarse:size-11"
       >
         <Minus aria-hidden="true" />
       </Button>
@@ -67,7 +66,7 @@ export function NumberStepper({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         className={cn(
-          "w-20 text-center tabular [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none pointer-coarse:h-11",
+          "w-20 text-center tabular [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           inputClassName,
         )}
       />
@@ -78,7 +77,6 @@ export function NumberStepper({
         aria-label={`Increase ${name}`}
         disabled={disabled || current >= max}
         onClick={() => set(current + step)}
-        className="pointer-coarse:size-11"
       >
         <Plus aria-hidden="true" />
       </Button>

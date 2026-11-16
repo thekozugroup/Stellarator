@@ -9,8 +9,6 @@ import {
   XAxis,
   YAxis,
   usePlotArea,
-  useXAxisScale,
-  useYAxisScale,
   type TooltipContentProps,
 } from "recharts"
 import { int } from "@/lib/format"
@@ -18,9 +16,29 @@ import type { MetricPoint } from "@/lib/types"
 
 interface Point {
   t: number
-  tps: number
-  seqs: number
-  active: number
+  /** Null only on the break inserted where the run was paused. */
+  tps: number | null
+  seqs: number | null
+  active: number | null
+}
+
+/**
+ * A pause leaves a hole in the readings. A null point there breaks both lines, instead of a slope
+ * drawn across time when nothing ran. A hole is five readings long, and at least 30 s.
+ */
+function breakGaps(pts: Point[]): Point[] {
+  const steps = pts
+    .slice(1)
+    .map((p, i) => p.t - pts[i].t)
+    .sort((a, b) => a - b)
+  const gap = Math.max(30_000, 5 * (steps[Math.floor(steps.length / 2)] ?? 0))
+  const out: Point[] = []
+  for (const p of pts) {
+    const prev = out[out.length - 1]
+    if (prev && p.t - prev.t > gap) out.push({ t: prev.t + 1, tps: null, seqs: null, active: null })
+    out.push(p)
+  }
+  return out
 }
 
 const STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
@@ -54,10 +72,11 @@ const hm = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digi
 const hms = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })
 
 const AXIS_TICK = { fill: "var(--muted-foreground)", fontSize: 12 }
+const SEQS_AXIS_W = 32
 
 function ChartTooltip({ active, payload }: TooltipContentProps) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
-  if (!p) return null
+  if (!p || p.tps === null) return null
   return (
     <div className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
       <p className="text-muted-foreground tabular">{hms.format(p.t)}</p>
@@ -74,47 +93,22 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
 }
 
 /**
- * Names each line at its right end instead of a legend. A label sits on the side its line comes
- * from the other way (above a rising end, below a falling one), never across the other line.
+ * Names each scale above its own axis, with a stroke of its line: output tokens/s on the left,
+ * seqs on the right. Above the plot, a name never sits on a line or on the fill.
  */
-function EndLabels({ last, prev }: { last: Point; prev: Point }) {
-  const x = useXAxisScale()
-  const yT = useYAxisScale("tps")
-  const yS = useYAxisScale("seqs")
+function AxisNames() {
   const plot = usePlotArea()
-  if (!x || !yT || !yS || !plot) return null
-  const px = Number(x(last.t))
-  const tY = Number(yT(last.tps))
-  const sY = Number(yS(last.seqs))
-  const tPrev = Number(yT(prev.tps))
-  const sPrev = Number(yS(prev.seqs))
-  if (![px, tY, sY, tPrev, sPrev].every(Number.isFinite)) return null
-  const top = plot.y + 12
-  const bottom = plot.y + plot.height - 2
-
-  // y grows downward: "up" means a smaller y. Labels sit 9 px clear of their own line.
-  const goesUp = (y: number, before: number, other: number) => {
-    let up = before - y > 2 ? true : y - before > 2 ? false : y <= other
-    if (up && other < y && y - other < 20) up = false
-    if (!up && other > y && other - y < 20) up = true
-    if (!up && y + 21 > bottom) up = true
-    if (up && y - 9 < top) up = false
-    return up
-  }
-  let tLabel = goesUp(tY, tPrev, sY) ? tY - 9 : tY + 21
-  let sLabel = goesUp(sY, sPrev, tY) ? sY - 9 : sY + 21
-  if (Math.abs(tLabel - sLabel) < 15) {
-    if (tLabel <= sLabel) tLabel = Math.max(top, sLabel - 16)
-    else sLabel = Math.max(top, tLabel - 16)
-  }
-  // A halo in the panel's color keeps a label legible where a line passes under it.
-  const halo = { stroke: "var(--card)", strokeWidth: 4, strokeLinejoin: "round" as const, paintOrder: "stroke" as const }
+  if (!plot) return null
+  const y = plot.y - 13
+  const right = plot.x + plot.width + SEQS_AXIS_W
   return (
-    <g aria-hidden="true" fontSize={12}>
-      <text x={px - 4} y={tLabel} textAnchor="end" fill="var(--foreground)" fontWeight={500} {...halo}>
+    <g aria-hidden="true" fontSize={12} fill="var(--muted-foreground)">
+      <line x1={0} x2={10} y1={y - 4} y2={y - 4} stroke="var(--copper)" strokeWidth={2} />
+      <text x={14} y={y}>
         tok/s
       </text>
-      <text x={px - 4} y={sLabel} textAnchor="end" fill="var(--muted-foreground)" {...halo}>
+      <line x1={right - 40} x2={right - 30} y1={y - 4} y2={y - 4} stroke="var(--chart-2)" strokeWidth={1.5} />
+      <text x={right} y={y} textAnchor="end">
         seqs
       </text>
     </g>
@@ -135,14 +129,14 @@ export function ThroughputChart({
   live?: { tps: number; seqs: number; active: number; at: number } | null
 }) {
   const data = useMemo<Point[]>(() => {
-    const pts = metrics.map((m) => ({ t: Date.parse(m.t), tps: m.tokens_per_s, seqs: m.concurrency, active: m.active }))
+    const pts: Point[] = metrics.map((m) => ({ t: Date.parse(m.t), tps: m.tokens_per_s, seqs: m.concurrency, active: m.active }))
     if (live && pts.length && live.at > pts[pts.length - 1].t + 500) {
       pts.push({ t: live.at, tps: live.tps, seqs: live.seqs, active: live.active })
     }
-    return pts
+    return breakGaps(pts)
   }, [metrics, live])
 
-  const hasData = data.length >= 2 && data.some((d) => d.tps > 0)
+  const hasData = data.length >= 2 && data.some((d) => (d.tps ?? 0) > 0)
 
   if (!hasData) {
     return (
@@ -165,10 +159,10 @@ export function ThroughputChart({
   const tMax = data[data.length - 1].t
   const { ticks: xTicks, step } = timeTicks(tMin, tMax)
   const fmt = step < 60_000 ? hms : hm
-  const tpsTicks = valueTicks(Math.max(...data.map((d) => d.tps)), false)
-  const seqsTicks = valueTicks(Math.max(...data.map((d) => d.seqs)), true)
+  const tpsTicks = valueTicks(Math.max(...data.map((d) => d.tps ?? 0)), false)
+  const seqsTicks = valueTicks(Math.max(...data.map((d) => d.seqs ?? 0)), true)
   const last = data[data.length - 1]
-  const peak = Math.max(...data.map((d) => d.tps))
+  const peak = Math.max(...data.map((d) => d.tps ?? 0))
 
   return (
     <div
@@ -177,7 +171,7 @@ export function ThroughputChart({
       aria-label={`Output tokens per second from ${hm.format(tMin)} to ${hm.format(tMax)}: now ${int(last.tps)} at ${int(last.seqs)} seqs, peak ${int(peak)}.`}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 12, right: 4, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 24, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid yAxisId="tps" vertical={false} stroke="var(--chart-grid)" />
           <XAxis
             dataKey="t"
@@ -211,7 +205,7 @@ export function ThroughputChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={32}
+            width={SEQS_AXIS_W}
           />
           <Tooltip
             content={ChartTooltip}
@@ -240,7 +234,7 @@ export function ThroughputChart({
             activeDot={false}
             isAnimationActive={false}
           />
-          <EndLabels last={last} prev={data[Math.max(0, data.length - 3)]} />
+          <AxisNames />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

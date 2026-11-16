@@ -73,6 +73,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
               <tr key={run.id} className="relative border-t transition-colors duration-150 hover:bg-muted/60 has-[a:focus-visible]:bg-muted/60">
                 <td className="px-4 py-3 align-middle">
                   <Link
+                    data-touch="inline"
                     to={`/runs/${run.id}`}
                     title={run.name}
                     className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
@@ -106,6 +107,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link
+                  data-touch="inline"
                   to={`/runs/${run.id}`}
                   className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                 >
