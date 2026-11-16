@@ -1,0 +1,39 @@
+services:
+  stellarator:
+    build: .
+    image: stellarator:latest
+    ports:
+      - "${STELLARATOR_PORT:-8080}:8080"
+    volumes:
+      - stellarator-data:/data
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    # Lets the container reach a model server running on the same machine (for example vLLM on
+    # port 8000) at http://host.docker.internal:8000/v1. The server must listen on 0.0.0.0 or
+    # the Docker bridge address, not only on 127.0.0.1.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+    # Alternative: share the host network. Use this only when the model server listens on
+    # 127.0.0.1 and you cannot rebind it. Then the endpoint base URL is http://127.0.0.1:8000/v1,
+    # the app listens on host port 8080 directly ("ports" and STELLARATOR_PORT are ignored, and
+    # host.docker.internal is not needed). To use it, remove "ports" and "extra_hosts" above and
+    # uncomment:
+    # network_mode: host
+
+  # Optional: a fake OpenAI-compatible server for trying Stellarator without a GPU.
+  #   docker compose --profile mock up -d
+  # Add an endpoint with base URL http://mock:9100/v1.
+  mock:
+    profiles: ["mock"]
+    image: stellarator:latest
+    command: ["python", "/app/tools/mock_server.py", "--port", "9100"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9100), 3)"]
+      interval: 30s
+      timeout: 5s
+    restart: unless-stopped
+
+volumes:
+  stellarator-data:
