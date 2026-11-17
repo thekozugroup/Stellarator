@@ -28,11 +28,7 @@ services:
   mock:
     profiles: ["mock"]
     image: stellarator:latest
-    command: ["python", "/app/tools/mock_server.py", "--port", "9100"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9100), 3)"]
-      interval: 30s
-      timeout: 5s
+    command: ["stellarator-mock", "--host", "0.0.0.0", "--port", "9100"]
     restart: unless-stopped
 
 volumes:

@@ -1,7 +1,8 @@
 # Running Stellarator in Docker
 
-Stellarator ships as one image (`stellarator:latest`) that serves the web UI and the API on
-container port 8080. It has no sign-in. Do not expose it to the internet.
+Stellarator ships as one image (`stellarator:latest`): a single Rust binary that serves the web UI
+and the API on container port 8080, on a Debian slim base, running as a non-root user. It has no
+sign-in. Do not expose it to the internet.
 
 ## Quick start
 
@@ -63,7 +64,8 @@ The image is multi-arch. The DGX Spark is linux/arm64 and builds natively with
 | `STELLARATOR_PORT` | `8080` | Host port (compose only). Container port is always 8080. |
 | `HF_TOKEN` | empty | Hugging Face token for gated or private datasets and for Hub export. Read from your shell or a `.env` file next to `docker-compose.yml`. A token saved in the app settings is used only when this is empty. |
 | `STELLARATOR_DATA_DIR` | `/data` | Where the SQLite database and uploads live. Declared as a volume. |
-| `STELLARATOR_STATIC_DIR` | `/app/static` | Built web UI. Do not change. |
+| `STELLARATOR_BIND` | `0.0.0.0:8080` | Address the server listens on inside the container. |
+| `RUST_LOG` | `info` | Log level (`warn` for quieter logs, `debug` to trace requests). |
 
 ## Data, backup and restore
 
@@ -103,8 +105,10 @@ Runs that were in progress when the container stopped are recovered on start.
 
 ## Notes
 
-- Run one container per data volume, with one worker. The run engine keeps live state in the
-  process, so do not scale the service or add uvicorn workers.
+- Run one container per data volume. The run engine and import jobs keep live state in the
+  process, so do not scale the service.
+- The health check is the binary itself (`stellarator-server healthcheck`); the image has no curl.
+- A data volume made by the earlier Python image opens as is: the database is upgraded in place.
 - Stopping the container pauses in-flight requests; check the run page after a restart.
 - Behind a TLS-intercepting proxy, pass its CA bundle at build time:
   `docker buildx build --secret id=ca,src=/path/ca.pem -t stellarator:latest .`

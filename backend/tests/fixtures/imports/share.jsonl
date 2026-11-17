@@ -1,3 +1,0 @@
-{"id": 1, "conversations": [{"from":"system","value":"Be brief."},{"from":"human","value":"Hello"},{"from":"gpt","value":"Hi"}]}
-not json
-{"id": 2, "conversations": [{"from":"human","value":"Q2"},{"from":"gpt","value":"A2"},{"from":"human","value":"Q3"},{"from":"gpt","value":"A3"}]}

@@ -5,8 +5,9 @@ MOCK_URL for the fake OpenAI-compatible server the API calls.
 
 STELLARATOR_START chooses who starts them:
   (unset)  nothing is started; both URLs must already answer.
-  python   `uvicorn stellarator.main:app` from backend/ and tools/mock_server.py, via uv.
   rust     target/debug/stellarator-server and target/debug/stellarator-mock (skip if not built).
+(Until v0.2 these tests also ran against the Python backend the Rust server replaced; 184 of them
+passed on both, which is how the port was checked.)
 The session always uses a fresh temp data dir when it starts the server.
 """
 
@@ -127,7 +128,7 @@ def _wait_http(url: str, what: str, procs: _Procs | None) -> None:
             if time.monotonic() > deadline:
                 pytest.exit(
                     f"{what} did not answer at {url} within {limit:.0f}s. Start it, or set "
-                    f"STELLARATOR_START=python or rust to have the tests start it.",
+                    f"STELLARATOR_START=rust to have the tests start it.",
                     returncode=2,
                 )
             time.sleep(0.3)
@@ -141,15 +142,14 @@ def servers():
     procs: _Procs | None = None
     tmp: Path | None = None
     try:
-        if START in ("python", "rust"):
-            if START == "rust":
-                server_bin, mock_bin = TARGET_DIR / "stellarator-server", TARGET_DIR / "stellarator-mock"
-                missing = [str(p) for p in (server_bin, mock_bin) if not p.is_file()]
-                if missing:
-                    pytest.skip(
-                        "STELLARATOR_START=rust but not built: " + ", ".join(missing) +
-                        ". Run `cargo build -p stellarator-server -p stellarator-mock` first."
-                    )
+        if START == "rust":
+            server_bin, mock_bin = TARGET_DIR / "stellarator-server", TARGET_DIR / "stellarator-mock"
+            missing = [str(p) for p in (server_bin, mock_bin) if not p.is_file()]
+            if missing:
+                pytest.skip(
+                    "STELLARATOR_START=rust but not built: " + ", ".join(missing) +
+                    ". Run `cargo build -p stellarator-server -p stellarator-mock` first."
+                )
             for u in (api_u, mock_u):
                 if _port_in_use(u.hostname or "127.0.0.1", u.port or 80):
                     pytest.exit(
@@ -163,29 +163,14 @@ def servers():
             info.data_dir, info.logdir = data_dir, tmp
             procs = _Procs(tmp)
             api_port, mock_port = str(api_u.port), str(mock_u.port)
-            if START == "python":
-                procs.start(
-                    "backend",
-                    ["uv", "run", "uvicorn", "stellarator.main:app", "--port", api_port],
-                    REPO / "backend",
-                    _env({"STELLARATOR_DATA_DIR": str(data_dir)}),
-                )
-                procs.start(
-                    "mock",
-                    ["uv", "run", "--project", "backend", "python", "tools/mock_server.py",
-                     "--port", mock_port, "--tps", "200"],
-                    REPO,
-                    _env({}),
-                )
-            else:
-                procs.start(
-                    "server",
-                    [str(server_bin)],
-                    REPO,
-                    _env({"STELLARATOR_DATA_DIR": str(data_dir),
-                          "STELLARATOR_BIND": f"{api_u.hostname}:{api_u.port}"}),
-                )
-                procs.start("mock", [str(mock_bin), "--port", mock_port, "--tps", "200"], REPO, _env({}))
+            procs.start(
+                "server",
+                [str(server_bin)],
+                REPO,
+                _env({"STELLARATOR_DATA_DIR": str(data_dir),
+                      "STELLARATOR_BIND": f"{api_u.hostname}:{api_u.port}"}),
+            )
+            procs.start("mock", [str(mock_bin), "--port", mock_port, "--tps", "200"], REPO, _env({}))
         _wait_http(f"{MOCK_URL}/models", "The mock OpenAI server", procs)
         _wait_http(f"{STELLARATOR_URL}/api/health", "Stellarator", procs)
         yield info

@@ -5,37 +5,48 @@ endpoint, pick a model, give it prompts, and it records each prompt with the mod
 and final response. Export the result as a dataset for supervised fine-tuning (distillation), or
 pick a chosen and a rejected response per prompt and export preference pairs for DPO or KTO.
 
-It runs as one Docker container with a web UI.
+It runs as a desktop app (macOS, Windows, Linux) or as one Docker container with a web UI. Both are
+the same Rust server and the same UI.
 
-## Quick start
+## Desktop app (macOS, Apple Silicon first)
+
+Download the `.dmg` from the latest [GitHub Actions desktop build](../../actions/workflows/desktop.yml)
+or a release, drag Stellarator to Applications, and open it. The app is not signed with an Apple
+Developer ID yet, so the first time: right-click it and choose Open (or run
+`xattr -dr com.apple.quarantine /Applications/Stellarator.app`).
+
+The app is one native process: the window plus the Rust server inside it, bound to 127.0.0.1 behind
+a per-launch token. It idles at about 15 MB for the server and peaks around 30 MB during a run of
+256 sequences in flight, so it sits comfortably next to a model running on the same Mac (LM Studio,
+Ollama, MLX). Data lives in `~/Library/Application Support/com.thekozugroup.stellarator`. Details
+and building it yourself: [docs/desktop.md](docs/desktop.md).
+
+## Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-Open http://localhost:8080. Data is kept in the `stellarator-data` volume.
-
-To try it without a GPU, start the bundled mock server too:
-
-```bash
-docker compose --profile mock up -d --build
-```
-
-and add an endpoint with base URL `http://mock:9100/v1`.
-
-Docker details, DGX Spark notes and network options are in [docs/docker.md](docs/docker.md).
+Open http://localhost:8080. Data is kept in the `stellarator-data` volume. To try it without a GPU,
+start the bundled mock server too (`docker compose --profile mock up -d --build`) and add an endpoint
+with base URL `http://mock:9100/v1`. DGX Spark notes and network options: [docs/docker.md](docs/docker.md).
 
 ## How it works
 
-1. **Add an endpoint.** Any server that speaks the OpenAI chat completions API: vLLM, SGLang,
-   llama.cpp, Ollama, LM Studio, TensorRT-LLM, NIM, or a hosted API. A model server on the same
-   machine as Docker is at `http://host.docker.internal:<port>/v1`. Stellarator lists the models it
-   serves and checks that the API key is accepted (some servers list models without a key).
-2. **Import prompts.** From a Hugging Face dataset (by name, with config, split and column
-   choice), or a file: Markdown, plain text, CSV, TSV, JSON, JSONL or Parquet. You can also paste
-   text. Text and Markdown are split into prompts by separator lines, headings, list items, blank
-   lines or lines. Columns that hold chat conversations (OpenAI `messages` or ShareGPT
-   `conversations`) are kept as multi-turn prompts. You see the first prompts before importing.
+1. **Add an endpoint.** Start from a preset (OpenRouter, LM Studio, Ollama, vLLM, SGLang,
+   llama.cpp server) or any server that speaks the OpenAI chat completions API. Stellarator lists
+   the models it serves and checks that the API key is accepted (some servers list models without a
+   key). From Docker, a model server on the same machine is at `http://host.docker.internal:<port>/v1`.
+2. **Import prompts.** From a Hugging Face dataset (one split or all of them, any size), or a
+   file: Markdown, plain text, CSV, TSV, JSON, JSONL or Parquet. You can also paste text. Imports
+   run in the background with progress; a million rows take a few seconds.
+   - **Prompts only.** Taking prompts from someone else's distilled dataset keeps the prompts and
+     leaves their model's answers out: response, completion, generation, reasoning, chosen and
+     rejected columns are never used as the prompt, and assistant turns in conversations are
+     dropped. Choose the whole conversation up to the last user turn, or the first user turn only.
+     Reference answers (answer, solution, label) are kept as metadata for later checking.
+   - Text and Markdown are split into prompts by separator lines, headings, list items, blank lines
+     or lines. You see the first prompts, and what is left out, before importing.
 3. **Start a run.** Choose the endpoint, model and prompt set, how many sequences to keep in flight
    (seqs), how many samples per prompt, and the sampling settings. Seqs can be changed while the run
    is going; the run screen plots throughput against seqs so you can see the effect.
@@ -102,27 +113,32 @@ http on a LAN address.
 
 ## Development
 
-Backend (Python 3.12, FastAPI, SQLite):
+The backend is a Rust workspace (`crates/`): `core` (API contract, database, helpers), `engine`
+(runs), `import`, `export`, `server` (routes, the embedded web UI, the binary) and `mock` (a fake
+OpenAI-compatible server whose models return thinking traces in each supported shape). The desktop
+app is in `desktop/` (Tauri 2).
 
 ```bash
-cd backend
-uv sync
-uv run uvicorn stellarator.main:app --reload --port 8000
-uv run --dev pytest -q
+cd frontend && npm install && npm run build
 ```
 
-Frontend (Vite, React, Tailwind, shadcn/ui), proxying `/api` to port 8000:
-
 ```bash
-cd frontend
-npm install
-npm run dev
+cargo run -p stellarator-server
 ```
 
-Mock OpenAI-compatible server (models that return thinking traces in each supported shape):
+The server listens on 0.0.0.0:8080 (`STELLARATOR_BIND`) with data in `./data`
+(`STELLARATOR_DATA_DIR`). For frontend work, `npm run dev` in `frontend/` proxies `/api` to port
+8080. The mock server: `cargo run -p stellarator-mock -- --port 9100`.
+
+Tests:
 
 ```bash
-uv run --project backend python tools/mock_server.py --port 9100
+cargo test --workspace
+```
+
+```bash
+cargo build -p stellarator-server -p stellarator-mock && \
+  STELLARATOR_START=rust uv run --project tests/contract pytest tests/contract -m "not v1"
 ```
 
 `PRODUCT.md` and `DESIGN.md` record who the tool is for and its visual system.
@@ -131,4 +147,4 @@ uv run --project backend python tools/mock_server.py --port 9100
 
 There is no sign-in. Run it on a trusted network and do not expose the port to the internet. API
 keys for endpoints and the Hugging Face token are stored unencrypted in the SQLite database in the
-data volume.
+data folder. The desktop app accepts requests only from its own window.

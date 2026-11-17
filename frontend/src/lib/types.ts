@@ -1,4 +1,4 @@
-// Mirrors backend/stellarator/schemas.py. Keep the two in step.
+// Mirrors crates/core/src/schemas.rs (the API contract). Keep the two in step.
 
 export type Role = "system" | "user" | "assistant"
 export interface Message {

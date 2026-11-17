@@ -63,13 +63,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-latest is Apple Silicon. Pinned labels (macos-13, macos-14) get retired, and a job
+          # on a retired label is cancelled before it starts.
           - name: macOS (Apple Silicon)
-            os: macos-14
+            os: macos-latest
             target: aarch64-apple-darwin
-          # GitHub retired the macos-13 Intel runners; the Intel build cross-compiles on Apple
-          # Silicon, which Rust and Tauri support.
+          # No Intel runners: the Intel build cross-compiles on Apple Silicon, which Rust and Tauri
+          # support.
           - name: macOS (Intel)
-            os: macos-14
+            os: macos-latest
             target: x86_64-apple-darwin
           - name: Windows
             os: windows-latest
