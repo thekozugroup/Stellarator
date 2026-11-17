@@ -188,11 +188,12 @@ cross-compiled on Apple Silicon), Windows and Linux. It runs on `v*` tags, by ha
 and on pushes to `main` that change `desktop/`, `crates/` or `frontend/`. Every run uploads the
 installers as artifacts named `stellarator-<target>`.
 
-A release run makes a GitHub release tagged `v<version>`. The workflow creates a draft, the four
-builds upload their installers into it, and it is published as the latest release only when all
-four succeed. If a build fails, the draft stays hidden: fix the cause, then use Re-run failed jobs,
-which uploads into the same draft and publishes it. A version that already has a published release
-is refused; bump the version instead.
+A push to `main` whose version has no published release yet makes a GitHub release tagged
+`v<version>`, with the tag created on that commit. The workflow creates a draft, the four builds
+upload their installers into it, and it is published as the latest release only when all four
+succeed. If a build fails, the draft stays hidden: fix the cause and push (the next run reuses the
+draft), or use Re-run failed jobs. Once a version is published, later pushes with the same version
+only build the artifacts.
 
 To release a new version:
 
@@ -200,14 +201,10 @@ To release a new version:
    `desktop/package.json`. The workflow's first job fails if the two `Cargo.toml` versions differ.
 2. Update both lock files: `cargo update -w`, then `cargo update -w` in `desktop/src-tauri`.
 3. Commit and push to `main`.
-4. Start the release, either way:
-   - On GitHub: Actions > Desktop > Run workflow, check "Publish a release", Run workflow. The tag
-     is created on the commit the run builds.
-   - With git: push a tag that matches the version.
 
-     ```sh
-     git tag v0.3.0 && git push origin v0.3.0
-     ```
+The same release can also be started by Actions > Desktop > Run workflow with "Publish a release"
+checked, or by pushing a matching tag (`git tag v0.3.0 && git push origin v0.3.0`). Both refuse a
+version that is already published.
 
 Without signing secrets the macOS app is ad-hoc signed (see Install). To sign it with a Developer
 ID and notarize it, add these repository secrets:

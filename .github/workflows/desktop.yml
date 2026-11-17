@@ -1,10 +1,13 @@
 # Desktop app installers (Tauri 2): macOS (Apple Silicon first), Windows and Linux.
 #
-# Every run uploads the installers as workflow artifacts. A GitHub release is made by a v* tag
-# push, or by Run workflow with "Publish a release" checked (the tag is v<version in Cargo.toml>,
-# created on the run's commit). One draft is created first, the four builds upload into it, and it
-# is published (and marked latest) only when all of them succeed, so a partial release is never
-# visible.
+# Every run uploads the installers as workflow artifacts. A GitHub release tagged
+# v<version in Cargo.toml> is made by:
+#   - a push to main whose version has no published release yet (bump the version to release),
+#   - Run workflow with "Publish a release" checked,
+#   - a v* tag push.
+# One draft is created first, the four builds upload into it, and it is published (and marked
+# latest) only when all of them succeed, so a partial release is never visible. Publishing creates
+# the tag on the run's commit if it does not exist yet.
 #
 # macOS signing and notarization are optional. Without the secrets below the app is ad-hoc
 # signed and users open it as described in docs/desktop.md. To sign and notarize, add these
@@ -71,7 +74,8 @@ jobs:
 
   release:
     name: Create the draft release
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+    # Pushes to main and tags, or Run workflow with "Publish a release" checked.
+    if: github.event_name == 'push' || inputs.release
     needs: version
     runs-on: ubuntu-latest
     outputs:
@@ -81,6 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
+          # A tag or the checkbox asked for this release; a push to main only offers it.
+          EXPLICIT: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release == true }}
         run: |
           version="$VERSION"
           tag="v$version"
@@ -110,16 +116,24 @@ jobs:
           Setup, data folders and troubleshooting: [docs/desktop.md](https://github.com/thekozugroup/Stellarator/blob/main/docs/desktop.md).
           EOF
           sed -i "s/@V@/$version/g" body.md
-          # A published release for this version is final: bump the version instead. A draft left
-          # by an earlier run is reused. Otherwise create a draft; publishing it creates the tag
-          # on this run's commit if the tag does not exist yet.
+          # A published release for this version is final. A push to main then only builds the
+          # installers; a tag or the checkbox fails, since a new release needs a new version.
+          # A draft left by an earlier (cancelled or failed) run is moved to this commit and
+          # reused. Otherwise create a draft.
           found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name == \"$tag\") | \"\(.id) \(.draft)\"")
           found="${found%%$'\n'*}"
           id="${found%% *}"
           if [ "${found##* }" = "false" ]; then
-            echo "::error::Release $tag is already published. Bump the version in Cargo.toml, desktop/src-tauri/Cargo.toml and desktop/package.json."
-            exit 1
+            if [ "$EXPLICIT" = "true" ]; then
+              echo "::error::Release $tag is already published. Bump the version in Cargo.toml, desktop/src-tauri/Cargo.toml and desktop/package.json."
+              exit 1
+            fi
+            echo "Release $tag is already published; this run only builds the installers."
+            exit 0
+          fi
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f target_commitish="$GITHUB_SHA" --silent
           fi
           if [ -z "$id" ]; then
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
@@ -241,7 +255,7 @@ jobs:
 
   publish:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+    if: needs.release.outputs.id != ''
     needs: [release, build]
     runs-on: ubuntu-latest
     steps:
