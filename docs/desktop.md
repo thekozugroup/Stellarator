@@ -190,8 +190,10 @@ installers as artifacts named `stellarator-<target>`.
 
 A push to `main` whose version has no published release yet makes a GitHub release tagged
 `v<version>`, with the tag created on that commit. The workflow creates a draft, the four builds
-upload their installers into it, and it is published as the latest release only when all four
-succeed. If a build fails, the draft stays hidden: fix the cause and push (the next run reuses the
+upload their installers into it, and it is published as the latest release when the Apple
+Silicon, Windows and Linux builds succeed. The Intel Mac build is optional: if it fails or runs
+past its time limit, the release goes out without the Intel `.dmg`. If a required build fails, the
+draft stays hidden: fix the cause and push (the next run reuses the
 draft), or use Re-run failed jobs. Once a version is published, later pushes with the same version
 only build the artifacts.
 

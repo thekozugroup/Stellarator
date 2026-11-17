@@ -160,6 +160,12 @@ jobs:
     needs: [version, release]
     # Branch pushes skip the release job; build anyway unless something failed.
     if: ${{ !cancelled() && !failure() }}
+    # The Intel Mac build is optional: if it fails or times out, the release is still published
+    # without its .dmg (Apple Silicon first). Every other build must succeed.
+    continue-on-error: ${{ matrix.optional == true }}
+    # A hung build (an Intel Mac build once ran 50+ minutes against 23 for the same work on the
+    # same runner type) fails here instead of holding the release for GitHub's 6-hour default.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -176,6 +182,7 @@ jobs:
           - name: macOS (Intel)
             os: macos-26-intel
             target: x86_64-apple-darwin
+            optional: true
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -244,6 +251,8 @@ jobs:
       - name: Build the app and installers
         id: tauri
         uses: tauri-apps/tauri-action@v0
+        # Typical: 5-7 minutes on Linux and Windows, about 23 on the Intel Mac runners.
+        timeout-minutes: 50
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Windows: aws-lc-sys (rustls) uses its prebuilt assembly when NASM is not installed.
