@@ -22,3 +22,8 @@ frontend/dist/
 .idea/
 .vscode/
 backend/stellarator/static/
+
+# Rust
+target/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

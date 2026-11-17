@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "crates/engine", "crates/import", "crates/export", "crates/server", "crates/mock"]
+exclude = ["desktop"]
 # The desktop app (desktop/src-tauri) is its own workspace so its heavy dependencies don't slow
 # down server builds; it depends on crates/server by path.
 
