@@ -214,6 +214,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          # Keep compiled dependencies even when a later step fails (a network error once failed
+          # an upload after a 30-minute build, and the next run had to compile everything again).
+          cache-on-failure: true
           workspaces: |
             desktop/src-tauri -> target
             . -> target
@@ -253,6 +256,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         # Typical: 5-7 minutes on Linux and Windows, about 23 on the Intel Mac runners.
         timeout-minutes: 50
+        # A failure here is retried once by the next step.
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Windows: aws-lc-sys (rustls) uses its prebuilt assembly when NASM is not installed.
@@ -261,7 +266,24 @@ jobs:
           projectPath: desktop
           args: --target ${{ matrix.target }}
           includeUpdaterJson: false
-          # Tags only: upload into the draft release. Empty on branches, so nothing is uploaded.
+          # Releases only: upload into the draft release. Empty otherwise, so nothing is uploaded.
+          releaseId: ${{ needs.release.outputs.id }}
+
+      # The upload to the release can fail on a network error after a long build ("Connect Timeout
+      # Error" once ended a 30-minute Apple Silicon build). The retry finds everything compiled, so
+      # it only bundles and uploads again; tauri-action replaces assets that already exist. A real
+      # build error fails again here and fails the job.
+      - name: Retry the build and upload
+        if: steps.tauri.outcome == 'failure'
+        uses: tauri-apps/tauri-action@v0
+        timeout-minutes: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_LC_SYS_PREBUILT_NASM: "1"
+        with:
+          projectPath: desktop
+          args: --target ${{ matrix.target }}
+          includeUpdaterJson: false
           releaseId: ${{ needs.release.outputs.id }}
 
       - name: Upload the installers
