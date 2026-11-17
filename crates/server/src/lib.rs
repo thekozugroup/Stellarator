@@ -50,7 +50,11 @@ pub fn app(parts: &Parts) -> Router {
     }
     let app = api.fallback(assets::serve);
     let app = guard::wrap(app, parts.state.ctx.config.launch_token.clone());
-    app.layer(tower_http::trace::TraceLayer::new_for_http())
+    // Log the path only: the desktop app's first request carries its launch token in the query.
+    let trace = tower_http::trace::TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+        tracing::debug_span!("request", method = %req.method(), path = %req.uri().path())
+    });
+    app.layer(axum::middleware::from_fn(assets::security_headers)).layer(trace)
 }
 
 pub struct RunningServer {

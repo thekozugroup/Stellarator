@@ -13,7 +13,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod downloads;
-#[cfg(target_os = "macos")]
+// macOS only; also compiled by tests elsewhere so CI on Linux type-checks it.
+#[cfg(any(target_os = "macos", test))]
 mod menu;
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
@@ -85,14 +86,19 @@ fn main() {
     let builder = tauri::Builder::default()
         // First: a second launch hands over to the running app before anything else starts, so
         // two servers never share one database.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app)
+        }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
-        .manage(ServerState { server: Mutex::new(Server::Idle), exiting: AtomicBool::new(false) })
+        .manage(ServerState {
+            server: Mutex::new(Server::Idle),
+            exiting: AtomicBool::new(false),
+        })
         .manage(downloads::Downloads::default())
         // The macOS menu is installed in `setup`. Windows and Linux get no menu bar: the web UI
         // has its own navigation, and their webviews handle the editing shortcuts themselves.
@@ -140,25 +146,27 @@ async fn start_server(app: &AppHandle) -> anyhow::Result<(RunningServer, String)
 
     let any_port = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
     let server = match preferred_addr() {
-        Some(addr) => match stellarator_server::start(build_parts(config.clone()).await?, addr).await {
-            Ok(server) => server,
-            // Taken between the probe and the bind: use any free port.
-            Err(e) if is_addr_in_use(&e) => {
-                stellarator_server::start(build_parts(config).await?, any_port).await?
+        Some(addr) => {
+            match stellarator_server::start(build_parts(config.clone()).await?, addr).await {
+                Ok(server) => server,
+                // Taken between the probe and the bind: use any free port.
+                Err(e) if is_addr_in_use(&e) => {
+                    stellarator_server::start(build_parts(config).await?, any_port).await?
+                }
+                Err(e) => return Err(e),
             }
-            Err(e) => return Err(e),
-        },
+        }
         None => stellarator_server::start(build_parts(config).await?, any_port).await?,
     };
     Ok((server, token))
 }
 
 /// The server's parts: database, routes and background work.
-// TODO(lead): switch to full_parts (engine, imports and exports wired in, as in
-// crates/server/src/main.rs) once it exists. Until then the app serves only the server crate's
-// own routes.
+// TODO(lead): switch to `stellarator_server::full_parts` (engine, imports and exports wired in,
+// as crates/server/src/main.rs does) once those crates are settled. Until then the app serves
+// only the server crate's own routes.
 async fn build_parts(config: Config) -> anyhow::Result<Parts> {
-    stellarator_server::minimal_parts(config).await
+    stellarator_server::full_parts(config).await
 }
 
 /// `STELLARATOR_DATA_DIR`, or the app's data folder: ~/Library/Application Support/<identifier>
@@ -166,7 +174,10 @@ async fn build_parts(config: Config) -> anyhow::Result<Parts> {
 fn data_dir(app: &AppHandle) -> anyhow::Result<PathBuf> {
     let dir = match std::env::var_os("STELLARATOR_DATA_DIR") {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => app.path().app_local_data_dir().context("could not find the app data folder")?,
+        _ => app
+            .path()
+            .app_local_data_dir()
+            .context("could not find the app data folder")?,
     };
     std::fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
     Ok(dir)
@@ -175,7 +186,8 @@ fn data_dir(app: &AppHandle) -> anyhow::Result<PathBuf> {
 /// 32 random bytes as hex, new for every launch.
 fn launch_token() -> anyhow::Result<String> {
     let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(|e| anyhow::anyhow!("no random source for the launch token: {e}"))?;
+    getrandom::fill(&mut bytes)
+        .map_err(|e| anyhow::anyhow!("no random source for the launch token: {e}"))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -238,7 +250,7 @@ fn open_main_window(app: &AppHandle, port: u16, token: &str) -> anyhow::Result<(
         })
         .on_download(downloads::handle)
         .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Finished {
+            if matches!(payload.event(), PageLoadEvent::Finished) {
                 reveal(&window);
             }
         })
@@ -354,7 +366,11 @@ fn on_run_event(app: &AppHandle, event: RunEvent) {
                 Server::Idle => {}
             }
         }
-        RunEvent::WindowEvent { label, event: WindowEvent::ThemeChanged(theme), .. } => {
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::ThemeChanged(theme),
+            ..
+        } => {
             if let Some(window) = app.get_webview_window(&label) {
                 let _ = window.set_background_color(Some(ground(theme)));
             }
@@ -395,7 +411,8 @@ mod tests {
 
     #[test]
     fn addr_in_use_is_found_through_context() {
-        let e = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::AddrInUse)).context("bind");
+        let e = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::AddrInUse))
+            .context("bind");
         assert!(is_addr_in_use(&e));
         assert!(!is_addr_in_use(&anyhow::anyhow!("other")));
     }

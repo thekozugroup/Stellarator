@@ -3,6 +3,8 @@
 //! The Edit menu is required, not decoration: WKWebView text fields get Cmd+C, Cmd+V, Cmd+Z and
 //! Cmd+A only through these menu items.
 
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 use tauri::menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, Url};
 
@@ -79,14 +81,25 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         app,
         "Help",
         true,
-        &[&MenuItem::with_id(app, GITHUB, "Stellarator on GitHub", true, None::<&str>)?],
+        &[&MenuItem::with_id(
+            app,
+            GITHUB,
+            "Stellarator on GitHub",
+            true,
+            None::<&str>,
+        )?],
     )?;
 
     let menu = Menu::with_items(app, &[&app_menu, &edit, &view, &window, &help])?;
     app.set_menu(menu)?;
     // After set_menu: AppKit adds the window list to the Window menu and the search field to Help.
-    window.set_as_windows_menu_for_nsapp()?;
-    help.set_as_help_menu_for_nsapp()?;
+    #[cfg(target_os = "macos")]
+    {
+        window.set_as_windows_menu_for_nsapp()?;
+        help.set_as_help_menu_for_nsapp()?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, help);
     Ok(())
 }
 

@@ -275,7 +275,7 @@ pub fn sniff_delimiter(head: &[u8]) -> u8 {
         _ => head,
     };
     let mut best: Option<(f64, usize, u8)> = None;
-    for (rank, d) in [b',', b'\t', b';', b'|'].into_iter().enumerate() {
+    for (rank, d) in b",\t;|".iter().copied().enumerate() {
         let mut rdr = csv::ReaderBuilder::new().delimiter(d).has_headers(false).flexible(true).from_reader(head);
         let mut counts: HashMap<usize, usize> = HashMap::new();
         let mut total = 0usize;
@@ -515,7 +515,7 @@ impl<'de> Visitor<'de> for RowSeed<'_> {
 /// An object's keys in order with their values (for discovering column names).
 enum OrderedItem {
     Pairs(Vec<(String, Value)>),
-    Str(String),
+    Str,
     Other,
 }
 impl OtherItem for OrderedItem {
@@ -538,11 +538,8 @@ impl<'de> Visitor<'de> for OrderedSeed {
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("a JSON object or string")
     }
-    fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<OrderedItem, E> {
-        Ok(OrderedItem::Str(v.to_string()))
-    }
-    fn visit_string<E: de::Error>(self, v: String) -> std::result::Result<OrderedItem, E> {
-        Ok(OrderedItem::Str(v))
+    fn visit_str<E: de::Error>(self, _: &str) -> std::result::Result<OrderedItem, E> {
+        Ok(OrderedItem::Str)
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<OrderedItem, A::Error> {
         let mut pairs: Vec<(String, Value)> = Vec::new();
@@ -637,7 +634,7 @@ impl JsonlTable {
                     }
                     rows += 1;
                 }
-                Ok(OrderedItem::Str(_)) => {
+                Ok(OrderedItem::Str) => {
                     names.add("prompt");
                     rows += 1;
                 }

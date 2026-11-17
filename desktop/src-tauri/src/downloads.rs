@@ -35,8 +35,15 @@ pub fn handle<R: Runtime>(webview: Webview<R>, event: DownloadEvent<'_>) -> bool
             // The webview proposes Downloads/<server's file name>, with " (1)" added when that
             // file exists (wry puts it before the first dot). Recompute it so the name stays the
             // server's and the counter goes before the extension.
-            let dir = app.path().download_dir().ok().or_else(|| destination.parent().map(Path::to_path_buf));
-            let name = destination.file_name().and_then(|n| n.to_str()).map(str::to_string);
+            let dir = app
+                .path()
+                .download_dir()
+                .ok()
+                .or_else(|| destination.parent().map(Path::to_path_buf));
+            let name = destination
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(str::to_string);
             if let (Some(dir), Some(name)) = (dir, name) {
                 if let Err(e) = std::fs::create_dir_all(&dir) {
                     tracing::warn!(dir = %dir.display(), error = %e, "could not create the Downloads folder");
@@ -123,16 +130,25 @@ mod tests {
     #[test]
     fn free_name_is_kept() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(file_name(free_path(dir.path(), "run-sft.jsonl")), "run-sft.jsonl");
+        assert_eq!(
+            file_name(free_path(dir.path(), "run-sft.jsonl")),
+            "run-sft.jsonl"
+        );
     }
 
     #[test]
     fn counter_goes_before_the_last_extension() {
         let dir = tempfile::tempdir().unwrap();
         touch(dir.path(), "qwen3.5-run-sft.jsonl");
-        assert_eq!(file_name(free_path(dir.path(), "qwen3.5-run-sft.jsonl")), "qwen3.5-run-sft (1).jsonl");
+        assert_eq!(
+            file_name(free_path(dir.path(), "qwen3.5-run-sft.jsonl")),
+            "qwen3.5-run-sft (1).jsonl"
+        );
         touch(dir.path(), "qwen3.5-run-sft (1).jsonl");
-        assert_eq!(file_name(free_path(dir.path(), "qwen3.5-run-sft.jsonl")), "qwen3.5-run-sft (2).jsonl");
+        assert_eq!(
+            file_name(free_path(dir.path(), "qwen3.5-run-sft.jsonl")),
+            "qwen3.5-run-sft (2).jsonl"
+        );
     }
 
     #[test]
@@ -146,20 +162,29 @@ mod tests {
     fn wry_counter_is_undone() {
         let dir = tempfile::tempdir().unwrap();
         touch(dir.path(), "qwen3.5-run-sft.jsonl");
-        assert_eq!(original_name(dir.path(), "qwen3 (1).5-run-sft.jsonl"), "qwen3.5-run-sft.jsonl");
+        assert_eq!(
+            original_name(dir.path(), "qwen3 (1).5-run-sft.jsonl"),
+            "qwen3.5-run-sft.jsonl"
+        );
     }
 
     #[test]
     fn webview2_counter_is_undone() {
         let dir = tempfile::tempdir().unwrap();
         touch(dir.path(), "qwen3.5-run-sft.jsonl");
-        assert_eq!(original_name(dir.path(), "qwen3.5-run-sft (1).jsonl"), "qwen3.5-run-sft.jsonl");
+        assert_eq!(
+            original_name(dir.path(), "qwen3.5-run-sft (1).jsonl"),
+            "qwen3.5-run-sft.jsonl"
+        );
     }
 
     #[test]
     fn a_real_name_with_a_counter_is_kept() {
         // "draft (2).jsonl" is the server's name when "draft.jsonl" does not exist.
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(original_name(dir.path(), "draft (2).jsonl"), "draft (2).jsonl");
+        assert_eq!(
+            original_name(dir.path(), "draft (2).jsonl"),
+            "draft (2).jsonl"
+        );
     }
 }

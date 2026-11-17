@@ -23,6 +23,21 @@ const OUTPUT_WORDS: &[&str] = &[
     "solution", "solutions", "generation", "generations", "chosen", "rejected", "reasoning", "thinking",
     "think", "cot", "rationale", "rationales", "assistant", "target", "targets", "label", "labels",
 ];
+/// Words of model generations: left out of meta. Reference answers (answer, solution, label,
+/// target, ground_truth, gold) are output-looking (never the prompt) but stay in meta, where they
+/// are useful for verification and RL.
+const GENERATION_WORDS: &[&str] = &[
+    "response", "responses", "completion", "completions", "generation", "generations", "generated", "output",
+    "outputs", "chosen", "rejected", "reasoning", "thinking", "think", "cot", "rationale", "rationales", "assistant",
+];
+/// Words that mark a column as data about an output rather than the output itself
+/// (`is_reasoning_complete`, `score_chosen`, `num_reasoning_tokens`, `response_id`).
+const ABOUT_OUTPUT_WORDS: &[&str] = &[
+    "is", "has", "num", "n", "count", "counts", "score", "scores", "len", "length", "lengths", "token", "tokens",
+    "complete", "completed", "correct", "correctness", "verified", "verify", "id", "ids", "idx", "type", "types",
+    "model", "models", "source", "lang", "language", "finish", "rank", "rating", "ratings", "logprob", "logprobs",
+    "quality", "status", "valid",
+];
 /// Words that mark a prompt-like column name (`user_prompt`, `question_text`).
 const PROMPT_WORDS: &[&str] =
     &["prompt", "prompts", "problem", "problems", "question", "questions", "instruction", "instructions", "query", "queries"];
@@ -72,10 +87,24 @@ pub fn name_words(name: &str) -> Vec<String> {
     words
 }
 
-/// True for names like response, completions, deepseek_response, r1_generation, chosen, reasoning.
+/// True for names like response, completions, deepseek_response, r1_generation, chosen, reasoning;
+/// false for data about an output such as score_chosen or is_reasoning_complete.
 pub fn looks_like_output(name: &str) -> bool {
+    if name.eq_ignore_ascii_case("model_output") {
+        return true;
+    }
     let words = name_words(name);
-    words.iter().any(|w| OUTPUT_WORDS.contains(&w.as_str())) || name.eq_ignore_ascii_case("model_output")
+    words.iter().any(|w| OUTPUT_WORDS.contains(&w.as_str())) && !words.iter().any(|w| ABOUT_OUTPUT_WORDS.contains(&w.as_str()))
+}
+
+/// True for columns that hold model generations (response, completion, reasoning, chosen, ...):
+/// they are left out of meta.
+pub fn is_generation(name: &str) -> bool {
+    if name.eq_ignore_ascii_case("model_output") {
+        return true;
+    }
+    let words = name_words(name);
+    words.iter().any(|w| GENERATION_WORDS.contains(&w.as_str())) && !words.iter().any(|w| ABOUT_OUTPUT_WORDS.contains(&w.as_str()))
 }
 
 pub fn shorten(s: &str, n: usize) -> String {
@@ -249,10 +278,19 @@ mod tests {
         ] {
             assert!(looks_like_output(n), "{n}");
         }
-        for n in ["prompt", "problem", "question", "instruction", "input", "messages", "text", "id", "source", "thought_id_x"] {
+        for n in [
+            "prompt", "problem", "question", "instruction", "input", "messages", "text", "id", "source", "thought_id_x",
+            "is_reasoning_complete", "score_chosen", "num_reasoning_tokens", "response_id", "chosen_model",
+        ] {
             assert!(!looks_like_output(n), "{n}");
         }
         assert_eq!(name_words("deepseekR1Response"), ["deepseek", "r", "1", "response"]);
+        for n in ["response", "deepseek_response", "r1_generation", "chosen", "reasoning_content", "model_output", "outputs", "think"] {
+            assert!(is_generation(n), "{n}");
+        }
+        for n in ["answer", "solution", "labels", "target", "ground_truth", "gold", "reference", "score_chosen", "prompt"] {
+            assert!(!is_generation(n), "{n}");
+        }
     }
 
     #[test]

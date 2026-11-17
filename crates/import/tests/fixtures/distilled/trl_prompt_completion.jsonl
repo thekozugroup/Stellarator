@@ -1,0 +1,2 @@
+{"prompt": [{"role": "system", "content": "Be terse."}, {"role": "user", "content": "2+2?"}], "completion": [{"role": "assistant", "content": "4"}]}
+{"prompt": [{"role": "user", "content": "Color of the sky?"}], "completion": [{"role": "assistant", "content": "Blue."}]}

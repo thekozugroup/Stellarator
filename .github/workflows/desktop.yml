@@ -141,6 +141,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Windows: aws-lc-sys (rustls) uses its prebuilt assembly when NASM is not installed.
+          AWS_LC_SYS_PREBUILT_NASM: "1"
         with:
           projectPath: desktop
           args: --target ${{ matrix.target }}

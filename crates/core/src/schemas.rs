@@ -314,7 +314,7 @@ pub enum ImportSource {
     },
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ImportMapping {
     /// Column holding the prompt: a string, or a list of chat messages (OpenAI {role, content} or
     /// ShareGPT {from, value}). None = auto-detect.
@@ -340,6 +340,14 @@ pub struct ImportMapping {
 
 fn d_true() -> bool {
     true
+}
+
+/// Same as an empty JSON object: dedupe on, everything else automatic. (A derived Default would
+/// turn dedupe off for requests that leave `mapping` out.)
+impl Default for ImportMapping {
+    fn default() -> Self {
+        serde_json::from_value(Value::Object(Default::default())).expect("defaults")
+    }
 }
 
 impl ImportMapping {
@@ -1130,10 +1138,18 @@ mod tests {
     }
 
     #[test]
+    fn missing_mapping_keeps_dedupe_on() {
+        let v: ImportPreviewIn = serde_json::from_str(r#"{"source":{"kind":"paste","text":"a"}}"#).unwrap();
+        assert!(v.mapping.dedupe);
+        assert!(ImportMapping::default().dedupe);
+    }
+
+    #[test]
     fn query_errors_name_the_parameter() {
         let err = crate::error::parse_query::<ExportOptions>("format=nope").unwrap_err();
         assert_eq!(err.status.as_u16(), 422);
         assert!(err.fields.contains_key("format"), "{:?}", err.fields);
+        assert_eq!(err.detail, "\"nope\" is not one of: messages, sharegpt, alpaca, prompt_completion, raw.");
         let ok: ExportOptions = crate::error::parse_query("format=sharegpt&exclude_truncated=false").unwrap();
         assert!(!ok.exclude_truncated);
     }

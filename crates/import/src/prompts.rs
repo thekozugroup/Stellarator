@@ -10,7 +10,7 @@ use stellarator_core::schemas::{ColumnInfo, ColumnKind, ImportMapping, ImportPre
 use crate::files::TextDoc;
 use crate::messages::{drops_assistant_turns, normalize_messages, py_str, Msg};
 use crate::problem::{thousands, Problem, Result};
-use crate::schema::{auto_prompt_field, auto_system_field, Schema};
+use crate::schema::{auto_prompt_field, auto_system_field, is_generation, Schema};
 use crate::table::{Flow, Row, Table, TableSource};
 use crate::text::split_text;
 
@@ -77,7 +77,8 @@ pub struct Plan {
     pub meta_fields: Vec<String>,
     pub turns: Turns,
     pub has_conversations: bool,
-    /// What is left out: "assistant turns in <column>", then model-output columns.
+    /// What is left out: "assistant turns in <column>", then columns of generations or
+    /// conversations.
     pub dropped: Vec<String>,
 }
 
@@ -164,11 +165,12 @@ pub fn resolve_plan(schema: &Schema, sample: &[Row], mapping: &ImportMapping) ->
         }
     }
     let used = |n: &str| n == prompt || Some(n) == system_field.as_deref() || Some(n) == input_field.as_deref();
+    // Model generations stay out of meta; reference answers (answer, solution, label) stay in.
     let meta_fields = schema
         .columns
         .iter()
         .zip(&schema.scalar)
-        .filter(|(c, &scalar)| scalar && !c.looks_like_output && !used(&c.name))
+        .filter(|(c, &scalar)| scalar && !is_generation(&c.name) && !used(&c.name))
         .map(|(c, _)| c.name.clone())
         .collect();
     let has_conversations = schema.kind(&prompt) == Some(&ColumnKind::Messages);
@@ -180,7 +182,14 @@ pub fn resolve_plan(schema: &Schema, sample: &[Row], mapping: &ImportMapping) ->
             }
         }
     }
-    dropped.extend(schema.columns.iter().filter(|c| c.looks_like_output && !used(&c.name)).map(|c| c.name.clone()));
+    // Columns of generations or conversations that the import leaves out.
+    dropped.extend(
+        schema
+            .columns
+            .iter()
+            .filter(|c| !used(&c.name) && (is_generation(&c.name) || c.kind == ColumnKind::Messages))
+            .map(|c| c.name.clone()),
+    );
     let plan = Plan {
         prompt_field: prompt,
         system_field: system_field.clone(),

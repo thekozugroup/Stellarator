@@ -171,9 +171,11 @@ fn humanize_serde(raw: &str) -> String {
     if raw.starts_with("invalid type") || raw.starts_with("invalid value") {
         return format!("{}{}.", raw[..1].to_uppercase(), &raw[1..]);
     }
-    if raw.starts_with("unknown variant") {
-        // "unknown variant `x`, expected one of `a`, `b`"
-        return format!("Not one of the allowed values: {}.", raw.split("expected ").nth(1).unwrap_or(""));
+    if let Some(rest) = raw.strip_prefix("unknown variant `") {
+        // "unknown variant `x`, expected one of `a`, `b`" -> "\"x\" is not one of: a, b."
+        let value = rest.split('`').next().unwrap_or("");
+        let allowed = raw.split("expected ").nth(1).unwrap_or("").trim_start_matches("one of ").replace('`', "");
+        return format!("\"{value}\" is not one of: {allowed}.");
     }
     let mut s = raw.to_string();
     if !s.ends_with('.') {
