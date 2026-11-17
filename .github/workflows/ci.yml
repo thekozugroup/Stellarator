@@ -1,0 +1,60 @@
+# Checks on every push and pull request: the web UI builds and type-checks, the Rust workspace
+# passes its tests, and the API contract tests pass against the Rust server and mock.
+# The desktop app (desktop/, its own Cargo workspace) is built by desktop.yml.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Web UI, Rust tests, contract tests
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v5
+
+      # The web UI first: the server embeds frontend/dist when it compiles.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Web UI (install, type-check, build)
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund && npx tsc -b && npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting (warning only)
+        run: |
+          if ! cargo fmt --all -- --check > fmt.diff; then
+            echo "::warning::Some Rust files are not formatted. Run cargo fmt --all."
+            cat fmt.diff
+          fi
+
+      - name: Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Build the server and the mock for the contract tests
+        run: cargo build --locked -p stellarator-server -p stellarator-mock
+
+      - uses: astral-sh/setup-uv@v6
+      - name: Contract tests against the Rust server
+        working-directory: tests/contract
+        env:
+          STELLARATOR_START: rust
+        run: uv run --locked pytest -m "not v1"
