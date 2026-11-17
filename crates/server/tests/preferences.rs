@@ -256,7 +256,7 @@ async fn put_pair_upserts_one_pair_per_prompt() {
 async fn put_pair_validation() {
     let env = env().await;
     let t = two_runs(&env, 2).await;
-    let (p0, p1) = (t.prompts[0], t.prompts[1]);
+    let p0 = t.prompts[0];
     let outsider = env.run(t.ps, "Not in set", "m3").await;
     let outsider_sample = env.done(outsider, p0, 0).await;
     let failed = env.sample(t.run_a, p0, 1, "failed", "stop").await;
@@ -290,11 +290,6 @@ async fn put_pair_validation() {
     let (status, body) = env.put(&format!("{base}/{p0}"), json!({"chosen_sample_id": t.a[0]})).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["fields"]["rejected_sample_id"], "Field required.");
-    // A prompt with fewer than two finished responses in the set's runs cannot be paired.
-    let (_, lonely) = env.prompt_set("Lonely", 0).await;
-    let _ = lonely;
-    let _ = p1;
-
     // Nothing was written by the failed attempts.
     assert_eq!(env.get(&format!("/api/preference-sets/{}", pset["id"])).await.1["decided"], 0);
 }
