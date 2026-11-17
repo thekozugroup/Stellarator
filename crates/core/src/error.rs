@@ -192,14 +192,30 @@ where
 {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        match axum::extract::Query::<T>::from_request_parts(parts, state).await {
-            Ok(axum::extract::Query(v)) => Ok(ApiQuery(v)),
-            Err(e) => Err(query_error(e)),
-        }
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parse_query(parts.uri.query().unwrap_or("")).map(ApiQuery)
     }
 }
 
+/// Deserialize a query string with the failing parameter's name in `fields`.
+pub fn parse_query<T: DeserializeOwned>(query: &str) -> Result<T, ApiError> {
+    let de = serde_urlencoded::Deserializer::new(form_urlencoded::parse(query.as_bytes()));
+    serde_path_to_error::deserialize(de).map_err(|e| {
+        let mut path = e.path().to_string();
+        let raw = e.into_inner().to_string();
+        if let Some(name) = raw.strip_prefix("missing field `").and_then(|r| r.split('`').next()) {
+            path = name.to_string();
+        }
+        let message = humanize_serde(&raw);
+        if path.is_empty() || path == "." {
+            ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, message)
+        } else {
+            ApiError::field(&path, message)
+        }
+    })
+}
+
+#[allow(dead_code)]
 fn query_error(e: QueryRejection) -> ApiError {
     let text = e.body_text();
     let text = text.trim_start_matches("Failed to deserialize query string: ");

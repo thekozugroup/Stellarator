@@ -1130,6 +1130,15 @@ mod tests {
     }
 
     #[test]
+    fn query_errors_name_the_parameter() {
+        let err = crate::error::parse_query::<ExportOptions>("format=nope").unwrap_err();
+        assert_eq!(err.status.as_u16(), 422);
+        assert!(err.fields.contains_key("format"), "{:?}", err.fields);
+        let ok: ExportOptions = crate::error::parse_query("format=sharegpt&exclude_truncated=false").unwrap();
+        assert!(!ok.exclude_truncated);
+    }
+
+    #[test]
     fn export_options_from_query_strings() {
         let o: ExportOptions = serde_json::from_value(serde_json::json!({"exclude_truncated": "false"})).unwrap();
         assert!(!o.exclude_truncated);

@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
     let bind: SocketAddr = std::env::var("STELLARATOR_BIND")
         .unwrap_or_else(|_| "0.0.0.0:8080".into())
         .parse()?;
-    let parts = stellarator_server::minimal_parts(config).await?;
+    let parts = stellarator_server::full_parts(config).await?;
     let server = stellarator_server::start(parts, bind).await?;
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutting down");

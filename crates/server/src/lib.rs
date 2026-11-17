@@ -94,8 +94,8 @@ pub async fn start(parts: Parts, bind: SocketAddr) -> anyhow::Result<RunningServ
     Ok(RunningServer { addr, shutdown: Some(tx), join, lifecycle: parts.lifecycle })
 }
 
-/// Open the database and build the parts with only this crate's routes. The binary and the
-/// desktop app replace this with `full_parts` once the other crates are wired in (see main.rs).
+/// Open the database and build the parts with only this crate's routes (no engine, imports or
+/// exports). For tests of this crate's routes.
 pub async fn minimal_parts(config: Config) -> anyhow::Result<Parts> {
     let ctx = Ctx::open(config).await?;
     let idle = Arc::new(stellarator_core::probes::Idle);
@@ -104,6 +104,46 @@ pub async fn minimal_parts(config: Config) -> anyhow::Result<Parts> {
         extra: Vec::new(),
         lifecycle: Vec::new(),
     })
+}
+
+/// Open the database and assemble the whole app: this crate's routes plus the run engine, the
+/// import jobs and the exports. Interrupted runs and imports are recovered when the server starts
+/// and stopped cleanly when it shuts down.
+pub async fn full_parts(config: Config) -> anyhow::Result<Parts> {
+    let ctx = Ctx::open(config).await?;
+    let engine = stellarator_engine::Engine::new(ctx.clone());
+    let imports = stellarator_import::Imports::new(ctx.clone());
+    let extra = vec![
+        stellarator_engine::router(engine.clone()),
+        stellarator_import::router(imports.clone()),
+        stellarator_export::router(ctx.clone()),
+    ];
+    let lifecycle: Vec<Arc<dyn Lifecycle>> = vec![Arc::new(EngineLife(engine.clone())), Arc::new(ImportsLife(imports.clone()))];
+    Ok(Parts { state: AppState { ctx, runs: engine, imports }, extra, lifecycle })
+}
+
+struct EngineLife(Arc<stellarator_engine::Engine>);
+
+#[async_trait::async_trait]
+impl Lifecycle for EngineLife {
+    async fn start(&self) -> anyhow::Result<()> {
+        self.0.recover().await
+    }
+    async fn stop(&self) {
+        self.0.shutdown().await
+    }
+}
+
+struct ImportsLife(Arc<stellarator_import::Imports>);
+
+#[async_trait::async_trait]
+impl Lifecycle for ImportsLife {
+    async fn start(&self) -> anyhow::Result<()> {
+        self.0.recover().await
+    }
+    async fn stop(&self) {
+        self.0.shutdown().await
+    }
 }
 
 pub fn init_tracing() {
