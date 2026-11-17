@@ -156,6 +156,18 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
+/// Indexes on foreign keys the Python schema left without one. Without them, every row removed by
+/// a cascade (deleting a prompt set with 100k prompts) scans the referencing table, and deleting
+/// takes minutes. Idempotent, so it runs on every start and needs no version number.
+const EXTRA_INDEXES: &str = r#"
+CREATE INDEX IF NOT EXISTS ix_pairs_prompt ON preference_pairs (prompt_id);
+CREATE INDEX IF NOT EXISTS ix_pairs_chosen ON preference_pairs (chosen_sample_id);
+CREATE INDEX IF NOT EXISTS ix_pairs_rejected ON preference_pairs (rejected_sample_id);
+CREATE INDEX IF NOT EXISTS ix_runs_prompt_set ON runs (prompt_set_id);
+CREATE INDEX IF NOT EXISTS ix_runs_endpoint ON runs (endpoint_id);
+CREATE INDEX IF NOT EXISTS ix_preference_sets_prompt_set ON preference_sets (prompt_set_id);
+"#;
+
 pub const SCHEMA_VERSION: i64 = 1 + MIGRATIONS.len() as i64;
 
 pub async fn connect(config: &Config) -> anyhow::Result<SqlitePool> {
@@ -209,6 +221,7 @@ pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         tx.commit().await?;
         version += 1;
     }
+    sqlx::raw_sql(EXTRA_INDEXES).execute(pool).await?;
     Ok(())
 }
 

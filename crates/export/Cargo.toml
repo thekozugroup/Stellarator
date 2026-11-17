@@ -6,3 +6,28 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+anyhow = "1.0.104"
+arrow-array = "54.3.1"
+arrow-json = "54.3.1"
+arrow-schema = "54.3.1"
+axum = "0.8.9"
+base64 = "0.23.1"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+futures = "0.3.34"
+parquet = { version = "54.3.1", default-features = false, features = ["arrow", "zstd"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "json"] }
+stellarator-core = { version = "0.2.0", path = "../core" }
+tokio = { version = "1.53.3", features = ["full"] }
+tokio-util = { version = "0.7.19", features = ["io"] }
+tracing = "0.1.44"
+uuid = { version = "1.20.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5.3", features = ["util"] }
+http-body-util = "0.1.5"
