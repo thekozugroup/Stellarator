@@ -10,7 +10,8 @@ MLX), where memory matters; Windows and Linux builds come from the same code.
 ### macOS (Apple Silicon or Intel, macOS 12 or later)
 
 1. Download the disk image:
-   - **Releases**: the `.dmg` for your Mac (`aarch64` for Apple Silicon, `x64` for Intel).
+   - **[Releases](https://github.com/thekozugroup/Stellarator/releases/latest)**: the `.dmg` for
+     your Mac (`aarch64` for Apple Silicon, `x64` for Intel).
    - **Actions**: open the latest successful *Desktop* workflow run and download the artifact
      `stellarator-aarch64-apple-darwin` (Apple Silicon) or `stellarator-x86_64-apple-darwin`
      (Intel). The artifact is a zip with the `.dmg` inside.
@@ -185,9 +186,24 @@ cp /tmp/icons-macos/icon.icns src-tauri/icons/
 `.github/workflows/desktop.yml` builds the installers on macOS (Apple Silicon, and Intel
 cross-compiled on Apple Silicon), Windows and Linux. It runs on `v*` tags, by hand (Run workflow),
 and on pushes to `main` that change `desktop/`, `crates/` or `frontend/`. Every run uploads the
-installers as artifacts named `stellarator-<target>`. A `v*` tag also creates a draft release with
-them; check it and publish it by hand. The tag must match the version in
-`desktop/src-tauri/Cargo.toml`, which must match the workspace version in `Cargo.toml`.
+installers as artifacts named `stellarator-<target>`.
+
+A `v*` tag also makes a GitHub release. The workflow creates a draft, the four builds upload their
+installers into it, and it is published as the latest release only when all four succeed. If a
+build fails, the draft stays hidden: fix the cause, then use Re-run failed jobs, which uploads into
+the same draft and publishes it.
+
+To release a new version:
+
+1. Set the same version in `Cargo.toml` (`[workspace.package]`), `desktop/src-tauri/Cargo.toml` and
+   `desktop/package.json`. The workflow's first job fails if the tag and the two `Cargo.toml`
+   versions differ.
+2. Update both lock files: `cargo update -w`, then `cargo update -w` in `desktop/src-tauri`.
+3. Commit and push to `main`, then tag and push the tag:
+
+   ```sh
+   git tag v0.3.0 && git push origin v0.3.0
+   ```
 
 Without signing secrets the macOS app is ad-hoc signed (see Install). To sign it with a Developer
 ID and notarize it, add these repository secrets:

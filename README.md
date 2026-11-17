@@ -10,10 +10,17 @@ the same Rust server and the same UI.
 
 ## Desktop app (macOS, Apple Silicon first)
 
-Download the `.dmg` from the latest [GitHub Actions desktop build](../../actions/workflows/desktop.yml)
-or a release, drag Stellarator to Applications, and open it. The app is not signed with an Apple
-Developer ID yet, so the first time: right-click it and choose Open (or run
-`xattr -dr com.apple.quarantine /Applications/Stellarator.app`).
+1. Download from [the latest release](https://github.com/thekozugroup/Stellarator/releases/latest):
+   `Stellarator_<version>_aarch64.dmg` for Apple Silicon, `_x64.dmg` for an Intel Mac,
+   `_x64-setup.exe` for Windows, `.AppImage` or `.deb` for Linux.
+2. Open the `.dmg` and drag Stellarator to Applications.
+3. The app is not notarized yet, so macOS blocks the first open. Run this once:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Stellarator.app
+   ```
+
+   Or open the app once, then click Open Anyway in System Settings > Privacy & Security.
 
 The app is one native process: the window plus the Rust server inside it, bound to 127.0.0.1 behind
 a per-launch token. It idles at about 15 MB for the server and peaks around 30 MB during a run of
