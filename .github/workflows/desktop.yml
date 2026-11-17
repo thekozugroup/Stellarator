@@ -242,7 +242,7 @@ jobs:
           releaseId: ${{ needs.release.outputs.id }}
 
       - name: Upload the installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stellarator-${{ matrix.target }}
           if-no-files-found: error
