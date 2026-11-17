@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Stellarator",
+  "identifier": "com.thekozugroup.stellarator",
+  "build": {
+    "frontendDist": "../../frontend/dist",
+    "beforeBuildCommand": "npm --prefix ../frontend ci --no-audit --no-fund && npm --prefix ../frontend run build"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "msi", "nsis", "deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Collect thinking traces, responses and preference pairs from language models.",
+    "longDescription": "Stellarator runs prompts through any OpenAI-compatible endpoint, keeps each prompt with the model's thinking trace and final response, and exports SFT or preference datasets.",
+    "publisher": "The Kozu Group",
+    "homepage": "https://github.com/thekozugroup/Stellarator",
+    "license": "MIT",
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": true
+    }
+  }
+}

@@ -451,6 +451,11 @@ impl State {
         self.cursor = 0;
         self.exhausted = false;
     }
+    fn begin_pause(&mut self, reason: Option<String>) {
+        self.status = TaskStatus::Pausing;
+        self.reason = reason;
+        self.release_buffer();
+    }
     fn can_run(&self) -> bool {
         self.status == TaskStatus::Running && !self.finalizing && !self.cancelled
     }
@@ -716,11 +721,21 @@ impl RunTask {
             if !st.can_run() {
                 return Ok(());
             }
-            st.status = TaskStatus::Pausing;
-            st.reason = reason.clone();
-            st.release_buffer();
+            st.begin_pause(reason);
         }
         self.halt.send_replace(true);
+        self.save_pausing().await
+    }
+
+    /// Write "pausing" to the run row if the task is still pausing (call with self.lock held).
+    async fn save_pausing(&self) -> Result<(), ApiError> {
+        let reason = {
+            let st = self.st.lock();
+            if st.status != TaskStatus::Pausing || st.finalizing || st.cancelled {
+                return Ok(());
+            }
+            st.reason.clone()
+        };
         sqlx::query("UPDATE runs SET status = 'pausing', status_reason = ? WHERE id = ?")
             .bind(reason)
             .bind(self.run_id)
@@ -909,9 +924,9 @@ impl RunTask {
                 true
             }
             Some(Err(GenerateError::Failed { message, attempts })) => {
-                if let Some(trip) = self.finish_failed(key, item.sample_id, message, attempts).await {
+                if self.finish_failed(key, item.sample_id, message, attempts).await {
                     let _g = self.lock.lock().await;
-                    if let Err(e) = self.pause_locked(Some(trip)).await {
+                    if let Err(e) = self.save_pausing().await {
                         tracing::error!(run_id = self.run_id, error = %e.detail, "could not pause a run");
                     }
                 }
@@ -968,8 +983,8 @@ impl RunTask {
         self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row, deltas }).await;
     }
 
-    /// Returns the reason to pause the run when the circuit breaker trips.
-    async fn finish_failed(self: &Arc<Self>, key: u64, sample_id: i64, message: String, attempts: i64) -> Option<String> {
+    /// True when the circuit breaker tripped: the task is pausing and the run row must say so.
+    async fn finish_failed(self: &Arc<Self>, key: u64, sample_id: i64, message: String, attempts: i64) -> bool {
         self.rates.lock().add(0.0, 1.0);
         let trip = {
             let mut st = self.st.lock();
@@ -978,10 +993,17 @@ impl RunTask {
             st.consecutive_failures += 1;
             st.in_flight.remove(&key);
             let limit = self.params.pause_after_failures;
-            (limit > 0 && st.consecutive_failures >= limit && st.status == TaskStatus::Running).then(|| {
-                format!("Paused after {} failures in a row. Last error: {message}", st.consecutive_failures)
-            })
+            let trip = limit > 0 && st.consecutive_failures >= limit && st.can_run();
+            if trip {
+                // In the same critical section, so no other worker sends another request first.
+                let reason = format!("Paused after {} failures in a row. Last error: {message}", st.consecutive_failures);
+                st.begin_pause(Some(reason));
+            }
+            trip
         };
+        if trip {
+            self.halt.send_replace(true);
+        }
         let row = FinishRow {
             sample_id,
             status: "failed",
@@ -1069,9 +1091,14 @@ impl RunTask {
         self.writer.send(Op::Metric(row)).await;
     }
 
-    fn sequences(&self, limit: usize) -> Vec<LiveSequence> {
-        let seqs: Vec<Arc<Seq>> = self.st.lock().in_flight.values().take(limit).cloned().collect();
-        seqs.iter()
+    /// Requests in flight, and the oldest `limit` of them for the live view.
+    fn sequences(&self, limit: usize) -> (i64, Vec<LiveSequence>) {
+        let (count, seqs): (i64, Vec<Arc<Seq>>) = {
+            let st = self.st.lock();
+            (st.in_flight.len() as i64, st.in_flight.values().take(limit).cloned().collect())
+        };
+        let list = seqs
+            .iter()
             .map(|s| {
                 let p = s.progress.lock();
                 LiveSequence {
@@ -1086,7 +1113,8 @@ impl RunTask {
                     attempt: p.attempt,
                 }
             })
-            .collect()
+            .collect();
+        (count, list)
     }
 }
 
@@ -1304,14 +1332,14 @@ impl Engine {
     /// The live view of a run the engine drives, else None.
     pub fn live(&self, run_id: i64) -> Option<LiveInfo> {
         let t = self.task(run_id)?;
-        let in_flight = t.st.lock().in_flight.len() as i64;
+        let (in_flight, sequences) = t.sequences(LIVE_SEQUENCES);
         let (tps, spm) = {
             let r = t.rates.lock();
             (round3(r.tokens_per_s(10.0)), round3(r.samples_per_min(60.0)))
         };
         Some(LiveInfo {
             in_flight,
-            sequences: t.sequences(LIVE_SEQUENCES),
+            sequences,
             tokens_per_s: tps,
             samples_per_min: spm,
             eta_seconds: t.eta_seconds(),

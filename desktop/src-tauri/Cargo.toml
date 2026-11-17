@@ -1,8 +1,9 @@
 [package]
 name = "stellarator-desktop"
-# Keep equal to the root workspace's version; the desktop workflow checks it.
+# Keep equal to the root workspace's version (Cargo.toml at the repository root); the desktop
+# workflow checks it. tauri.conf.json takes the app version from here.
 version = "0.2.0"
-description = "Stellarator desktop app: the Stellarator server and its web UI in one native window"
+description = "Stellarator desktop app: the Stellarator server and its web UI in one native process"
 edition = "2021"
 license = "MIT"
 rust-version = "1.80"
@@ -20,9 +21,26 @@ anyhow = "1"
 getrandom = "0.3"
 stellarator-core = { path = "../../crates/core" }
 stellarator-server = { path = "../../crates/server" }
+# Tauri 2 stable. No `devtools` feature: the web inspector is only in debug builds.
 tauri = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-window-state = "2"
+tokio = { version = "1", features = ["time"] }
 tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Small, fast native code: one codegen unit with full LTO, symbols stripped, no unwinding tables.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+# Debug builds: optimize dependencies a little so the server is usable while iterating.
+[profile.dev.package."*"]
+opt-level = 1

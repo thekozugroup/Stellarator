@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by the Tauri bundler. -->
+<plist version="1.0">
+<dict>
+  <!-- The window loads the in-process server over plain HTTP on 127.0.0.1. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+  <!-- macOS 15 and later ask before an app reaches other machines on the local network. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Stellarator connects to model servers on your local network, such as vLLM or Ollama on another computer.</string>
+</dict>
+</plist>
