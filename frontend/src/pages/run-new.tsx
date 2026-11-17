@@ -331,7 +331,7 @@ function initialState(eps: Endpoint[], ss: PromptSet[], runs: Run[] | undefined,
   if (source) {
     form = { ...form, ...fromRun(source) }
     if (!eps.some((e) => String(e.id) === form.endpoint)) form.endpoint = ""
-    if (!ss.some((s) => String(s.id) === form.prompt_set)) form.prompt_set = ""
+    if (!ss.some((s) => String(s.id) === form.prompt_set && s.status === "ready")) form.prompt_set = ""
     const p = source.params
     promptOpen = !!(p.system_prompt || p.user_template)
     const d = DEFAULTS
@@ -353,7 +353,7 @@ function initialState(eps: Endpoint[], ss: PromptSet[], runs: Run[] | undefined,
       form.model = suggestedModel(pickedEp, runs)
     }
     const pickedSet = ss.find((s) => String(s.id) === ps) ?? (ss.length === 1 ? ss[0] : undefined)
-    if (pickedSet) form.prompt_set = String(pickedSet.id)
+    if (pickedSet?.status === "ready") form.prompt_set = String(pickedSet.id)
   }
   return { form, promptOpen, advancedOpen }
 }
@@ -680,12 +680,12 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               </SelectTrigger>
               <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
                 {sets.data.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
+                  <SelectItem key={s.id} value={String(s.id)} disabled={s.status !== "ready"}>
                     <span className="min-w-0 break-words">
                       {s.name}{" "}
                       <span className="text-muted-foreground tabular">
-                        · {count(s.prompt_count, "prompt", "prompts")}
-                        {(sharedNames.get(s.name) ?? 0) > 1 ? ` · ${dateTime(s.created_at)}` : null}
+                        · {s.status === "importing" ? "Importing" : s.status === "failed" ? "Failed" : count(s.prompt_count, "prompt", "prompts")}
+                        {s.status === "ready" && (sharedNames.get(s.name) ?? 0) > 1 ? ` · ${dateTime(s.created_at)}` : null}
                       </span>
                     </span>
                   </SelectItem>

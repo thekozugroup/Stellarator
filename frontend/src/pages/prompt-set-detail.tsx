@@ -1,15 +1,18 @@
 import { TextModeToggle } from "@/components/shared/model-text"
 import { useEffect, useRef, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, MoreHorizontal, Search } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ProgressBar } from "@/components/shared/progress-bar"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
 import { DeletePromptSetDialog } from "@/components/prompts/delete-prompt-set-dialog"
 import { PromptRow, PromptRowsSkeleton } from "@/components/prompts/prompt-row"
+import { importingInterval } from "@/components/prompts/set-status"
+import { StopImportDialog } from "@/components/prompts/stop-import-dialog"
 import { RenamePromptSetDialog } from "@/components/prompts/rename-prompt-set-dialog"
 import { describeSource } from "@/components/prompts/source"
 import { api, qs } from "@/lib/api"
@@ -27,19 +30,35 @@ export function PromptSetDetailPage() {
   const [draft, setDraft] = useState(q)
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const qc = useQueryClient()
   const listTop = useRef<HTMLDivElement>(null)
 
   const setQuery = useQuery({ // taste-ignore: missing-states -- loading renders Bar placeholders for the title, meta and rows (lines 90-98, PromptRowsSkeleton)
     queryKey: ["prompt-set", id],
     queryFn: () => api.get<PromptSet>(`/api/prompt-sets/${id}`),
     enabled: Number.isFinite(id),
+    refetchInterval: (q) => importingInterval(q.state.data),
   })
+  const importing = setQuery.data?.status === "importing"
   const prompts = useQuery({
     queryKey: ["prompts", id, q, page],
     queryFn: () => api.get<PageOf<Prompt>>(`/api/prompt-sets/${id}/prompts${qs({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, q })}`),
     placeholderData: keepPreviousData,
     enabled: Number.isFinite(id),
+    refetchInterval: importing ? 2000 : false,
   })
+
+  // When the import finishes, refresh the list and the sets behind it once more.
+  const status = setQuery.data?.status
+  const lastStatus = useRef(status)
+  useEffect(() => {
+    if (lastStatus.current === "importing" && status && status !== "importing") {
+      void qc.invalidateQueries({ queryKey: ["prompts", id] })
+      void qc.invalidateQueries({ queryKey: ["prompt-sets"] })
+    }
+    lastStatus.current = status
+  }, [status, id, qc])
 
   // Debounce the search box into the URL, and restart at page 1.
   useEffect(() => {
@@ -91,8 +110,13 @@ export function PromptSetDetailPage() {
       meta={
         set ? (
           <span>
-            {describeSource(set)} · <span className="tabular">{count(set.prompt_count, "prompt", "prompts")}</span> ·{" "}
-            <span className="tabular">{count(set.run_count, "run", "runs")}</span>
+            {describeSource(set)} · <span className="tabular">{count(set.prompt_count, "prompt", "prompts")}</span>
+            {set.status === "ready" ? (
+              <>
+                {" "}
+                · <span className="tabular">{count(set.run_count, "run", "runs")}</span>
+              </>
+            ) : null}
           </span>
         ) : (
           <Bar className="w-72 max-w-full" />
@@ -101,9 +125,12 @@ export function PromptSetDetailPage() {
       actions={
         set ? (
           <>
-            <Link to={`/runs/new?prompt_set=${set.id}`} className={buttonVariants()}>
-              New run
-            </Link>
+            {set.status === "ready" ? (
+              <Link to={`/runs/new?prompt_set=${set.id}`} className={buttonVariants()}>
+                New run
+              </Link>
+            ) : null}
+            {set.status === "importing" ? null : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" aria-label="More actions">
@@ -118,10 +145,36 @@ export function PromptSetDetailPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </>
         ) : null
       }
     >
+      {set?.status === "importing" ? (
+        <div className="mb-6 grid gap-2.5 border-y py-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p role="status" className="text-sm tabular">
+              Importing… {int(set.rows_read)}
+              {set.rows_total !== null ? ` of ${int(set.rows_total)}` : ""} rows
+              {set.status_detail ? <span className="text-muted-foreground"> · {set.status_detail}</span> : null}
+            </p>
+            <Button variant="outline" onClick={() => setStopping(true)}>
+              Stop import
+            </Button>
+          </div>
+          {set.rows_total !== null && set.rows_total > 0 ? (
+            <ProgressBar done={Math.min(set.rows_read, set.rows_total)} total={set.rows_total} label={`${int(set.rows_read)} of ${int(set.rows_total)} rows read`} />
+          ) : null}
+        </div>
+      ) : set?.status === "failed" ? (
+        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg bg-warning-tint px-4 py-3 text-sm text-warning-ink">
+          <p className="min-w-0">{set.status_detail ?? "The import failed."}</p>
+          <Button variant="outline" size="sm" className="bg-background" onClick={() => setDeleting(true)}>
+            Delete set
+          </Button>
+        </div>
+      ) : null}
+
       <div ref={listTop} className="mb-3 flex scroll-mt-4 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="relative w-full sm:w-80">
           <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
@@ -174,7 +227,7 @@ export function PromptSetDetailPage() {
               </button>
             </p>
           ) : (
-            <p>This prompt set has no prompts.</p>
+            <p>{importing ? "No prompts yet." : "This prompt set has no prompts."}</p>
           )}
         </div>
       ) : (
@@ -205,6 +258,7 @@ export function PromptSetDetailPage() {
         <>
           <RenamePromptSetDialog set={set} open={renaming} onOpenChange={setRenaming} />
           <DeletePromptSetDialog set={set} open={deleting} onOpenChange={setDeleting} />
+          <StopImportDialog set={set} open={stopping} onOpenChange={setStopping} />
         </>
       ) : null}
     </Page>

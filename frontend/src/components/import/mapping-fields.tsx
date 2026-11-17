@@ -3,7 +3,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { ColumnInfo, ImportPreview, SplitMode } from "@/lib/types"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { ColumnInfo, ImportPreview, SplitMode, Turns } from "@/lib/types"
 import { SPLIT_OPTIONS, splitHint } from "./helpers"
 
 const NONE = "__none__"
@@ -35,10 +36,10 @@ function ColumnSelect({
         </SelectTrigger>
         <SelectContent>
           {optional ? <SelectItem value={NONE}>None</SelectItem> : null}
-          {columns.map((c) => (
+          {[...columns.filter((c) => !c.looks_like_output), ...columns.filter((c) => c.looks_like_output)].map((c) => (
             <SelectItem key={c.name} value={c.name}>
               <span className="font-mono text-[13px]">{c.name}</span>
-              <span className="text-muted-foreground"> · {kindLabel(c)}</span>
+              <span className="text-muted-foreground"> · {c.looks_like_output ? "output" : kindLabel(c)}</span>
             </SelectItem>
           ))}
         </SelectContent>
@@ -63,6 +64,8 @@ export function MappingFields({
   limitError,
   dedupe,
   onDedupe,
+  turns,
+  onTurns,
 }: {
   preview: ImportPreview
   promptField: string | null | undefined
@@ -79,6 +82,8 @@ export function MappingFields({
   limitError?: string | null
   dedupe: boolean
   onDedupe: (v: boolean) => void
+  turns: Turns
+  onTurns: (t: Turns) => void
 }) {
   const tabular = preview.columns.length > 0
   const autoHint = splitMode === "auto" && splitHint(preview.split_mode) ? `Automatic: ${splitHint(preview.split_mode)}.` : undefined
@@ -101,6 +106,19 @@ export function MappingFields({
             onChange={onSystemField}
             optional
           />
+          {preview.has_conversations ? (
+            <div className="grid gap-1.5">
+              <span id="map-turns-label" className="text-sm font-medium">
+                Prompt
+              </span>
+              <Tabs value={turns} onValueChange={(v) => onTurns(v as Turns)}>
+                <TabsList aria-labelledby="map-turns-label" className="w-full">
+                  <TabsTrigger value="up_to_last_user">Whole conversation</TabsTrigger>
+                  <TabsTrigger value="first_user">First user turn</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          ) : null}
         </>
       ) : (
         <Field id="map-split" label="Split into prompts" hint={autoHint}>

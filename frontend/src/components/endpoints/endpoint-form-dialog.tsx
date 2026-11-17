@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { ChevronRight, Eye, EyeOff, Loader2, Plus, X } from "lucide-react"
+import { ChevronRight, ExternalLink, Eye, EyeOff, Loader2, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label"
 import { Field } from "@/components/shared/field"
 import { ApiError, api } from "@/lib/api"
 import { count, duration } from "@/lib/format"
-import type { Endpoint, EndpointIn, EndpointTestOut } from "@/lib/types"
+import type { Endpoint, EndpointIn, EndpointLocation, EndpointPreset, EndpointTestOut } from "@/lib/types"
 import { isKeyRejected } from "./endpoint-status"
+import { PresetRow, useEndpointPresets } from "./presets"
 
 const DEFAULT_SEQS = 16
 const FIELD_ORDER = ["name", "base_url", "api_key", "default_concurrency", "headers"]
@@ -23,11 +24,14 @@ type HeaderRow = { id: number; key: string; value: string }
 export function EndpointFormDialog({
   open,
   endpoint,
+  preset = null,
   onOpenChange,
   focusField = null,
 }: {
   open: boolean
   endpoint: Endpoint | null
+  /** Add mode only: start from this preset. */
+  preset?: EndpointPreset | null
   onOpenChange: (open: boolean) => void
   /** Open with this field focused: "api_key" after a rejected key, "base_url" when unreachable. */
   focusField?: "api_key" | "base_url" | null
@@ -37,29 +41,44 @@ export function EndpointFormDialog({
       <DialogContent
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
         onOpenAutoFocus={(ev) => {
-          if (!focusField) return
+          const target = focusField ?? (preset?.needs_api_key ? "api_key" : null)
+          if (!target) return
           ev.preventDefault()
-          document.getElementById(`ep-${focusField}`)?.focus()
+          document.getElementById(`ep-${target}`)?.focus()
         }}
       >
-        <EndpointForm endpoint={endpoint} onDone={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />
+        <EndpointForm endpoint={endpoint} preset={preset} onDone={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
 }
 
-function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | null; onDone: () => void; onCancel: () => void }) {
+function EndpointForm({
+  endpoint,
+  preset,
+  onDone,
+  onCancel,
+}: {
+  endpoint: Endpoint | null
+  preset: EndpointPreset | null
+  onDone: () => void
+  onCancel: () => void
+}) {
   const qc = useQueryClient()
   const editing = endpoint !== null
   const nextId = useRef(1)
-  const [name, setName] = useState(endpoint?.name ?? "")
-  const [baseUrl, setBaseUrl] = useState(endpoint?.base_url ?? "")
+  const presets = useEndpointPresets()
+  const [presetId, setPresetId] = useState<string | null>(preset?.id ?? null)
+  const [keyUrl, setKeyUrl] = useState<string | null>(preset?.needs_api_key ? preset.api_key_url : null)
+  const [location, setLocation] = useState<EndpointLocation>(preset?.location ?? "local")
+  const [name, setName] = useState(endpoint?.name ?? preset?.name ?? "")
+  const [baseUrl, setBaseUrl] = useState(endpoint?.base_url ?? preset?.base_url ?? "")
   const [apiKey, setApiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
   const [removeKey, setRemoveKey] = useState(false)
-  const [seqs, setSeqs] = useState(String(endpoint?.default_concurrency ?? DEFAULT_SEQS))
+  const [seqs, setSeqs] = useState(String(endpoint?.default_concurrency ?? preset?.default_concurrency ?? DEFAULT_SEQS))
   const [headers, setHeaders] = useState<HeaderRow[]>(() =>
-    Object.entries(endpoint?.headers ?? {}).map(([key, value]) => ({ id: nextId.current++, key, value })),
+    Object.entries(endpoint?.headers ?? preset?.headers ?? {}).map(([key, value]) => ({ id: nextId.current++, key, value })),
   )
   const [headersOpen, setHeadersOpen] = useState(headers.length > 0)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -75,6 +94,24 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
   const staleTest = () => {
     setTest(null)
     setTestError(null)
+  }
+
+  /** Fill the form from a preset (null = Custom, which clears it) and focus what still needs input. */
+  function pick(p: EndpointPreset | null) {
+    setPresetId(p ? p.id : "custom")
+    setKeyUrl(p?.needs_api_key ? p.api_key_url : null)
+    setLocation(p?.location ?? "local")
+    setName(p?.name ?? "")
+    setBaseUrl(p?.base_url ?? "")
+    setSeqs(String(p?.default_concurrency ?? DEFAULT_SEQS))
+    setApiKey("")
+    const rows = Object.entries(p?.headers ?? {}).map(([key, value]) => ({ id: nextId.current++, key, value }))
+    setHeaders(rows)
+    setHeadersOpen(rows.length > 0)
+    setErrors({})
+    setFormError(null)
+    staleTest()
+    window.requestAnimationFrame(() => document.getElementById(p ? (p.needs_api_key ? "ep-api_key" : "ep-name") : "ep-name")?.focus())
   }
 
   const testMutation = useMutation({
@@ -142,7 +179,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
       default_concurrency: n,
       headers: headerObject(),
     }
-    if (!editing) body.location = "local"
+    if (!editing) body.location = location
     if (apiKey) body.api_key = apiKey
     else if (removeKey) body.api_key = ""
     save.mutate(body)
@@ -157,6 +194,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
         <DialogTitle>{editing ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
       </DialogHeader>
       <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 pt-1 pb-4">
+      {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
 
       <Field id="ep-name" label="Name" error={errors.name}>
         <Input
@@ -201,7 +239,7 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
 
       <div className="grid gap-1.5">
         <Label htmlFor="ep-api_key" className="text-sm font-medium">
-          API key<span className="font-normal text-muted-foreground"> (optional)</span>
+          API key{keyUrl ? null : <span className="font-normal text-muted-foreground"> (optional)</span>}
         </Label>
         <div className="relative">
           <Input
@@ -242,6 +280,17 @@ function EndpointForm({ endpoint, onDone, onCancel }: { endpoint: Endpoint | nul
           <p id="ep-api_key-hint" className="text-xs text-muted-foreground">
             {removeKey ? "The saved key is removed when you save." : `Saved key ${endpoint.api_key_hint ?? "set"}. Leave blank to keep it.`}
           </p>
+        ) : keyUrl ? (
+          <a
+            href={keyUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex min-h-6 w-fit items-center gap-1 rounded-sm text-sm underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none pointer-coarse:min-h-11"
+          >
+            Get a key
+            <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
         ) : null}
         {editing && endpoint?.has_api_key ? (
           <Label htmlFor="ep-remove-key" className="flex min-h-9 items-center gap-2 text-sm font-normal pointer-coarse:min-h-11">

@@ -57,9 +57,22 @@ export interface EndpointTestOut {
   error: string | null
 }
 
+export interface EndpointPreset {
+  id: "openrouter" | "lmstudio" | "ollama" | "vllm" | "sglang" | "llamacpp" | "openai"
+  name: string
+  base_url: string
+  location: EndpointLocation
+  default_concurrency: number
+  needs_api_key: boolean
+  api_key_url: string | null
+  headers: Record<string, string>
+}
+
 // ------------------------------------------------------------------ prompt sets
 
 export type SourceKind = "huggingface" | "file" | "paste"
+
+export type PromptSetStatus = "importing" | "ready" | "failed"
 
 export interface PromptSet {
   id: number
@@ -69,6 +82,10 @@ export interface PromptSet {
   prompt_count: number
   created_at: string
   run_count: number
+  status: PromptSetStatus
+  status_detail: string | null
+  rows_read: number
+  rows_total: number | null
 }
 
 export interface Prompt {
@@ -84,14 +101,17 @@ export type ImportFormat = "auto" | "text" | "markdown" | "csv" | "tsv" | "json"
 export type SplitMode = "auto" | "line" | "blank_line" | "separator" | "heading" | "list_item" | "whole"
 
 export type ImportSource =
-  | { kind: "huggingface"; dataset: string; config?: string | null; split?: string | null }
+  | { kind: "huggingface"; dataset: string; config?: string | null; split?: string | null; all_splits?: boolean }
   | { kind: "file"; upload_id: string; format: ImportFormat }
   | { kind: "paste"; text: string }
+
+export type Turns = "up_to_last_user" | "first_user"
 
 export interface ImportMapping {
   prompt_field?: string | null
   system_field?: string | null
   split_mode?: SplitMode
+  turns?: Turns
   offset?: number
   limit?: number | null
   dedupe?: boolean
@@ -101,6 +121,7 @@ export interface ColumnInfo {
   name: string
   kind: "text" | "messages" | "number" | "other"
   example: string | null
+  looks_like_output: boolean
 }
 
 export interface HFSplit {
@@ -122,6 +143,8 @@ export interface ImportPreview {
   hf_splits: HFSplit[]
   hf_config: string | null
   hf_split: string | null
+  has_conversations: boolean
+  dropped: string[]
 }
 
 export interface Upload {
@@ -344,4 +367,5 @@ export interface Settings {
   hf_token_from_env: boolean
   data_dir: string
   version: string
+  mode: "docker" | "desktop" | "native"
 }

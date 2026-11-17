@@ -10,6 +10,8 @@ import type { HFSplit, ImportFormat, Upload } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { ACCEPT, FORMAT_OPTIONS, formatLabel } from "./helpers"
 
+const ALL = "__all__"
+
 export function HuggingFaceFields({
   input,
   onInput,
@@ -19,6 +21,7 @@ export function HuggingFaceFields({
   splits,
   config,
   split,
+  allSplits,
   onConfig,
   onSplit,
 }: {
@@ -30,8 +33,10 @@ export function HuggingFaceFields({
   splits: HFSplit[]
   config: string | null
   split: string | null
+  allSplits: boolean
   onConfig: (c: string) => void
-  onSplit: (s: string) => void
+  /** null = all splits */
+  onSplit: (s: string | null) => void
 }) {
   const configs = Array.from(new Set(splits.map((s) => s.config)))
   const inConfig = splits.filter((s) => s.config === config)
@@ -82,7 +87,7 @@ export function HuggingFaceFields({
             </Field>
           ) : null}
           <Field id="hf-split" label="Split">
-            <Select value={split ?? undefined} onValueChange={onSplit}>
+            <Select value={allSplits ? ALL : (split ?? undefined)} onValueChange={(v) => onSplit(v === ALL ? null : v)}>
               <SelectTrigger id="hf-split" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -90,9 +95,9 @@ export function HuggingFaceFields({
                 {inConfig.map((s) => (
                   <SelectItem key={s.split} value={s.split}>
                     {s.split}
-                    
                   </SelectItem>
                 ))}
+                {inConfig.length > 1 ? <SelectItem value={ALL}>All splits</SelectItem> : null}
               </SelectContent>
             </Select>
           </Field>

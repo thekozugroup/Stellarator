@@ -104,6 +104,10 @@ export function PreviewPanel({
         </ul>
       ) : null}
 
+      {preview && preview.dropped.length > 0 ? (
+        <p className="px-4 pt-3 text-xs text-muted-foreground">Responses left out: {preview.dropped.join(", ")}.</p>
+      ) : null}
+
       {error && !preview ? (
         <div className="p-4">
           <ErrorBlock message={error} onRetry={hasSource ? onRetry : undefined} />

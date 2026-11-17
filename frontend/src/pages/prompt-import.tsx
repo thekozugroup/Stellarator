@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
-import { toast } from "sonner"
 import { Page } from "@/components/shared/page"
 import { Field } from "@/components/shared/field"
 import { Button } from "@/components/ui/button"
@@ -14,7 +13,7 @@ import { PreviewPanel } from "@/components/import/preview-panel"
 import { parseCount, parseDataset, stripExtension } from "@/components/import/helpers"
 import { api, ApiError } from "@/lib/api"
 import { count } from "@/lib/format"
-import type { HFSplit, ImportFormat, ImportMapping, ImportPreview, ImportSource, PromptSet, SplitMode, Upload } from "@/lib/types"
+import type { HFSplit, ImportFormat, ImportMapping, ImportPreview, ImportSource, PromptSet, SplitMode, Turns, Upload } from "@/lib/types"
 
 type SourceTab = "huggingface" | "file" | "paste"
 const TABS: { value: SourceTab; label: string }[] = [
@@ -53,6 +52,7 @@ export function ImportPromptsPage() {
   const [hfDataset, setHfDataset] = useState("")
   const [hfConfig, setHfConfig] = useState<string | null>(null)
   const [hfSplit, setHfSplit] = useState<string | null>(null)
+  const [allSplits, setAllSplits] = useState(false)
   const [hfInfo, setHfInfo] = useState<{ dataset: string; splits: HFSplit[]; config: string | null; split: string | null } | null>(null)
   const [upload, setUpload] = useState<Upload | null>(null)
   const [format, setFormat] = useState<ImportFormat>("auto")
@@ -66,6 +66,7 @@ export function ImportPromptsPage() {
   const [offset, setOffset] = useState("")
   const [limit, setLimit] = useState("")
   const [dedupe, setDedupe] = useState(true)
+  const [turns, setTurns] = useState<Turns>("up_to_last_user")
   const [detectedPrompt, setDetectedPrompt] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [nameTouched, setNameTouched] = useState(false)
@@ -90,13 +91,13 @@ export function ImportPromptsPage() {
   const limitError = limitN === undefined ? "Use a whole number, or leave empty." : limitN === 0 ? "Use 1 or more, or leave empty to import all." : null
 
   const mapping: ImportMapping = useMemo(() => {
-    const m: ImportMapping = { split_mode: splitMode, offset: offsetN ?? 0, limit: limitN && limitN > 0 ? limitN : null, dedupe }
+    const m: ImportMapping = { split_mode: splitMode, turns, offset: offsetN ?? 0, limit: limitN && limitN > 0 ? limitN : null, dedupe }
     if (promptField !== undefined) m.prompt_field = promptField
     // undefined = let the server detect a system column; "" = explicitly none.
     if (systemField === null) m.system_field = ""
     else if (systemField !== undefined) m.system_field = systemField
     return m
-  }, [splitMode, offsetN, limitN, dedupe, promptField, systemField, detectedPrompt])
+  }, [splitMode, turns, offsetN, limitN, dedupe, promptField, systemField, detectedPrompt])
   const debouncedMapping = useDebounced(mapping, 400)
 
   const upl = useMutation({
@@ -111,7 +112,7 @@ export function ImportPromptsPage() {
   let source: ImportSource | null = null
   let identity = ""
   if (tab === "huggingface" && hfDataset) {
-    source = { kind: "huggingface", dataset: hfDataset, config: hfConfig, split: hfSplit }
+    source = { kind: "huggingface", dataset: hfDataset, config: hfConfig, split: allSplits ? null : hfSplit, all_splits: allSplits }
     identity = `hf:${hfDataset}`
   } else if (tab === "file" && upload) {
     source = { kind: "file", upload_id: upload.upload_id, format }
@@ -154,6 +155,7 @@ export function ImportPromptsPage() {
     if (ds !== hfDataset) {
       setHfConfig(null)
       setHfSplit(null)
+      setAllSplits(false)
       resetMapping()
       setName("")
       setNameTouched(false)
@@ -169,16 +171,20 @@ export function ImportPromptsPage() {
     setHfSplit(next?.split ?? null)
     resetMapping()
   }
-  const pickSplit = (s: string) => {
+  const pickSplit = (s: string | null) => {
     setHfConfig(effConfig)
-    setHfSplit(s)
+    if (s === null) setAllSplits(true)
+    else {
+      setAllSplits(false)
+      setHfSplit(s)
+    }
   }
 
   // Default name: dataset + split, or the file name; the user's edits win.
   const defaultName =
     tab === "huggingface"
       ? hfDataset
-        ? `${hfDataset}${effSplit ? ` ${effSplit}` : ""}`
+        ? `${hfDataset}${effSplit && !allSplits ? ` ${effSplit}` : ""}`
         : ""
       : tab === "file"
         ? upload
@@ -193,7 +199,13 @@ export function ImportPromptsPage() {
     mutationFn: () => {
       const s: ImportSource | null =
         tab === "huggingface" && hfDataset
-          ? { kind: "huggingface", dataset: hfDataset, config: data?.hf_config ?? hfConfig, split: data?.hf_split ?? hfSplit }
+          ? {
+              kind: "huggingface",
+              dataset: hfDataset,
+              config: data?.hf_config ?? hfConfig,
+              split: allSplits ? null : (data?.hf_split ?? hfSplit),
+              all_splits: allSplits,
+            }
           : tab === "file" && upload
             ? { kind: "file", upload_id: upload.upload_id, format }
             : tab === "paste"
@@ -202,8 +214,9 @@ export function ImportPromptsPage() {
       return api.post<PromptSet>("/api/imports", { source: s, mapping, name: shownName.trim() })
     },
     onSuccess: (set) => {
+      // The server answers 202 with the set still importing; its page shows the progress.
+      qc.setQueryData(["prompt-set", set.id], set)
       void qc.invalidateQueries({ queryKey: ["prompt-sets"] })
-      toast.success(`Imported ${count(set.prompt_count, "prompt", "prompts")}`)
       navigate(`/prompts/${set.id}`)
     },
   })
@@ -231,7 +244,7 @@ export function ImportPromptsPage() {
         : nameMissing
           ? "Give the prompt set a name."
           : null
-  const label = importing ? "Importing…" : est !== null ? `Import ${count(est, "prompt", "prompts")}` : "Import prompts"
+  const label = importing ? "Starting…" : est !== null ? `Import ${count(est, "prompt", "prompts")}` : "Import prompts"
 
   const hfFieldError = tab === "huggingface" && !data && previewError ? previewError : (commitErr?.fields["source.dataset"] ?? null)
   const fileError = upl.error ? (upl.error as Error).message : tab === "file" && !data && previewError ? previewError : null
@@ -270,6 +283,7 @@ export function ImportPromptsPage() {
                 splits={info?.splits ?? []}
                 config={effConfig}
                 split={effSplit}
+                allSplits={allSplits}
                 onConfig={pickConfig}
                 onSplit={pickSplit}
               />
@@ -323,6 +337,8 @@ export function ImportPromptsPage() {
                 limitError={limitError ?? commitErr?.fields["mapping.limit"]}
                 dedupe={dedupe}
                 onDedupe={setDedupe}
+                turns={turns}
+                onTurns={setTurns}
               />
               <Field id="import-name" label="Name" error={commitErr?.fields["name"]}>
                 <Input

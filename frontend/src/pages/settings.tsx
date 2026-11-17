@@ -280,11 +280,14 @@ function AppearanceSection() {
   )
 }
 
+const MODE: Record<Settings["mode"], string> = { desktop: "Desktop app", docker: "Docker", native: "Server" }
+
 function AboutSection({ settings }: { settings?: Settings }) {
   return (
     <Section title="About">
       <dl className="grid gap-2 text-sm">
         <Row label="Version">{settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}</Row>
+        {settings ? <Row label="Mode">{MODE[settings.mode]}</Row> : null}
       </dl>
     </Section>
   )
