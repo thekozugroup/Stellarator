@@ -25,8 +25,10 @@ exported file.
 
 ## Where and how
 
-- Runs in Docker on the same machine as the model server or next to it. Opened in a desktop browser
-  on the local network; sometimes checked from a phone.
+- Runs as a desktop app (macOS on Apple Silicon first; also Windows and Linux), often on the same
+  Mac as a local model (LM Studio, Ollama, MLX), so its own memory use must stay small. Or in Docker
+  on the same machine as the model server (a DGX Spark) or next to it, opened in a browser on the
+  local network and sometimes checked from a phone.
 - No accounts. It is a single-tenant tool with no sign-in; do not expose it to the internet.
 - Used in bursts: set up a run (minutes), then glance at it (seconds) many times over hours.
 
@@ -38,7 +40,9 @@ rejected, pair.
 
 ## What it can and cannot do
 
-- Can: any OpenAI-compatible `/v1/chat/completions` server; reasoning returned as
+- Can: any OpenAI-compatible `/v1/chat/completions` server, with presets for OpenRouter, LM Studio,
+  Ollama, vLLM, SGLang and llama.cpp; whole Hugging Face datasets imported as prompts only (other
+  models' responses and assistant turns left out); reasoning returned as
   `reasoning_content`, `reasoning`, or inline `<think>` tags; prompts from Hugging Face datasets,
   Markdown, plain text, CSV, TSV, JSON, JSONL, Parquet or pasted text; concurrency changed while a
   run is going; pause, resume, retry failed samples; exports in chat-messages, ShareGPT, Alpaca,
