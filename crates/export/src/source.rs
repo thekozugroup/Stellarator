@@ -165,16 +165,20 @@ async fn sft_loop(
          s.finish_reason, s.prompt_tokens, s.completion_tokens, s.reasoning_tokens, s.latency_ms, \
          s.ttft_ms, s.completed_at, p.messages, p.meta \
          FROM samples s JOIN prompts p ON p.id = s.prompt_id \
-         WHERE s.run_id = ?1 AND {keep} AND (s.prompt_idx > ?2 OR (s.prompt_idx = ?2 AND s.sample_idx > ?3)) \
-         ORDER BY s.prompt_idx, s.sample_idx LIMIT ?4"
+         WHERE s.run_id = ?1 AND {keep} AND (s.prompt_id, s.sample_idx) > (?2, ?3) \
+         ORDER BY s.prompt_id, s.sample_idx LIMIT ?4"
     );
+    // Page by (prompt_id, sample_idx): the unique index on (run_id, prompt_id, sample_idx) serves
+    // every page without a sort. Prompt ids ascend with idx (imports insert in order), so this
+    // is the same order as (prompt_idx, sample_idx); each page is also sorted by idx below.
     let mut cursor = (i64::MIN, i64::MIN);
     loop {
-        let rows: Vec<SftRow> =
+        let mut rows: Vec<SftRow> =
             sqlx::query_as(&sql).bind(run.id).bind(cursor.0).bind(cursor.1).bind(batch).fetch_all(db).await?;
         let n = rows.len() as i64;
         let Some(last) = rows.last() else { return Ok(()) };
-        cursor = (last.prompt_idx, last.sample_idx);
+        cursor = (last.prompt_id, last.sample_idx);
+        rows.sort_by_key(|r| (r.prompt_idx, r.sample_idx));
         let records: Vec<Value> =
             rows.iter().map(|r| sft_record(options, run, &r.sample(), &r.messages.0, Some(&r.meta.0))).collect();
         if tx.send(Ok(records)).await.is_err() {
@@ -200,7 +204,7 @@ pub async fn pref_count(db: &SqlitePool, set_id: i64, o: &PrefExportOptions) -> 
 struct PairRow {
     chosen_sample_id: i64,
     rejected_sample_id: i64,
-    idx: i64,
+    prompt_id: i64,
     messages: Json<Value>,
 }
 
@@ -226,9 +230,9 @@ async fn pref_loop(
     let mut run_params: HashMap<i64, Value> = HashMap::new();
     loop {
         let pairs: Vec<PairRow> = sqlx::query_as(
-            "SELECT pp.chosen_sample_id, pp.rejected_sample_id, p.idx, p.messages \
+            "SELECT pp.chosen_sample_id, pp.rejected_sample_id, pp.prompt_id, p.messages \
              FROM preference_pairs pp JOIN prompts p ON p.id = pp.prompt_id \
-             WHERE pp.preference_set_id = ? AND p.idx > ? ORDER BY p.idx LIMIT ?",
+             WHERE pp.preference_set_id = ? AND pp.prompt_id > ? ORDER BY pp.prompt_id LIMIT ?",
         )
         .bind(set_id)
         .bind(cursor)
@@ -236,7 +240,7 @@ async fn pref_loop(
         .fetch_all(db)
         .await?;
         let Some(last) = pairs.last() else { return Ok(()) };
-        cursor = last.idx;
+        cursor = last.prompt_id;
 
         let mut ids: Vec<i64> = pairs.iter().flat_map(|p| [p.chosen_sample_id, p.rejected_sample_id]).collect();
         ids.sort_unstable();

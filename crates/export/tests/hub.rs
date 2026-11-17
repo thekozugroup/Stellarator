@@ -150,9 +150,9 @@ async fn hub_bare_repo_name_uses_the_token_owner() {
     let hub = fake_hub().await;
     let (e, s, _p, app) = setup(Some(&hub)).await;
     token(&e).await;
-    let r = post(&app, &format!("/api/runs/{}/export/hub", s.run), json!({"target": {"repo_id": "ds"}})).await;
+    let r = post(&app, &format!("/api/runs/{}/export/hub", s.run), json!({"target": {"repo_id": "dsx"}})).await;
     assert_eq!(r.status, 200, "{}", r.text());
-    assert_eq!(r.json()["url"], format!("{}/datasets/me/ds", hub.url));
+    assert_eq!(r.json()["url"], format!("{}/datasets/me/dsx", hub.url));
     assert!(hub.calls().contains(&"GET /api/whoami-v2".to_string()));
     let create: Value = serde_json::from_slice(&hub.requests()[0].body).unwrap();
     assert!(create.get("organization").is_none());

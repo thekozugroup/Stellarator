@@ -7,6 +7,9 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+arrow-array = "54.3.1"
+arrow-cast = "54.3.1"
+arrow-schema = "54.3.1"
 axum = { version = "0.8.9", features = ["multipart"] }
 bytes = "1.12.1"
 chrono = "0.4.45"
@@ -23,3 +26,8 @@ tokio = { version = "1.53.3", features = ["full"] }
 tracing = "0.1.44"
 url = "2.5.8"
 uuid = { version = "1.20.0", features = ["v4"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }
