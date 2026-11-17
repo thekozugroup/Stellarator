@@ -188,22 +188,26 @@ cross-compiled on Apple Silicon), Windows and Linux. It runs on `v*` tags, by ha
 and on pushes to `main` that change `desktop/`, `crates/` or `frontend/`. Every run uploads the
 installers as artifacts named `stellarator-<target>`.
 
-A `v*` tag also makes a GitHub release. The workflow creates a draft, the four builds upload their
-installers into it, and it is published as the latest release only when all four succeed. If a
-build fails, the draft stays hidden: fix the cause, then use Re-run failed jobs, which uploads into
-the same draft and publishes it.
+A release run makes a GitHub release tagged `v<version>`. The workflow creates a draft, the four
+builds upload their installers into it, and it is published as the latest release only when all
+four succeed. If a build fails, the draft stays hidden: fix the cause, then use Re-run failed jobs,
+which uploads into the same draft and publishes it. A version that already has a published release
+is refused; bump the version instead.
 
 To release a new version:
 
 1. Set the same version in `Cargo.toml` (`[workspace.package]`), `desktop/src-tauri/Cargo.toml` and
-   `desktop/package.json`. The workflow's first job fails if the tag and the two `Cargo.toml`
-   versions differ.
+   `desktop/package.json`. The workflow's first job fails if the two `Cargo.toml` versions differ.
 2. Update both lock files: `cargo update -w`, then `cargo update -w` in `desktop/src-tauri`.
-3. Commit and push to `main`, then tag and push the tag:
+3. Commit and push to `main`.
+4. Start the release, either way:
+   - On GitHub: Actions > Desktop > Run workflow, check "Publish a release", Run workflow. The tag
+     is created on the commit the run builds.
+   - With git: push a tag that matches the version.
 
-   ```sh
-   git tag v0.3.0 && git push origin v0.3.0
-   ```
+     ```sh
+     git tag v0.3.0 && git push origin v0.3.0
+     ```
 
 Without signing secrets the macOS app is ad-hoc signed (see Install). To sign it with a Developer
 ID and notarize it, add these repository secrets:

@@ -1,8 +1,10 @@
 # Desktop app installers (Tauri 2): macOS (Apple Silicon first), Windows and Linux.
 #
-# Every run uploads the installers as workflow artifacts. A v* tag also makes a GitHub release:
-# one draft is created first, the four builds upload into it, and it is published (and marked
-# latest) only when all of them succeed, so a partial release is never visible.
+# Every run uploads the installers as workflow artifacts. A GitHub release is made by a v* tag
+# push, or by Run workflow with "Publish a release" checked (the tag is v<version in Cargo.toml>,
+# created on the run's commit). One draft is created first, the four builds upload into it, and it
+# is published (and marked latest) only when all of them succeed, so a partial release is never
+# visible.
 #
 # macOS signing and notarization are optional. Without the secrets below the app is ad-hoc
 # signed and users open it as described in docs/desktop.md. To sign and notarize, add these
@@ -29,21 +31,30 @@ on:
       - "Cargo.lock"
       - ".github/workflows/desktop.yml"
   workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a release (tag v<version in Cargo.toml>) with the installers
+        type: boolean
+        default: false
 
 concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  # Release runs get their own group, so a later push to main neither cancels nor queues them.
+  group: desktop-${{ github.ref }}${{ inputs.release && '-release' || '' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
 
 permissions:
-  contents: write # the release on tags
+  contents: write # the release
 
 jobs:
   version:
     name: Check the version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v5
       - name: Desktop version equals the workspace version (and the tag)
+        id: check
         run: |
           workspace=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml)
           desktop=$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/src-tauri/Cargo.toml | head -n 1)
@@ -56,10 +67,11 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match version $desktop"
             exit 1
           fi
+          echo "version=$desktop" >> "$GITHUB_OUTPUT"
 
   release:
     name: Create the draft release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
     needs: version
     runs-on: ubuntu-latest
     outputs:
@@ -68,8 +80,10 @@ jobs:
       - id: create
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
+          tag="v$version"
           cat > body.md <<'EOF'
           ## Download
 
@@ -96,13 +110,20 @@ jobs:
           Setup, data folders and troubleshooting: [docs/desktop.md](https://github.com/thekozugroup/Stellarator/blob/main/docs/desktop.md).
           EOF
           sed -i "s/@V@/$version/g" body.md
-          # Reuse the tag's release if a re-run finds one; otherwise create a draft.
-          ids=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")
-          id="${ids%%$'\n'*}"
+          # A published release for this version is final: bump the version instead. A draft left
+          # by an earlier run is reused. Otherwise create a draft; publishing it creates the tag
+          # on this run's commit if the tag does not exist yet.
+          found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"$tag\") | \"\(.id) \(.draft)\"")
+          found="${found%%$'\n'*}"
+          id="${found%% *}"
+          if [ "${found##* }" = "false" ]; then
+            echo "::error::Release $tag is already published. Bump the version in Cargo.toml, desktop/src-tauri/Cargo.toml and desktop/package.json."
+            exit 1
+          fi
           if [ -z "$id" ]; then
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
-              -f tag_name="$GITHUB_REF_NAME" -f name="Stellarator $GITHUB_REF_NAME" \
+              -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" -f name="Stellarator $tag" \
               -F draft=true -F body=@body.md --jq .id)
           fi
           echo "Release $id"
@@ -220,7 +241,7 @@ jobs:
 
   publish:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
     needs: [release, build]
     runs-on: ubuntu-latest
     steps:
