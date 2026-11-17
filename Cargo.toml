@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/engine", "crates/import", "crates/export", "crates/server", "crates/mock"]
+# The desktop app (desktop/src-tauri) is its own workspace so its heavy dependencies don't slow
+# down server builds; it depends on crates/server by path.
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.80"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"
+
+[profile.dev.package."*"]
+opt-level = 1
