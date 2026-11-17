@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
 from shapes import (
     RUN,
@@ -20,7 +19,6 @@ from shapes import (
 from support import (
     assert_error,
     assert_no_content,
-    create_run,
     get_run,
     list_samples,
     wait_run,
@@ -369,7 +367,7 @@ def test_create_validation(api, world):
             body["params"] = over["params"]
         return api.post("/api/runs", json=body)
 
-    assert_error(api.post("/api/runs", json={}), 422, fields=("endpoint_id", "model", "prompt_set_id"))
+    assert_error(api.post("/api/runs", json={}), 422, any_field=("endpoint_id", "model", "prompt_set_id"))
     assert_error(post(model=""), 422, field="model")
     assert_error(post(concurrency=0), 422, field="concurrency")
     assert_error(post(concurrency=4097), 422, field="concurrency")

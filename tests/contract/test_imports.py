@@ -18,7 +18,6 @@ from support import (
     source_file,
     source_paste,
     upload,
-    wait_prompt_set_ready,
 )
 
 NO_PROMPTS = "No prompts were found with these settings. Check the column or split mode and try again."

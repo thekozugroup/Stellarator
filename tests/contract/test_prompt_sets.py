@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
 from shapes import PROMPT, PROMPT_SET, ListOf, check, page
-from support import assert_error, assert_no_content, create_run, import_prompts, source_paste, wait_run
+from support import assert_error, assert_no_content, create_run, wait_run
 
 
 def test_get_a_prompt_set(api, world):

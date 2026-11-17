@@ -47,13 +47,15 @@ def assert_error(
     *,
     field: str | None = None,
     fields: tuple[str, ...] | list[str] = (),
+    any_field: tuple[str, ...] | list[str] = (),
     detail: str | None = None,
     contains: str | None = None,
 ) -> dict:
     """The response is an error body: {"detail": str} plus {"fields": {name: str}} on field errors.
 
-    field: a key that must be in `fields` (exact name). fields: several. detail: exact sentence.
-    contains: a substring of the sentence.
+    field: a key that must be in `fields` (exact name). fields: several. any_field: at least one of
+    these (a body missing several required fields may report only the first). detail: exact
+    sentence. contains: a substring of the sentence.
     """
     assert resp.status_code == status, f"expected {status}, got {resp.status_code}: {resp.text[:300]}"
     assert resp.headers.get("content-type", "").startswith("application/json"), resp.headers.get("content-type")
@@ -66,6 +68,8 @@ def assert_error(
     wanted = ([field] if field else []) + list(fields)
     for name in wanted:
         assert name in flds, f"expected field error for {name!r}, got fields {flds}"
+    if any_field:
+        assert set(any_field) & set(flds), f"expected a field error for one of {list(any_field)}, got {flds}"
     if flds:
         assert body["detail"] in flds.values(), f"detail should be one of the field messages: {body}"
     if detail is not None:

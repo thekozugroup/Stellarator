@@ -213,7 +213,12 @@ async fn update(
     if res.rows_affected() == 0 {
         return Err(ApiError::not_found("Endpoint not found"));
     }
-    recheck(ctx, &row, api_key.as_deref(), &headers, &base_url).await?;
+    // Only a change to how the server is reached (URL, key, headers) needs a new check; a rename
+    // or a new default seqs must not wait on a slow or unreachable server.
+    let reach_changed = base_url != row.base_url || api_key != row.api_key || headers != row.headers.0;
+    if reach_changed {
+        recheck(ctx, &row, api_key.as_deref(), &headers, &base_url).await?;
+    }
     Ok(Json(fetch(ctx, id).await?.out()))
 }
 

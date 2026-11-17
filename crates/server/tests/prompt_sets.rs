@@ -162,3 +162,30 @@ async fn delete_while_importing_cancels_the_import_first() {
     assert_eq!(env.delete(&format!("/api/prompt-sets/{other}")).await.0, StatusCode::NO_CONTENT);
     assert_eq!(imports.cancelled.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn search_matches_message_text_only_and_python_escapes() {
+    let env = common::env().await;
+    let (set, _) = env.prompt_set("Search", 3).await;
+    let rows = [
+        // As the Python backend stored it: non-ASCII escaped inside the JSON.
+        r#"[{"role": "user", "content": "Caf\u00e9 prices"}]"#,
+        r#"[{"role": "user", "content": "Two dice"}]"#,
+        r#"[{"role": "user", "content": "50% off"}]"#,
+    ];
+    for (i, m) in rows.iter().enumerate() {
+        sqlx::query("UPDATE prompts SET messages = ? WHERE prompt_set_id = ? AND idx = ?")
+            .bind(*m)
+            .bind(set)
+            .bind(i as i64)
+            .execute(&env.ctx.db)
+            .await
+            .unwrap();
+    }
+    let total = |v: serde_json::Value| v["total"].as_i64().unwrap();
+    assert_eq!(total(env.get(&format!("/api/prompt-sets/{set}/prompts?q=caf%C3%A9")).await.1), 1);
+    assert_eq!(total(env.get(&format!("/api/prompt-sets/{set}/prompts?q=role")).await.1), 0);
+    assert_eq!(total(env.get(&format!("/api/prompt-sets/{set}/prompts?q=user")).await.1), 0);
+    assert_eq!(total(env.get(&format!("/api/prompt-sets/{set}/prompts?q=50%25")).await.1), 1);
+    assert_eq!(total(env.get(&format!("/api/prompt-sets/{set}/prompts?q=0%25")).await.1), 1);
+}

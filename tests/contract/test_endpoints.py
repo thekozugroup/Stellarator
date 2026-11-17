@@ -174,7 +174,7 @@ def test_patch_base_url_rechecks_the_server(api, make_endpoint, mock_url):
 
 def test_create_validation_errors(api):
     r = api.post("/api/endpoints", json={})
-    assert_error(r, 422, fields=("name", "base_url"))
+    assert_error(r, 422, any_field=("name", "base_url"))
 
     r = api.post("/api/endpoints", json={"name": "x", "base_url": "localhost:8000"})
     assert_error(r, 422, field="base_url", detail="Base URL must start with http:// or https://")

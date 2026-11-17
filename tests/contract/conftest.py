@@ -26,9 +26,7 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 
-from shapes import check, ENDPOINT, PROMPT, PROMPT_SET, RUN
 from support import (
-    assert_no_content,
     create_endpoint,
     create_run,
     get_run,
@@ -38,7 +36,6 @@ from support import (
     source_file,
     source_paste,
     upload,
-    wait_until,
 )
 
 REPO = Path(__file__).resolve().parents[2]
@@ -114,7 +111,10 @@ class _Procs:
 
 
 def _wait_http(url: str, what: str, procs: _Procs | None) -> None:
-    deadline = time.monotonic() + STARTUP_TIMEOUT_S
+    # Servers we start get time to boot (uv may sync an environment first); ones we did not start
+    # should already be answering.
+    limit = STARTUP_TIMEOUT_S if procs else 10.0
+    deadline = time.monotonic() + limit
     with httpx.Client(trust_env=False, timeout=2) as c:
         while True:
             try:
@@ -125,7 +125,11 @@ def _wait_http(url: str, what: str, procs: _Procs | None) -> None:
             if procs:
                 procs.check_alive()
             if time.monotonic() > deadline:
-                pytest.exit(f"{what} did not answer at {url} within {STARTUP_TIMEOUT_S:.0f}s.", returncode=2)
+                pytest.exit(
+                    f"{what} did not answer at {url} within {limit:.0f}s. Start it, or set "
+                    f"STELLARATOR_START=python or rust to have the tests start it.",
+                    returncode=2,
+                )
             time.sleep(0.3)
 
 
