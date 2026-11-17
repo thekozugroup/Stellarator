@@ -80,6 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.create.outputs.id }}
+      tag: ${{ steps.create.outputs.tag }}
     steps:
       - id: create
         env:
@@ -116,15 +117,13 @@ jobs:
           Setup, data folders and troubleshooting: [docs/desktop.md](https://github.com/thekozugroup/Stellarator/blob/main/docs/desktop.md).
           EOF
           sed -i "s/@V@/$version/g" body.md
-          # A published release for this version is final. A push to main then only builds the
-          # installers; a tag or the checkbox fails, since a new release needs a new version.
-          # A draft left by an earlier (cancelled or failed) run is moved to this commit and
-          # reused. Otherwise create a draft.
-          found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$tag\") | \"\(.id) \(.draft)\"")
-          found="${found%%$'\n'*}"
-          id="${found%% *}"
-          if [ "${found##* }" = "false" ]; then
+          # This version's releases: by tag, or drafts by name (GitHub drops a draft's tag when it
+          # is updated without tag_name, leaving "untagged-..."). A published one is final: a push
+          # to main then only builds the installers; a tag or the checkbox fails, since a new
+          # release needs a new version. A draft left by an earlier (cancelled or failed) run is
+          # moved to this commit and reused, and duplicate drafts are deleted. Otherwise create one.
+          found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$tag\" or (.draft and .name == \"Stellarator $tag\")) | \"\(.id) \(.draft)\"")
+          if grep -q ' false$' <<<"$found"; then
             if [ "$EXPLICIT" = "true" ]; then
               echo "::error::Release $tag is already published. Bump the version in Cargo.toml, desktop/src-tauri/Cargo.toml and desktop/package.json."
               exit 1
@@ -132,8 +131,20 @@ jobs:
             echo "Release $tag is already published; this run only builds the installers."
             exit 0
           fi
+          id=""
+          while read -r rid _; do
+            [ -n "$rid" ] || continue
+            if [ -z "$id" ]; then
+              id="$rid"
+            else
+              echo "Deleting duplicate draft $rid"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$rid" --silent
+            fi
+          done <<<"$found"
           if [ -n "$id" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f target_commitish="$GITHUB_SHA" --silent
+            # Always send tag_name with an update (see above).
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+              -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" --silent
           fi
           if [ -z "$id" ]; then
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
@@ -142,6 +153,7 @@ jobs:
           fi
           echo "Release $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.name }}
@@ -264,7 +276,9 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           ID: ${{ needs.release.outputs.id }}
+          TAG: ${{ needs.release.outputs.tag }}
         run: |
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -F draft=false -f make_latest=true \
-            --jq '"Published " + .html_url'
+          # tag_name must be sent, or GitHub drops the draft's tag (see the release job).
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" \
+            -f tag_name="$TAG" -F draft=false -f make_latest=true --jq '"Published " + .html_url'
           gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets" --jq '.[] | "\(.name)  \(.size)"'
