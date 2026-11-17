@@ -9,11 +9,21 @@ rust-version.workspace = true
 anyhow = "1.0.104"
 async-trait = "0.1.92"
 axum = "0.8.9"
+chrono = "0.4"
+futures = "0.3"
 mime_guess = "2.0.5"
 rust-embed = { version = "8.14.0", features = ["include-exclude"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.154"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "json"] }
 stellarator-core = { version = "0.2.0", path = "../core" }
 tokio = { version = "1.53.3", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["trace", "compression-gzip"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+tempfile = "3.27.0"
+tower = { version = "0.5", features = ["util"] }
