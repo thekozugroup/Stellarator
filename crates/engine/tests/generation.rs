@@ -197,18 +197,13 @@ fn client() -> reqwest::Client {
     reqwest::Client::builder().no_proxy().build().unwrap()
 }
 
+#[derive(Default)]
 struct Opts<'a> {
     params: RunParams,
     sample_idx: i64,
     caps: Option<&'a ServerCaps>,
     seen: Option<&'a Seen>,
     sleeps: Option<&'a Sleeps>,
-}
-
-impl Default for Opts<'_> {
-    fn default() -> Self {
-        Self { params: RunParams::default(), sample_idx: 0, caps: None, seen: None, sleeps: None }
-    }
 }
 
 async fn run(server: &Server, o: Opts<'_>) -> Result<GenerationResult, GenerateError> {

@@ -119,7 +119,7 @@ struct MetricRow {
 
 enum Op {
     Mark { run_id: i64, sample_id: i64 },
-    Finish { run_id: i64, task: Arc<RunTask>, row: FinishRow, deltas: Deltas },
+    Finish { run_id: i64, task: Arc<RunTask>, row: Box<FinishRow>, deltas: Deltas },
     Reset { run_id: i64, sample_id: i64, task: Arc<RunTask> },
     Active { run_id: i64, seconds: f64 },
     Metric(MetricRow),
@@ -238,7 +238,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         match op {
             Op::Mark { sample_id, .. } => marks.push(*sample_id),
             Op::Finish { run_id, row, deltas: d, .. } => {
-                finishes.push(row);
+                finishes.push(row.as_ref());
                 deltas.entry(*run_id).or_default().add(d);
             }
             Op::Reset { sample_id, .. } => resets.push(*sample_id),
@@ -511,7 +511,10 @@ struct EndpointInfo {
 impl RunTask {
     fn new(engine: &Arc<Engine>, writer: WriterHandle, run: RunInfo, endpoint: EndpointInfo) -> anyhow::Result<Arc<Self>> {
         let timeout = run.params.request_timeout_s.max(0.001);
+        // HTTP/1.1 with a connection per request in flight, like the Python backend: over HTTP/2 a
+        // server's stream limit (often 100 to 256) would silently cap the run's concurrency.
         let client = reqwest::Client::builder()
+            .http1_only()
             .user_agent(concat!("stellarator/", env!("CARGO_PKG_VERSION")))
             .default_headers(build_headers(endpoint.api_key.as_deref(), &endpoint.headers))
             .connect_timeout(Duration::from_secs_f64(timeout.min(30.0)))
@@ -980,7 +983,7 @@ impl RunTask {
             st.consecutive_failures = 0;
             st.in_flight.remove(&key);
         }
-        self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row, deltas }).await;
+        self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row: Box::new(row), deltas }).await;
     }
 
     /// True when the circuit breaker tripped: the task is pausing and the run row must say so.
@@ -1020,7 +1023,7 @@ impl RunTask {
             completed_at: time::now_db(),
         };
         let deltas = Deltas { failed: 1, ..Deltas::default() };
-        self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row, deltas }).await;
+        self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row: Box::new(row), deltas }).await;
         trip
     }
 

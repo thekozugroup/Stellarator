@@ -201,7 +201,8 @@ impl Env {
 
     /// Counters computed from the sample rows.
     pub async fn truth(&self, run_id: i64) -> Truth {
-        let rows: Vec<(String, i64, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+        type Row = (String, i64, Option<i64>, Option<i64>, Option<i64>);
+        let rows: Vec<Row> = sqlx::query_as(
             "SELECT status, COUNT(*), SUM(prompt_tokens), SUM(completion_tokens), SUM(reasoning_tokens) \
              FROM samples WHERE run_id = ? GROUP BY status",
         )
