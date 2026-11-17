@@ -183,8 +183,8 @@ cp /tmp/icons-macos/icon.icns src-tauri/icons/
 
 ## Builds and releases (CI)
 
-`.github/workflows/desktop.yml` builds the installers on macOS (Apple Silicon, and Intel
-cross-compiled on Apple Silicon), Windows and Linux. It runs on `v*` tags, by hand (Run workflow),
+`.github/workflows/desktop.yml` builds the installers for macOS (Apple Silicon and Intel, both on
+GitHub's Intel Mac runners, with the Apple Silicon app cross-compiled), Windows and Linux. It runs on `v*` tags, by hand (Run workflow),
 and on pushes to `main` that change `desktop/`, `crates/` or `frontend/`. Every run uploads the
 installers as artifacts named `stellarator-<target>`.
 

@@ -152,15 +152,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-latest is Apple Silicon. Pinned labels (macos-13, macos-14) get retired, and a job
-          # on a retired label is cancelled before it starts.
+          # Both Mac builds run on the Intel runner and the Apple Silicon one is cross-compiled
+          # (Rust and Tauri support this). In November 2026 jobs on the arm64 runners (macos-latest,
+          # macos-26) sat queued until GitHub cancelled them: "Due to capacity constraints, jobs
+          # targeting macOS arm64 runners may experience longer queue times." The Intel runners are
+          # a separate pool. Labels get retired (macos-14 was on 2026-11-02); see
+          # https://github.com/actions/runner-images for the current ones.
           - name: macOS (Apple Silicon)
-            os: macos-latest
+            os: macos-26-intel
             target: aarch64-apple-darwin
-          # No Intel runners: the Intel build cross-compiles on Apple Silicon, which Rust and Tauri
-          # support.
           - name: macOS (Intel)
-            os: macos-latest
+            os: macos-26-intel
             target: x86_64-apple-darwin
           - name: Windows
             os: windows-latest
