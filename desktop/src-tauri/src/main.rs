@@ -161,10 +161,8 @@ async fn start_server(app: &AppHandle) -> anyhow::Result<(RunningServer, String)
     Ok((server, token))
 }
 
-/// The server's parts: database, routes and background work.
-// TODO(lead): switch to `stellarator_server::full_parts` (engine, imports and exports wired in,
-// as crates/server/src/main.rs does) once those crates are settled. Until then the app serves
-// only the server crate's own routes.
+/// The server's parts: database, routes, the run engine, imports and exports (the same set the
+/// Docker server uses).
 async fn build_parts(config: Config) -> anyhow::Result<Parts> {
     stellarator_server::full_parts(config).await
 }
