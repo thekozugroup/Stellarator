@@ -1042,13 +1042,9 @@ pub struct PairIn {
     pub rejected_sample_id: i64,
 }
 
-impl Validate for PairIn {
-    fn validate(&mut self, e: &mut FieldErrors) {
-        if self.chosen_sample_id == self.rejected_sample_id {
-            e.add("rejected_sample_id", "Pick two different responses.");
-        }
-    }
-}
+// Pair rules (different samples, same prompt, finished, in the set's runs) need the database and
+// must answer 404 before 422, so the preferences routes check them in the handler.
+no_validation!(PairIn);
 
 /// Prefer every finished sample of one run over another run's, prompt by prompt.
 #[derive(Deserialize, Debug, Clone)]
@@ -1060,13 +1056,7 @@ pub struct AutoPairIn {
     pub overwrite: bool,
 }
 
-impl Validate for AutoPairIn {
-    fn validate(&mut self, e: &mut FieldErrors) {
-        if self.chosen_run_id == self.rejected_run_id {
-            e.add("rejected_run_id", "Pick two different runs.");
-        }
-    }
-}
+no_validation!(AutoPairIn);
 
 #[derive(Serialize, Debug, Clone)]
 pub struct AutoPairOut {

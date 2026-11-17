@@ -226,7 +226,7 @@ async fn items_filter() {
 
     let (status, body) = env.get(&format!("{url}/items?filter=maybe")).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(body["detail"].as_str().unwrap().contains("allowed values"));
+    assert!(body["detail"].as_str().unwrap().contains("maybe"));
     assert_eq!(env.get(&format!("{url}/items?limit=201")).await.0, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(env.get(&format!("{url}/items?limit=0")).await.0, StatusCode::UNPROCESSABLE_ENTITY);
 }

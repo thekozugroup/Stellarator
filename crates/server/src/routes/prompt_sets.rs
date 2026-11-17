@@ -115,6 +115,26 @@ struct PromptRow {
     meta: Db<Value>,
 }
 
+/// The query as it appears inside the stored JSON text: quotes, backslashes and newlines escaped
+/// the way serde_json writes them. Returns two forms: as this server stores text (non-ASCII as is)
+/// and as the Python backend stored it (non-ASCII as \uXXXX), so prompts imported by either match.
+fn stored_forms(q: &str) -> (String, String) {
+    let encoded = serde_json::to_string(q).unwrap_or_else(|_| format!("\"{q}\""));
+    let inner = encoded[1..encoded.len() - 1].to_string();
+    let mut ascii = String::with_capacity(inner.len());
+    for c in inner.chars() {
+        if c.is_ascii() {
+            ascii.push(c);
+        } else {
+            let mut buf = [0u16; 2];
+            for unit in c.encode_utf16(&mut buf) {
+                ascii.push_str(&format!("\\u{:04x}", unit));
+            }
+        }
+    }
+    (inner, ascii)
+}
+
 /// Escape LIKE wildcards so the search text is matched literally.
 fn like_pattern(q: &str) -> String {
     let mut out = String::from("%");
@@ -139,7 +159,10 @@ async fn prompts(
     errors.finish()?;
     let ctx = &state.ctx;
     fetch(ctx, id).await?;
-    let pattern = q.q.as_deref().filter(|s| !s.is_empty()).map(like_pattern);
+    let pattern = q.q.as_deref().filter(|s| !s.is_empty()).map(|text| {
+        let (native, python) = stored_forms(text);
+        (like_pattern(&native), like_pattern(&python))
+    });
     let (total, rows) = match &pattern {
         None => {
             let total = sqlx::query_scalar("SELECT COUNT(*) FROM prompts WHERE prompt_set_id = ?")
@@ -158,18 +181,22 @@ async fn prompts(
         }
         Some(p) => {
             let total = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM prompts WHERE prompt_set_id = ? AND lower(messages) LIKE ? ESCAPE '\\'",
+                "SELECT COUNT(*) FROM prompts WHERE prompt_set_id = ? \
+                 AND (lower(messages) LIKE ? ESCAPE '\\' OR lower(messages) LIKE ? ESCAPE '\\')",
             )
             .bind(id)
-            .bind(p)
+            .bind(&p.0)
+            .bind(&p.1)
             .fetch_one(&ctx.db)
             .await?;
             let rows = sqlx::query_as::<_, PromptRow>(
                 "SELECT id, idx, messages, meta FROM prompts WHERE prompt_set_id = ? \
-                 AND lower(messages) LIKE ? ESCAPE '\\' ORDER BY idx LIMIT ? OFFSET ?",
+                 AND (lower(messages) LIKE ? ESCAPE '\\' OR lower(messages) LIKE ? ESCAPE '\\') \
+                 ORDER BY idx LIMIT ? OFFSET ?",
             )
             .bind(id)
-            .bind(p)
+            .bind(&p.0)
+            .bind(&p.1)
             .bind(q.limit)
             .bind(q.offset)
             .fetch_all(&ctx.db)
@@ -208,3 +235,17 @@ async fn remove(State(state): State<AppState>, P(id): P<i64>) -> Result<StatusCo
     Ok(StatusCode::NO_CONTENT)
 }
 
+
+#[cfg(test)]
+mod search_tests {
+    use super::stored_forms;
+
+    #[test]
+    fn matches_both_storage_styles() {
+        let (native, python) = stored_forms("café \"quoted\"");
+        assert_eq!(native, "café \\\"quoted\\\"");
+        assert_eq!(python, "caf\\u00e9 \\\"quoted\\\"");
+        let (_, emoji) = stored_forms("🦊");
+        assert_eq!(emoji, "\\ud83e\\udd8a");
+    }
+}
