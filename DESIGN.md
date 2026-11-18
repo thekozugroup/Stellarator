@@ -69,7 +69,7 @@ it does not refract. Tokens and utilities live in `frontend/src/index.css`.
 
 | Utility | Fill | Blur | Saturation | Used on |
 | --- | --- | --- | --- | --- |
-| `material-bar` | `--material-tint` (default `--background`) at 86% | 32 px | 160% | the toolbar once content scrolls under it, the sidebar panel (tint `--sidebar`), the phone tab bar |
+| `material-bar` | `--material-tint` (default `--background`) at 86% | 32 px | 160% | the toolbar once content scrolls under it, the phone tab bar |
 | `material-thick` | `--popover` at 90% | 40 px | 160% | menus, pop-up lists, popovers, info tips, tooltips, the chart readout, dialogs, alerts, sheets |
 | `material-float` | none | none | none | the edge and shadow of a floating panel: a 1 px `--material-edge` hairline (black 10% light, white 12% dark) and `--material-shadow` (0 1 2 and 0 8 24 -4, black 6% and 14% light, 30% and 50% dark) |
 
@@ -138,7 +138,7 @@ Rules:
 
 - Spacing scale (Tailwind units): 1, 2, 3, 4, 6, 8, 12, 16 (4 to 64 px).
 - Shell from 768 px up: the sidebar is a panel floating 8 px inside the window (a 240 px column:
-  8 px gutter, 224 px panel, 8 px gutter), `material-bar` tinted `--sidebar`, `material-float`,
+  8 px gutter, 224 px panel, 8 px gutter), solid `--sidebar` (no blur: nothing scrolls under it), `material-float`,
   18 px corners, 8 px padding. At its top, the mark and name in a 28 px row centered on the
   toolbar's band (26 px from the top); then Runs, Prompt sets, Endpoints, Preferences; Settings at
   the bottom.
@@ -207,7 +207,8 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
   `text-base` at 600; buttons at the end with no footer band (stacked full width below 640 px).
 - Side sheets: `material-thick`; edge to edge on phones, floating 8 px inside the window with 18 px
   corners from 640 px up.
-- Tooltips: `material-thick`, 6 px corners, 12 px text, no arrow, 4 px from the trigger. Info tips
+- Tooltips: `material-thick`, 6 px corners, 12 px text, no arrow, 4 px from the trigger, shown after
+  a 700 ms hover as on macOS (keyboard focus shows them at once). Info tips
   (the (i) buttons) are popovers in the same material.
 - Data lists (Runs, Prompt sets, Endpoints, Preferences, a run's samples): a table in the macOS list
   style from 1024 px; below it one row per item with its facts on a second line. A 768 to 1023 px

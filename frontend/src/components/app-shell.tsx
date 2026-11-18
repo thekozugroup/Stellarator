@@ -47,15 +47,12 @@ function SidebarRow({ to, label, icon: Icon }: { to: string; label: string; icon
 function Sidebar() {
   return (
     <aside className="sticky top-0 hidden h-dvh p-2 md:block">
-      <div className="material-bar material-float flex h-full flex-col justify-between rounded-3xl px-2 pt-[calc(max(0px,var(--titlebar-height)-0.5rem)+0.25rem)] pb-2 [--material-tint:var(--sidebar)]">
+      <div className="material-float flex h-full flex-col justify-between rounded-3xl bg-sidebar px-2 pt-[calc(max(0px,var(--titlebar-height)-0.5rem)+0.25rem)] pb-2">
         <div className="grid gap-4">
-          <NavLink
-            to="/runs"
-            className="flex h-8 items-center gap-2 self-start justify-self-start rounded-[10px] px-2 text-sm font-semibold tracking-[-0.01em] pointer-fine:h-7"
-          >
+          <p className="flex h-8 items-center gap-2 self-start justify-self-start px-2 text-sm font-semibold tracking-[-0.01em] pointer-fine:h-7">
             <Logo className="size-5" />
             Stellarator
-          </NavLink>
+          </p>
           <nav aria-label="Main">
             <ul className="grid gap-0.5">
               {NAV.map((item) => (

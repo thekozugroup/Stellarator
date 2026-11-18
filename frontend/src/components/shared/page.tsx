@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { Link, NavLink } from "react-router"
 import { ChevronLeft, Settings } from "lucide-react"
 import { Bar } from "@/components/shared/block-states"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToolbarDragRegion } from "@/lib/desktop-shell"
 import { TOOLBAR_ACTIONS_QUERY, TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
@@ -40,7 +40,7 @@ function useToolbarScroll(bar: RefObject<HTMLElement | null>, largeTitle: RefObj
 }
 
 /** Back to the parent screen. A chevron toolbar button on wide screens; "‹ Runs" on phones, as iOS. */
-function BackControl({ back, compact }: { back: { to: string; label: string }; compact: boolean }) {
+function BackControl({ back, compact, labelHidden = false }: { back: { to: string; label: string }; compact: boolean; labelHidden?: boolean }) {
   if (compact) {
     return (
       <Tooltip>
@@ -58,10 +58,12 @@ function BackControl({ back, compact }: { back: { to: string; label: string }; c
   return (
     <Link
       to={back.to}
-      className="-ml-2 inline-flex h-11 min-w-0 items-center gap-0.5 rounded-lg pr-2 text-[17px] text-foreground"
+      aria-label={`Back to ${back.label}`}
+      className="-ml-2 inline-flex h-11 min-w-11 items-center gap-0.5 rounded-lg pr-2 text-[17px] text-foreground"
     >
       <ChevronLeft className="size-6 flex-none" strokeWidth={2} aria-hidden="true" />
-      <span className="truncate">{back.label}</span>
+      {/* iOS 26: the label goes once the small title takes the middle of the bar. */}
+      {labelHidden ? null : <span className="truncate">{back.label}</span>}
     </Link>
   )
 }
@@ -72,14 +74,13 @@ function PhoneSettingsLink() {
     <NavLink
       to="/settings"
       aria-label="Settings"
-      className={({ isActive }) =>
-        cn(
-          "-ml-2.5 inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:text-foreground",
-          isActive && "text-foreground",
-        )
-      }
+      title="Settings"
+      // The Button's own attributes, so the touch rules size it like the "+" and "..." capsules.
+      data-slot="button"
+      data-size="icon"
+      className={({ isActive }) => cn(buttonVariants({ variant: "outline", size: "icon" }), isActive && "bg-accent")}
     >
-      <Settings className="size-[22px]" strokeWidth={1.75} aria-hidden="true" />
+      <Settings aria-hidden="true" />
     </NavLink>
   )
 }
@@ -150,7 +151,7 @@ export function Page({
           )}
         >
           <div className="flex min-w-0 items-center empty:hidden">
-            {back ? <BackControl back={back} compact={toolbarLayout} /> : toolbarLayout ? null : <PhoneSettingsLink />}
+            {back ? <BackControl back={back} compact={toolbarLayout} labelHidden={titleUnder} /> : toolbarLayout ? null : <PhoneSettingsLink />}
           </div>
           {toolbarLayout ? (
             <h1
