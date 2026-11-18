@@ -1,30 +1,6 @@
 import { InfoTip } from "@/components/shared/info-tip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { INFO } from "./helpers"
-
-/**
- * Simple shows the source and what was detected; Advanced shows every setting. Both edit the same
- * state, so switching never resets a choice. The choice is remembered in this browser.
- */
-export type ImportMode = "simple" | "advanced"
-
-const KEY = "stellarator:import-mode"
-
-export function readImportMode(): ImportMode {
-  try {
-    return window.localStorage.getItem(KEY) === "advanced" ? "advanced" : "simple"
-  } catch {
-    return "simple"
-  }
-}
-
-export function saveImportMode(mode: ImportMode) {
-  try {
-    window.localStorage.setItem(KEY, mode)
-  } catch {
-    /* storage blocked: the choice lasts for this page only */
-  }
-}
+import { INFO, type ImportMode } from "./helpers"
 
 /** "Simple | Advanced", styled like the Rendered/Raw switch. */
 export function ImportModeToggle({ value, onChange }: { value: ImportMode; onChange: (m: ImportMode) => void }) {

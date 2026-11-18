@@ -5,7 +5,7 @@ import type { SummaryRow } from "./helpers"
 export function DetectedSummary({ rows }: { rows: SummaryRow[] }) {
   if (rows.length === 0) return null
   return (
-    <section aria-labelledby="detected-heading" className="grid gap-3">
+    <section aria-labelledby="detected-heading" className="mt-4 grid gap-4">
       <h2 id="detected-heading" className="text-base font-semibold">
         Detected
       </h2>

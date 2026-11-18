@@ -11,10 +11,22 @@ import { FileFields, HuggingFaceFields, PasteFields } from "@/components/import/
 import { MappingFields } from "@/components/import/mapping-fields"
 import { PreviewPanel } from "@/components/import/preview-panel"
 import { DetectedSummary } from "@/components/import/detected-summary"
-import { ImportModeToggle, readImportMode, saveImportMode, type ImportMode } from "@/components/import/import-mode"
-import { INFO, defaultSplit, importSummary, isDatasetId, parseCount, parseDataset, stripExtension } from "@/components/import/helpers"
+import { ImportModeToggle } from "@/components/import/import-mode"
+import {
+  INFO,
+  defaultSplit,
+  importSummary,
+  isDatasetId,
+  parseCount,
+  parseDataset,
+  readImportMode,
+  saveImportMode,
+  stripExtension,
+  type ImportMode,
+} from "@/components/import/helpers"
 import { api, ApiError } from "@/lib/api"
 import { count } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import type { HFSplit, ImportFormat, ImportMapping, ImportPreview, ImportSource, PromptSet, SplitMode, Turns, Upload } from "@/lib/types"
 
 type SourceTab = "huggingface" | "file" | "paste"
@@ -399,7 +411,13 @@ export function ImportPromptsPage() {
           </fieldset>
         ) : null}
 
-        <div className="sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:row-start-3 lg:mx-0 lg:border-0 lg:px-0 lg:py-0">
+        <div
+          className={cn(
+            "sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:mx-0 lg:border-0 lg:px-0 lg:py-0",
+            // Simple mode has no mapping row: the action follows the source directly.
+            simple ? "lg:row-start-2" : "lg:row-start-3",
+          )}
+        >
           {commit.error ? (
             <div
               ref={alertRef}

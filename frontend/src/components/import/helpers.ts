@@ -69,6 +69,32 @@ export function parseCount(s: string): number | null | undefined {
   return Number(t)
 }
 
+// ------------------------------------------------------------------ Simple and Advanced
+
+/**
+ * Simple shows the source and what was detected; Advanced shows every setting. Both edit the same
+ * state, so switching never resets a choice. The choice is remembered in this browser.
+ */
+export type ImportMode = "simple" | "advanced"
+
+const MODE_KEY = "stellarator:import-mode"
+
+export function readImportMode(): ImportMode {
+  try {
+    return window.localStorage.getItem(MODE_KEY) === "advanced" ? "advanced" : "simple"
+  } catch {
+    return "simple"
+  }
+}
+
+export function saveImportMode(mode: ImportMode) {
+  try {
+    window.localStorage.setItem(MODE_KEY, mode)
+  } catch {
+    /* storage blocked: the choice lasts while the page is open */
+  }
+}
+
 // ------------------------------------------------------------------ explanations
 
 /** The one- or two-sentence explanations behind the info buttons on the import screen. */
