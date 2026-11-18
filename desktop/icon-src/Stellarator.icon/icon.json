@@ -19,15 +19,28 @@
     {
       "layers": [
         {
-          "name": "coil-front",
+          "glass": true,
           "image-name": "coil-front.svg",
-          "glass": true
+          "name": "coil-front",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
         },
         {
-          "name": "coil-back",
-          "image-name": "coil-back.svg",
           "glass": true,
-          "opacity": 0.85
+          "image-name": "coil-back.svg",
+          "name": "coil-back",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
         }
       ],
       "shadow": {
@@ -37,25 +50,34 @@
       "translucency": {
         "enabled": true,
         "value": 0.35
-      },
-      "specular": true
+      }
     },
     {
       "layers": [
         {
-          "name": "glow",
+          "glass": false,
           "image-name": "glow.svg",
-          "glass": false
+          "name": "glow",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
         }
       ],
       "shadow": {
-        "kind": "none"
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
       }
     }
   ],
   "supported-platforms": {
-    "squares": [
-      "macOS"
-    ]
+    "squares": "shared"
   }
 }

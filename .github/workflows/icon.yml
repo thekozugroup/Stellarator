@@ -1,0 +1,90 @@
+# Compiles the macOS 26 Icon Composer document (desktop/icon-src/Stellarator.icon) with actool, the
+# way the Desktop workflow does, in a couple of minutes instead of a full app build. It also
+# compiles simpler variants of the document, from Icon Composer's minimal default up to the full
+# design, so a rejected document shows which part actool objects to. The artifact holds each
+# variant's actool output and, for the ones that compile, Apple's flattened rendering as PNG.
+
+name: Icon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/icon-src/**"
+      - ".github/workflows/icon.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actool:
+    name: Compile the Liquid Glass icon
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: actool on Stellarator.icon and simpler variants
+        shell: bash
+        run: |
+          xcrun actool --version | grep -A1 short-bundle-version || true
+          mkdir -p icon-check
+          python3 - <<'PY'
+          import copy, json, os, shutil, subprocess
+
+          src = "desktop/icon-src/Stellarator.icon"
+          full = json.load(open(f"{src}/icon.json"))
+          pos = {"scale": 1, "translation-in-points": [0, 0]}
+          front = {"image-name": "coil-front.svg", "name": "coil-front", "position": pos}
+          group = {"layers": [front], "shadow": {"kind": "neutral", "opacity": 0.5},
+                   "translucency": {"enabled": True, "value": 0.5}}
+          base = {"fill": {"automatic-gradient": "srgb:0.22745,0.14510,0.58824,1.00000"},
+                  "groups": [group], "supported-platforms": {"squares": "shared"}}
+
+          v = {}
+          v["1-default"] = copy.deepcopy(base)
+          v["2-gradient"] = copy.deepcopy(base); v["2-gradient"]["fill"] = full["fill"]
+          v["3-glass"] = copy.deepcopy(v["2-gradient"]); v["3-glass"]["groups"][0]["layers"][0]["glass"] = True
+          v["4-two-coils"] = copy.deepcopy(v["3-glass"])
+          v["4-two-coils"]["groups"][0]["layers"].append(
+              {"glass": True, "image-name": "coil-back.svg", "name": "coil-back", "position": pos})
+          v["5-full"] = full
+
+          for name, doc in v.items():
+              d = f"icon-check/{name}"
+              os.makedirs(d, exist_ok=True)
+              pkg = f"{d}/Stellarator.icon"
+              shutil.copytree(src, pkg, dirs_exist_ok=True)
+              json.dump(doc, open(f"{pkg}/icon.json", "w"), indent=2)
+              out = f"{d}/out"
+              os.makedirs(out, exist_ok=True)
+              r = subprocess.run(
+                  ["xcrun", "actool", pkg, "--compile", out, "--output-format", "human-readable-text",
+                   "--notices", "--warnings", "--errors", "--output-partial-info-plist", f"{out}/partial.plist",
+                   "--app-icon", "Stellarator", "--include-all-app-icons", "--enable-on-demand-resources", "NO",
+                   "--development-region", "en", "--target-device", "mac",
+                   "--minimum-deployment-target", "12.0", "--platform", "macosx"],
+                  capture_output=True, text=True)
+              log = r.stdout + r.stderr
+              open(f"{d}/actool.log", "w").write(log)
+              ok = r.returncode == 0 and os.path.exists(f"{out}/Assets.car") and os.path.getsize(f"{out}/Assets.car") > 0
+              first_error = next((l.strip() for l in log.splitlines() if "error" in l.lower()), "")
+              print(f"{name:14} {'OK  ' if ok else 'FAIL'} {sorted(os.listdir(out))} {first_error[:300]}")
+              if ok:
+                  for f in os.listdir(out):
+                      if f.endswith(".icns"):
+                          subprocess.run(["sips", "-s", "format", "png", f"{out}/{f}", "--out", f"{d}/flattened.png"],
+                                         capture_output=True)
+          PY
+          if [ -s icon-check/5-full/out/Assets.car ]; then
+            xcrun assetutil --info icon-check/5-full/out/Assets.car | head -80 || true
+          fi
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: icon-check
+          path: icon-check/
+          if-no-files-found: warn

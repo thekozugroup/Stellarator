@@ -227,6 +227,9 @@ def icon_composer(variant):
                 f'<g transform="translate({off:.2f} {off:.2f}) scale({scale:.4f})" fill="none" stroke="#fff" '
                 f'stroke-width="2.05" stroke-linejoin="round" stroke-linecap="round"><path d="{d}"/></g></svg>\n'
             )
+    # Every group carries shadow {kind, opacity} and translucency {enabled, value}, and every layer a
+    # position, as Icon Composer writes them; actool rejects a document with these left out.
+    position = {"scale": 1, "translation-in-points": [0, 0]}
     doc = {
         "fill": {
             "linear-gradient": [p3(stops[0][1]), p3(stops[-1][1])],
@@ -235,19 +238,19 @@ def icon_composer(variant):
         "groups": [
             {
                 "layers": [
-                    {"name": "coil-front", "image-name": "coil-front.svg", "glass": True},
-                    {"name": "coil-back", "image-name": "coil-back.svg", "glass": True, "opacity": 0.85},
+                    {"glass": True, "image-name": "coil-front.svg", "name": "coil-front", "position": position},
+                    {"glass": True, "image-name": "coil-back.svg", "name": "coil-back", "position": position},
                 ],
                 "shadow": {"kind": "neutral", "opacity": 0.5},
                 "translucency": {"enabled": True, "value": 0.35},
-                "specular": True,
             },
             {
-                "layers": [{"name": "glow", "image-name": "glow.svg", "glass": False}],
-                "shadow": {"kind": "none"},
+                "layers": [{"glass": False, "image-name": "glow.svg", "name": "glow", "position": position}],
+                "shadow": {"kind": "none", "opacity": 0},
+                "translucency": {"enabled": False, "value": 0},
             },
         ],
-        "supported-platforms": {"squares": ["macOS"]},
+        "supported-platforms": {"squares": "shared"},
     }
     with open(os.path.join(out, "icon.json"), "w") as f:
         json.dump(doc, f, indent=2)
