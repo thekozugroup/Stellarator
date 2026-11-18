@@ -171,7 +171,7 @@ export function importSummary(p: SummaryPreview, st: SummaryState): SummaryRow[]
     const how = splitHint(p.split_mode)
     if (how) rows.push({ term: "Prompts", parts: [capitalize(how)] })
   } else if (!p.prompt_field) {
-    rows.push({ term: "Prompts", parts: ["No prompt column found. Choose one in Advanced."], warn: true })
+    rows.push({ term: "Prompts", parts: ["No prompt column found"], warn: true })
   } else if (p.has_conversations) {
     rows.push({ term: "Prompts", parts: [{ code: p.prompt_field }, st.turns === "first_user" ? ", first user turn" : ", whole conversation"] })
   } else {

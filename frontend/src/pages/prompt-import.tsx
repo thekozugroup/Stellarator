@@ -267,19 +267,24 @@ export function ImportPromptsPage() {
 
   const est = data?.estimated_prompts ?? null
   const nameMissing = !importName.trim()
+  const noPromptColumn = !!data && data.columns.length > 0 && !data.prompt_field
   const blocked =
-    !data || !!previewError || est === 0 || nameMissing || !!offsetError || !!limitError || upl.isPending
+    !data || !!previewError || est === 0 || noPromptColumn || nameMissing || !!offsetError || !!limitError || upl.isPending
   const reason = !data
     ? "Choose a source to import."
     : previewError
       ? "Fix the problem in the preview first."
-      : est === 0
-        ? "Nothing to import with these settings."
-        : nameMissing
-          ? "Give the prompt set a name."
-          : simple && (offsetError || limitError)
-            ? "Fix the row limits in Advanced."
-            : null
+      : noPromptColumn
+        ? simple
+          ? "Choose a prompt column in Advanced."
+          : "Choose a prompt column."
+        : est === 0
+          ? "Nothing to import with these settings."
+          : nameMissing
+            ? "Give the prompt set a name."
+            : simple && (offsetError || limitError)
+              ? "Fix the row limits in Advanced."
+              : null
   const label = importing ? "Starting…" : est !== null ? `Import ${count(est, "prompt", "prompts")}` : "Import prompts"
 
   const hfFieldError = tab === "huggingface" && !data && previewError ? previewError : (commitErr?.fields["source.dataset"] ?? null)

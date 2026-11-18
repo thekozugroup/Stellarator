@@ -146,10 +146,10 @@ test("system prompts: a column, the conversation's own, or none", () => {
   assert.ok(lines(importSummary(conv, { ...recommended, source: "file" })).includes("System prompt: From the conversation"))
 })
 
-test("no prompt column: a warning that says where to fix it", () => {
+test("no prompt column: a warning (the Import button says how to fix it)", () => {
   const p: SummaryPreview = { ...base, columns: [col("id", "number"), col("response", "text", true)] }
   assert.deepEqual(lines(importSummary(p, { ...recommended, source: "file" })), [
-    "Prompts: No prompt column found. Choose one in Advanced. (warn)",
+    "Prompts: No prompt column found (warn)",
   ])
 })
 
