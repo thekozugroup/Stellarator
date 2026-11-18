@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-paper.svg">
-  <img alt="" src="docs/assets/logo-ink.svg" width="64" height="64">
-</picture>
+<img alt="" src="docs/assets/icon.png" width="128" height="128">
 
 # Stellarator
 

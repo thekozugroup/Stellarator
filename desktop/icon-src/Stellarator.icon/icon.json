@@ -1,0 +1,61 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.06275,0.08627,0.27059,1.00000",
+      "srgb:0.60392,0.22745,0.65098,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.3,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.7,
+        "y": 1
+      }
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "coil-front",
+          "image-name": "coil-front.svg",
+          "glass": true
+        },
+        {
+          "name": "coil-back",
+          "image-name": "coil-back.svg",
+          "glass": true,
+          "opacity": 0.85
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "name": "glow",
+          "image-name": "glow.svg",
+          "glass": false
+        }
+      ],
+      "shadow": {
+        "kind": "none"
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

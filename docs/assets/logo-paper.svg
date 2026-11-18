@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="1.6" stroke-linejoin="round" role="img" aria-label="Stellarator">
-  <!--
-    The Stellarator mark (frontend/src/components/logo.tsx) with its colours fixed. In the app the
-    strokes take theme tokens; a README image is drawn through an <img>, where those do not exist,
-    so there is one file per background: logo-ink.svg for light pages, logo-paper.svg for dark ones.
-  -->
-  <path stroke="#e8e8e8" d="M12.0 2.2L13.0 2.5L13.9 3.3L14.5 4.4L14.9 5.5L15.2 6.4L15.6 7.0L16.3 7.2L17.3 7.2L18.5 7.3L19.7 7.6L20.7 8.1L21.3 9.0L21.3 10.0L20.9 11.1L20.0 12.0L19.1 12.7L18.3 13.3L17.9 13.9L17.9 14.6L18.1 15.5L18.5 16.7L18.6 18.0L18.4 19.1L17.8 19.9L16.8 20.3L15.6 20.1L14.5 19.6L13.5 18.9L12.7 18.4L12.0 18.2L11.3 18.4L10.5 18.9L9.5 19.6L8.4 20.1L7.2 20.3L6.2 19.9L5.6 19.1L5.4 18.0L5.5 16.7L5.9 15.6L6.1 14.6L6.1 13.9L5.7 13.3L4.9 12.7L4.0 12.0L3.1 11.1L2.7 10.0L2.7 9.0L3.3 8.1L4.3 7.5L5.5 7.3L6.7 7.2L7.7 7.2L8.4 7.0L8.8 6.4L9.1 5.5L9.5 4.4L10.1 3.3L11.0 2.5Z"/>
-  <path stroke="#e8894a" d="M12.0 5.8L12.7 5.6L13.5 5.1L14.5 4.4L15.6 3.9L16.8 3.7L17.8 4.1L18.4 4.9L18.6 6.0L18.5 7.3L18.1 8.4L17.9 9.4L17.9 10.1L18.3 10.7L19.1 11.3L20.0 12.0L20.9 12.9L21.3 14.0L21.3 15.0L20.7 15.9L19.7 16.4L18.5 16.7L17.3 16.8L16.3 16.8L15.6 17.0L15.2 17.6L14.9 18.5L14.5 19.6L13.9 20.7L13.0 21.5L12.0 21.8L11.0 21.5L10.1 20.7L9.5 19.6L9.1 18.5L8.8 17.6L8.4 17.0L7.7 16.8L6.7 16.8L5.5 16.7L4.3 16.4L3.3 15.9L2.7 15.0L2.7 14.0L3.1 12.9L4.0 12.0L4.9 11.3L5.7 10.7L6.1 10.1L6.1 9.4L5.9 8.4L5.5 7.3L5.4 6.0L5.6 4.9L6.2 4.1L7.2 3.7L8.4 3.9L9.5 4.4L10.5 5.1L11.3 5.6Z"/>
-</svg>

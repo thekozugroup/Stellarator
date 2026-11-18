@@ -27,3 +27,6 @@ backend/stellarator/static/
 target/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+
+# Built in CI from desktop/icon-src/Stellarator.icon (see docs/desktop.md)
+desktop/src-tauri/icons/Assets.car

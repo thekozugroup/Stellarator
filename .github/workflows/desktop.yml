@@ -251,6 +251,35 @@ jobs:
           done
           echo "Signing with the Developer ID certificate; notarizing when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are set."
 
+      # macOS 26 draws Liquid Glass app icons itself, from an Icon Composer document compiled
+      # into the app's asset catalog. Tauri bundles .icns only, so actool (Xcode 26) compiles
+      # desktop/icon-src/Stellarator.icon here; the build adds Assets.car through a config overlay
+      # and Info.plist names the icon. If actool fails, the app keeps the static icon.icns.
+      - name: Liquid Glass icon (macOS 26)
+        id: glass
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: |
+          out="$RUNNER_TEMP/icon-build"
+          mkdir -p "$out"
+          xcrun actool --version || true
+          if xcrun actool ../icon-src/Stellarator.icon --compile "$out" \
+              --output-format human-readable-text --notices --warnings --errors \
+              --output-partial-info-plist "$out/partial.plist" --app-icon Stellarator \
+              --include-all-app-icons --enable-on-demand-resources NO --development-region en \
+              --target-device mac --minimum-deployment-target 12.0 --platform macosx \
+            && [ -s "$out/Assets.car" ]; then
+            cp "$out/Assets.car" icons/Assets.car
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string Stellarator" Info.plist
+            printf '{"bundle":{"macOS":{"files":{"Resources/Assets.car":"icons/Assets.car"}}}}' > "$RUNNER_TEMP/glass.json"
+            echo "args=--config $RUNNER_TEMP/glass.json" >> "$GITHUB_OUTPUT"
+            ls -la "$out"
+            xcrun assetutil --info icons/Assets.car | head -60 || true
+          else
+            echo "::warning::actool could not compile Stellarator.icon; this build uses the static icon.icns."
+          fi
+
       - name: Build the app and installers
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -264,7 +293,7 @@ jobs:
           AWS_LC_SYS_PREBUILT_NASM: "1"
         with:
           projectPath: desktop
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }}
           includeUpdaterJson: false
           # Releases only: upload into the draft release. Empty otherwise, so nothing is uploaded.
           releaseId: ${{ needs.release.outputs.id }}
@@ -282,7 +311,7 @@ jobs:
           AWS_LC_SYS_PREBUILT_NASM: "1"
         with:
           projectPath: desktop
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }}
           includeUpdaterJson: false
           releaseId: ${{ needs.release.outputs.id }}
 

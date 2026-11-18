@@ -169,17 +169,45 @@ Logs go to the terminal.
 Windows needs the Visual Studio C++ build tools; Linux needs `libwebkit2gtk-4.1-dev`,
 `libxdo-dev`, `libssl-dev` and `librsvg2-dev` (see `.github/workflows/desktop.yml`).
 
-The icons come from `desktop/icon-src/`: `icon-macos.svg` follows the macOS app icon grid (an 824
-px tile on a 1024 px canvas, the mark inside with margins); `icon.svg` is the nearly full-bleed
-tile for Windows and Linux. To regenerate them:
+### The icon
+
+The icon is the Stellarator mark (two coils braided around a ring) in white glass over a plasma
+gradient. `desktop/icon-src/make_icon.py` writes every source from one description:
+
+| File | Used for |
+| --- | --- |
+| `icon-macos.svg` | macOS: Apple's 824 px rounded square with continuous corners on the 1024 px canvas, with the standard drop shadow |
+| `icon.svg` | Windows, Linux and the web favicon: the same shape, nearly full-bleed |
+| `icon-square.svg` | iOS home screen and the web manifest's maskable icon: full-bleed, the platform masks it |
+| `Stellarator.icon` | macOS 26: an Icon Composer document (gradient fill, glow, two white glass layers) |
+
+On macOS 26 the system draws Liquid Glass itself, so the desktop workflow compiles
+`Stellarator.icon` with Xcode's `actool` into `Assets.car`, adds it to the app and sets
+`CFBundleIconName`; the app then follows the Dock's default, dark, tinted and clear icon styles.
+If `actool` fails, the build goes on with the static `icon.icns` and the log says so. Before
+macOS 26 the app shows `icon.icns` or the flattened icon `actool` puts in `Assets.car`.
+
+To change the icon, edit `make_icon.py` (the colours are in `VARIANTS`), then:
 
 ```sh
 cd desktop
+python3 icon-src/make_icon.py
 npx @tauri-apps/cli@2 icon icon-src/icon.svg -o /tmp/icons-other
 npx @tauri-apps/cli@2 icon icon-src/icon-macos.svg -o /tmp/icons-macos
 cp /tmp/icons-other/{32x32.png,64x64.png,128x128.png,128x128@2x.png,icon.png,icon.ico} src-tauri/icons/
 cp /tmp/icons-macos/icon.icns src-tauri/icons/
+npx @tauri-apps/cli@2 icon icon-src/icon.svg --png 192,512 -o /tmp/icons-web
+npx @tauri-apps/cli@2 icon icon-src/icon-square.svg --png 180,512 -o /tmp/icons-square
+cp icon-src/icon.svg ../frontend/public/favicon.svg
+cp /tmp/icons-web/192x192.png ../frontend/public/icon-192.png
+cp /tmp/icons-web/512x512.png ../frontend/public/icon-512.png
+cp /tmp/icons-square/180x180.png ../frontend/public/apple-touch-icon.png
+cp /tmp/icons-square/512x512.png ../frontend/public/icon-512-maskable.png
+npx @tauri-apps/cli@2 icon icon-src/icon-macos.svg --png 256 -o /tmp/icons-readme
+cp /tmp/icons-readme/256x256.png ../docs/assets/icon.png
 ```
+
+To check `Stellarator.icon` on a Mac, open it in Icon Composer (Xcode 26).
 
 ## Builds and releases (CI)
 
