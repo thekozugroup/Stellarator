@@ -23,14 +23,15 @@ export function EndpointStatus({ endpoint, detail = true }: { endpoint: Endpoint
   }
   const rejected = isKeyRejected(endpoint.last_error)
   const reason = rejected ? serverReason(endpoint.last_error) : endpoint.last_error
+  const word = rejected ? "Key rejected" : "Unreachable"
+  // Without the reason it stays inline, so it can sit in a "·" separated line (the phone rows).
+  if (!detail || !reason) return <span className="font-medium text-destructive">{word}</span>
   return (
     <span className="grid gap-0.5">
-      <span className="font-medium text-destructive">{rejected ? "Key rejected" : "Unreachable"}</span>
-      {detail && reason ? (
-        <span title={endpoint.last_error ?? undefined} className="line-clamp-3 max-w-[34ch] text-xs text-muted-foreground">
-          {reason}
-        </span>
-      ) : null}
+      <span className="font-medium text-destructive">{word}</span>
+      <span title={endpoint.last_error ?? undefined} className="line-clamp-3 max-w-[34ch] text-xs text-muted-foreground">
+        {reason}
+      </span>
     </span>
   )
 }

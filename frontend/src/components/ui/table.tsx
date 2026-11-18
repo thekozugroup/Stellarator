@@ -11,7 +11,10 @@ import { cn } from "@/lib/utils"
  * - Numbers: give the cell `numeric` and the header above it too; they right-align in tabular
  *   figures.
  * - The container does not scroll sideways, because a scroll container would stop the header
- *   from sticking to the page. Lay wide tables out with table-fixed and truncating cells.
+ *   from sticking to the page. Lay wide tables out with table-fixed and truncating cells, and
+ *   show the table from 1024 px (lg) with one row per item below it, as Runs, Prompt sets,
+ *   Endpoints, Preferences and the run's samples do: a 768 to 1023 px content column is 480 to
+ *   735 px wide, too narrow for their columns.
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (

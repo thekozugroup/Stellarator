@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Plus, Upload } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { PromptSetTable, PromptSetTableSkeleton } from "@/components/prompts/prompt-set-table"
@@ -17,10 +17,12 @@ export function PromptSetsPage() {
   const sets = query.data ?? []
   const phone = !useMediaQuery(TOOLBAR_QUERY)
   const importLink = (
-    <Link to="/prompts/import" className={buttonVariants()}>
-      <Upload aria-hidden="true" />
-      Import prompts
-    </Link>
+    <Button asChild>
+      <Link to="/prompts/import">
+        <Upload aria-hidden="true" />
+        Import prompts
+      </Link>
+    </Button>
   )
   const hasSets = !!query.data && sets.length > 0
   return (
@@ -29,9 +31,11 @@ export function PromptSetsPage() {
       actions={(query.data && sets.length === 0) || phone ? null : importLink}
       barActions={
         hasSets ? (
-          <Link to="/prompts/import" aria-label="Import prompts" title="Import prompts" className={buttonVariants({ variant: "outline", size: "icon" })}>
-            <Plus aria-hidden="true" />
-          </Link>
+          <Button asChild variant="outline" size="icon">
+            <Link to="/prompts/import" aria-label="Import prompts" title="Import prompts">
+              <Plus aria-hidden="true" />
+            </Link>
+          </Button>
         ) : null
       }
     >

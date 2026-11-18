@@ -92,14 +92,15 @@ function SampleRows({
   const showThinking = items.some(noTrace)
   return (
     <>
-      <div className="hidden md:block">
+      {/* From 1024 px, as Runs: below it the fixed columns leave the prompt a few words. */}
+      <div className="hidden lg:block">
         <Table className="table-fixed">
           <caption className="sr-only">Samples. Select a row to read the sample in full.</caption>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead scope="col" className="w-[5.5rem]">#</TableHead>
               <TableHead scope="col">Prompt</TableHead>
-              <TableHead scope="col" className="hidden lg:table-cell">Response</TableHead>
+              <TableHead scope="col">Response</TableHead>
               {showThinking ? <TableHead scope="col" className="hidden w-[5.5rem] xl:table-cell">Thinking</TableHead> : null}
               <TableHead scope="col" numeric className="w-[6rem]">Tokens</TableHead>
               <TableHead scope="col" numeric className="w-[6rem]">Latency</TableHead>
@@ -123,7 +124,7 @@ function SampleRows({
                   </Link>
                 </TableCell>
                 {/* A failed row's error is gray: the red mark in Status already says it failed. */}
-                <TableCell className="hidden truncate text-muted-foreground lg:table-cell" title={s.error ?? undefined}>
+                <TableCell className="truncate text-muted-foreground" title={s.error ?? undefined}>
                   {s.status === "failed" && s.error ? s.error : s.response_preview || DASH}
                 </TableCell>
                 {showThinking ? <TableCell className="hidden text-muted-foreground xl:table-cell">{noTrace(s) ? "None" : null}</TableCell> : null}
@@ -144,7 +145,7 @@ function SampleRows({
         </Table>
       </div>
 
-      <ul className="divide-y border-t md:hidden">
+      <ul className="divide-y border-t lg:hidden">
         {items.map((s) => (
           <li key={s.id} className={cn("relative py-3 has-[a:focus-visible]:bg-foreground/4", selected === s.id && "bg-accent")}>
             <div className="flex items-center gap-2 text-xs">
@@ -175,7 +176,7 @@ function RowsLoading() {
   return (
     <div aria-busy="true" aria-label="Loading samples">
       {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className="flex h-11 items-center gap-4 border-b px-3 md:h-8">
+        <div key={i} className="flex h-11 items-center gap-4 border-b px-3 lg:h-8">
           <Bar className="h-3 w-10" />
           <Bar className="w-1/3" />
           <Bar className="hidden w-1/4 lg:inline-block" />

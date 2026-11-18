@@ -70,7 +70,7 @@ function RowActions({ endpoint, onEdit, onDelete }: Omit<Handlers, "onOpen"> & {
 export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Handlers) {
   return (
     <>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -110,8 +110,9 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
         </Table>
       </div>
 
-      {/* Phone: one tappable row opens the details; the menu holds the other actions. */}
-      <ul className="divide-y md:hidden">
+      {/* Phone and tablet (as Runs): one tappable row opens the details; the menu holds the other
+          actions. The table needs about 700 px and would run off a 768 to 1023 px content column. */}
+      <ul className="divide-y lg:hidden">
         {endpoints.map((e) => (
           <li key={e.id} className="flex items-center gap-1">
             <button
@@ -139,7 +140,7 @@ export function EndpointListSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading endpoints" className="divide-y">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="grid gap-2 py-2.5 md:grid-cols-[40%_1fr_1fr_6rem_4rem_8rem] md:items-start md:gap-4">
+        <div key={i} className="grid gap-2 py-2.5 lg:grid-cols-[40%_1fr_1fr_6rem_4rem_8rem] lg:items-start lg:gap-4">
           <div className="grid gap-1.5">
             <Bar className="h-5 w-40" />
             <Bar className="h-4 w-56 max-w-full" />

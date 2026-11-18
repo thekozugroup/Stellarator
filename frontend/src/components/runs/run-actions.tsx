@@ -229,7 +229,7 @@ export function RunActions({ run, onExport, primaryElsewhere = false }: { run: R
       ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button ref={menuButton} variant="ghost" size="icon" aria-label="More actions for this run">
+          <Button ref={menuButton} variant="outline" size="icon" aria-label="More actions for this run">
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>

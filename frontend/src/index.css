@@ -391,18 +391,20 @@
 
 /*
   Materials (DESIGN.md, Materials). Where macOS 26 draws Liquid Glass, Stellarator draws a frosted
-  material in the manner of Android 16's blurred surfaces: a strong blur behind a mostly opaque
+  material in the manner of Android 17's blurred surfaces: a strong blur behind a mostly opaque
   tonal fill, so what sits on it stays readable over any content.
   - material-bar: the scrolled toolbar, the sidebar panel and the phone tab bar. The surface color
-    (--material-tint, default --background) at 85%, 32 px blur, 160% saturation.
+    (--material-tint, default --background) at 86%, 32 px blur, 160% saturation.
   - material-thick: menus, pop-up lists, popovers, info tips, tooltips, dialogs, alerts and sheets.
     --popover at 90%, 40 px blur, 160% saturation.
   - material-float: the hairline edge and the soft shadow of a floating panel.
   The fills are the lowest that keep muted text (--muted-foreground) at 4.5:1 with pure black
-  under the material in the light theme and pure white under it in the dark theme.
+  under the material in the light theme and pure white under it in the dark theme. Measured in
+  Chrome: the bar at 85% gave 4.49:1 over black (the tab bar's gray labels), 86% gives 4.6:1;
+  the thick material gives 5.3:1 light and 4.9:1 dark.
 */
 :root {
-  --material-bar-alpha: 85%;
+  --material-bar-alpha: 86%;
   --material-thick-alpha: 90%;
   --material-bar-filter: blur(32px) saturate(160%);
   --material-thick-filter: blur(40px) saturate(160%);

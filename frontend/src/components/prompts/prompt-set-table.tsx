@@ -10,7 +10,7 @@ import { SetStatus } from "./set-status"
 export function PromptSetTable({ sets }: { sets: PromptSet[] }) {
   return (
     <>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -50,8 +50,9 @@ export function PromptSetTable({ sets }: { sets: PromptSet[] }) {
         </Table>
       </div>
 
-      {/* Phone: an inset list, one row per set, with the disclosure chevron. */}
-      <ul className="divide-y md:hidden">
+      {/* Phone and tablet (as Runs): an inset list, one row per set, with the disclosure chevron. The
+          table needs about 730 px and would run off a 768 to 1023 px content column. */}
+      <ul className="divide-y lg:hidden">
         {sets.map((s) => (
           <li key={s.id}>
             <Link to={`/prompts/${s.id}`} className="-mx-2 flex min-h-14 items-center gap-3 rounded-lg px-2 py-2.5 active:bg-accent">
@@ -80,13 +81,13 @@ export function PromptSetTableSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading prompt sets" className="divide-y">
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="grid gap-1.5 py-3 md:grid-cols-[38%_1fr_5rem_5rem_4rem_6rem] md:items-center md:gap-4">
+        <div key={i} className="grid gap-1.5 py-3 lg:grid-cols-[38%_1fr_5rem_5rem_4rem_6rem] lg:items-center lg:gap-4">
           <Bar className="h-5 w-48 max-w-full" />
           <Bar className="h-4 w-52 max-w-full" />
           <Bar className="h-4 w-14" />
-          <Bar className="h-4 w-12 md:justify-self-end" />
-          <Bar className="h-4 w-8 md:justify-self-end" />
-          <Bar className="h-4 w-16 md:justify-self-end" />
+          <Bar className="h-4 w-12 lg:justify-self-end" />
+          <Bar className="h-4 w-8 lg:justify-self-end" />
+          <Bar className="h-4 w-16 lg:justify-self-end" />
         </div>
       ))}
     </div>

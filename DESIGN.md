@@ -19,7 +19,7 @@ Identity elements:
 Platform: the layout follows macOS 26 and iOS 26 (Apple HIG): a floating sidebar, a unified
 toolbar per screen, a floating tab bar on phones, macOS control shapes and density on mouse and
 trackpad, iOS metrics on touch. Where macOS 26 draws Liquid Glass, Stellarator draws a frosted
-material in the manner of Android 16's blurred surfaces, opaque enough to read over anything
+material in the manner of Android 17's blurred surfaces, opaque enough to read over anything
 (Materials). The same UI runs in the macOS app, in a browser on any desktop, and on phones.
 
 ## Color
@@ -64,12 +64,12 @@ Rules:
 ## Materials
 
 Where macOS 26 uses Liquid Glass, Stellarator uses a frosted material: a strong blur behind a
-mostly opaque tonal fill, in the manner of Android 16's blurred surfaces. It is not clear glass and
+mostly opaque tonal fill, in the manner of Android 17's blurred surfaces. It is not clear glass and
 it does not refract. Tokens and utilities live in `frontend/src/index.css`.
 
 | Utility | Fill | Blur | Saturation | Used on |
 | --- | --- | --- | --- | --- |
-| `material-bar` | `--material-tint` (default `--background`) at 85% | 32 px | 160% | the toolbar once content scrolls under it, the sidebar panel (tint `--sidebar`), the phone tab bar |
+| `material-bar` | `--material-tint` (default `--background`) at 86% | 32 px | 160% | the toolbar once content scrolls under it, the sidebar panel (tint `--sidebar`), the phone tab bar |
 | `material-thick` | `--popover` at 90% | 40 px | 160% | menus, pop-up lists, popovers, info tips, tooltips, the chart readout, dialogs, alerts, sheets |
 | `material-float` | none | none | none | the edge and shadow of a floating panel: a 1 px `--material-edge` hairline (black 10% light, white 12% dark) and `--material-shadow` (0 1 2 and 0 8 24 -4, black 6% and 14% light, 30% and 50% dark) |
 
@@ -191,7 +191,9 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
 - Buttons: `default` (near-black, at most once per view, chosen by state), `outline` (the macOS
   push button: `--control` fill, `--control-edge` hairline, 1 px shadow), `ghost` (no fill until
   hovered), `destructive` (red text on a 10% red tint). In the toolbar every button is a capsule
-  and `ghost` buttons take the `outline` look.
+  and `ghost` buttons take the `outline` look. A screen's "…" menu button is `outline`, so it
+  still reads as a button where the actions sit in the page (below 1024 px); `ghost` is for row
+  actions inside lists.
 - Segmented controls: `ToggleGroup` with `spacing={0}` and the default `TabsList`. A
   `--segment-track` capsule with 2 px padding; the chosen segment is raised (`--control`, hairline,
   1 px shadow) with ink text at weight 500, the others gray at 400. A track that wraps to two rows
@@ -207,6 +209,10 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
   corners from 640 px up.
 - Tooltips: `material-thick`, 6 px corners, 12 px text, no arrow, 4 px from the trigger. Info tips
   (the (i) buttons) are popovers in the same material.
+- Data lists (Runs, Prompt sets, Endpoints, Preferences, a run's samples): a table in the macOS list
+  style from 1024 px; below it one row per item with its facts on a second line. A 768 to 1023 px
+  content column (480 to 735 px) is too narrow for the columns, and the table does not scroll
+  sideways.
 - Status: see Color.
 
 ## Iconography

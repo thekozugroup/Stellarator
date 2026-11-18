@@ -132,12 +132,12 @@ function LoadingRows() {
   return (
     <div aria-label="Loading preference sets…" className="divide-y">
       {[0, 1, 2].map((n) => (
-        <div key={n} className="grid gap-2 py-3 md:grid-cols-[28%_20%_22%_17%_13%] md:gap-0">
+        <div key={n} className="grid gap-2 py-3 lg:grid-cols-[28%_20%_22%_17%_13%] lg:gap-0">
           <Bar className="h-4 w-40" />
           <Bar className="h-4 w-28" />
           <Bar className="h-4 w-36" />
-          <Bar className="h-4 w-28 md:ml-auto" />
-          <Bar className="h-4 w-14 md:ml-auto" />
+          <Bar className="h-4 w-28 lg:ml-auto" />
+          <Bar className="h-4 w-14 lg:ml-auto" />
         </div>
       ))}
     </div>

@@ -491,7 +491,7 @@ function Review({ set }: { set: PreferenceSet }) {
   const menu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+        <Button variant="outline" size="icon" aria-label="More actions" title="More actions">
           <Ellipsis aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
