@@ -1,5 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react"
-import { createPortal } from "react-dom"
+import { Fragment, useEffect, type ReactNode } from "react"
 import { Link } from "react-router"
 import { Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
@@ -174,43 +173,25 @@ function RunsLoading() {
   )
 }
 
-/**
- * Creating a run: the push button "New run" in the toolbar from 768 px up; on a phone a "+"
- * capsule at the end of the navigation bar, as iOS puts the add action. Page keeps its actions
- * under the title below 1024 px, so on a phone this reaches into the bar's trailing slot.
- */
-function NewRunAction() {
-  const wide = useMediaQuery(TOOLBAR_QUERY)
-  const [slot, setSlot] = useState<Element | null>(null)
-  useEffect(() => {
-    if (wide) return
-    // After the toolbar has mounted: it renders in the same commit as this component.
-    const frame = requestAnimationFrame(() => setSlot(document.querySelector('[data-slot="toolbar"] > div > div:last-child')))
-    return () => cancelAnimationFrame(frame)
-  }, [wide])
-  if (!wide) {
-    return slot
-      ? createPortal(
-          <Button asChild variant="outline" size="icon">
-            <Link to="/runs/new" aria-label="New run" title="New run">
-              <Plus aria-hidden="true" />
-            </Link>
-          </Button>,
-          slot,
-        )
-      : null
-  }
-  return (
-    <Button asChild>
-      <Link to="/runs/new">
-        <Plus aria-hidden="true" />
-        New run
-      </Link>
-    </Button>
-  )
-}
+/** Creating a run: a push button in the toolbar, or a "+" in the phone bar (Page's barActions). */
+const newRun = (
+  <Button asChild>
+    <Link to="/runs/new">
+      <Plus aria-hidden="true" />
+      New run
+    </Link>
+  </Button>
+)
+const newRunIcon = (
+  <Button asChild variant="outline" size="icon">
+    <Link to="/runs/new" aria-label="New run" title="New run">
+      <Plus aria-hidden="true" />
+    </Link>
+  </Button>
+)
 
 export function RunsListPage() {
+  const phone = !useMediaQuery(TOOLBAR_QUERY)
   const runs = useRuns()
   const running = runs.data?.filter((r) => r.status === "running").length ?? 0
   useEffect(() => {
@@ -223,7 +204,8 @@ export function RunsListPage() {
   return (
     <Page
       title="Runs"
-      actions={<NewRunAction />}
+      actions={phone ? null : newRun}
+      barActions={newRunIcon}
     >
       {runs.isPending ? (
         <RunsLoading />

@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query"
 import { Plus, Upload } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
-import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { PromptSetTable, PromptSetTableSkeleton } from "@/components/prompts/prompt-set-table"
 import { importingInterval } from "@/components/prompts/set-status"
@@ -25,14 +24,17 @@ export function PromptSetsPage() {
   )
   const hasSets = !!query.data && sets.length > 0
   return (
-    <Page title="Prompt sets" actions={(query.data && sets.length === 0) || phone ? null : importLink}>
-      {hasSets ? (
-        <PhoneToolbarAction>
+    <Page
+      title="Prompt sets"
+      actions={(query.data && sets.length === 0) || phone ? null : importLink}
+      barActions={
+        hasSets ? (
           <Link to="/prompts/import" aria-label="Import prompts" title="Import prompts" className={buttonVariants({ variant: "outline", size: "icon" })}>
             <Plus aria-hidden="true" />
           </Link>
-        </PhoneToolbarAction>
-      ) : null}
+        ) : null
+      }
+    >
       {query.isPending ? (
         <PromptSetTableSkeleton />
       ) : query.isError ? (

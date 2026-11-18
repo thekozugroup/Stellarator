@@ -5,7 +5,6 @@ import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
-import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { DeleteEndpointDialog } from "@/components/endpoints/delete-endpoint-dialog"
 import { EndpointDetailsSheet } from "@/components/endpoints/endpoint-details-sheet"
@@ -65,14 +64,17 @@ export function EndpointsPage() {
   )
 
   return (
-    <Page title="Endpoints" actions={(query.data && endpoints.length === 0) || phone ? null : add}>
-      {endpoints.length > 0 ? (
-        <PhoneToolbarAction>
+    <Page
+      title="Endpoints"
+      actions={(query.data && endpoints.length === 0) || phone ? null : add}
+      barActions={
+        endpoints.length > 0 ? (
           <Button variant="outline" size="icon" aria-label="Add endpoint" title="Add endpoint" onClick={() => setForm({ endpoint: null })}>
             <Plus aria-hidden="true" />
           </Button>
-        </PhoneToolbarAction>
-      ) : null}
+        ) : null
+      }
+    >
       {query.isPending ? (
         <EndpointListSkeleton />
       ) : query.isError ? (

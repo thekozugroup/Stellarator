@@ -6,7 +6,6 @@ import { NewPreferenceSetDialog } from "@/components/preferences/new-set-dialog"
 import { prefKeys } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
-import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
 import { ProgressBar } from "@/components/shared/progress-bar"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -170,12 +169,12 @@ export function PreferencesPage() {
           </Button>
         )
       }
-    >
-      <PhoneToolbarAction>
+      barActions={
         <Button variant="outline" size="icon" aria-label="New preference set" title="New preference set" onClick={() => setOpen(true)}>
           <Plus aria-hidden="true" />
         </Button>
-      </PhoneToolbarAction>
+      }
+    >
       <>
         {sets.isPending ? (
           <LoadingRows />

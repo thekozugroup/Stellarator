@@ -18,7 +18,6 @@ import {
 } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
-import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
 import { actionBarClass } from "@/components/shared/action-bar"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -543,8 +542,8 @@ function Review({ set }: { set: PreferenceSet }) {
           </>
         ) : null
       }
+      barActions={menu}
     >
-      <PhoneToolbarAction>{menu}</PhoneToolbarAction>
       <div className="mb-4 max-sm:hidden sm:mb-6">
         <ToggleGroup
           type="single"

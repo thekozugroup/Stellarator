@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
@@ -116,24 +116,24 @@ function RunMeta({ run }: { run: Run }) {
     ) : (
       run.endpoint_name
     )
-  const items: ReactNode[] = [<RunStatusPill status={run.status} failed={run.failed} />]
+  const items: ReactNode[] = [<RunStatusPill key="status" status={run.status} failed={run.failed} />]
   items.push(
     showModel ? (
-      <span className="min-w-0 [overflow-wrap:anywhere]">
+      <span key="model" className="min-w-0 [overflow-wrap:anywhere]">
         <span className="font-mono text-[13px] text-foreground">{run.model}</span> on {endpoint}
       </span>
     ) : (
-      endpoint
+      <Fragment key="endpoint">{endpoint}</Fragment>
     ),
   )
   if (showSet) {
     items.push(
-      <Link data-touch="inline" to={`/prompts/${run.prompt_set_id}`} className={link}>
+      <Link key="set" data-touch="inline" to={`/prompts/${run.prompt_set_id}`} className={link}>
         {run.prompt_set_name}
       </Link>,
     )
   }
-  items.push(<span title={dateTime(run.created_at)}>Created {relative(run.created_at)}</span>)
+  items.push(<span key="created" title={dateTime(run.created_at)}>Created {relative(run.created_at)}</span>)
   return <Facts items={items} />
 }
 

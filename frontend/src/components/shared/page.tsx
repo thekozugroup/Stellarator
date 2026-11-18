@@ -94,12 +94,15 @@ function PhoneSettingsLink() {
  * On phones the bar holds the back button (or Settings on a top-level screen) and the screen
  * starts with a large title, its meta line and its actions, as iOS does; once the large title
  * scrolls under the bar, a small title fades in there. Below 1024 px the actions sit under the
- * title instead of in the bar, where they would crowd it. `title={null}` shows a loading bar.
+ * title instead of in the bar, where they would crowd it. On phones `barActions` (an icon button
+ * such as "+" or "…") sits at the trailing end of the bar, as iOS puts them in a navigation bar.
+ * `title={null}` shows a loading bar.
  */
 export function Page({
   title,
   meta,
   actions,
+  barActions,
   back,
   children,
   className,
@@ -108,6 +111,8 @@ export function Page({
   title: ReactNode
   meta?: ReactNode
   actions?: ReactNode
+  /** Phones only (below 768 px): icon buttons at the trailing end of the bar. */
+  barActions?: ReactNode
   back?: { to: string; label: string }
   children: ReactNode
   className?: string
@@ -140,7 +145,7 @@ export function Page({
         <div
           className={cn(
             column,
-            "relative grid h-(--toolbar-height) grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)] items-center gap-2",
+            "relative grid h-(--toolbar-height) grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2",
             "md:flex md:gap-3",
           )}
         >
@@ -165,12 +170,14 @@ export function Page({
             <p
               aria-hidden="true"
               data-shown={titleUnder || undefined}
-              className="max-w-[calc(100vw-17rem)] min-w-0 truncate text-center text-[17px] font-semibold opacity-0 transition-opacity duration-200 ease-out data-shown:opacity-100"
+              className="max-w-0 min-w-0 truncate text-center text-[17px] font-semibold opacity-0 transition-opacity duration-200 ease-out data-shown:max-w-[50vw] data-shown:opacity-100"
             >
               {loading ? null : title}
             </p>
           )}
-          <div className="flex items-center justify-end gap-2 empty:hidden">{actionsInBar ? actions : null}</div>
+          <div className="flex items-center justify-end gap-2 empty:hidden">
+            {actionsInBar ? actions : toolbarLayout ? null : barActions}
+          </div>
         </div>
       </header>
 
