@@ -10,7 +10,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileFields, HuggingFaceFields, PasteFields } from "@/components/import/source-fields"
 import { MappingFields } from "@/components/import/mapping-fields"
 import { PreviewPanel } from "@/components/import/preview-panel"
-import { parseCount, parseDataset, stripExtension } from "@/components/import/helpers"
+import { DetectedSummary } from "@/components/import/detected-summary"
+import { ImportModeToggle, readImportMode, saveImportMode, type ImportMode } from "@/components/import/import-mode"
+import { INFO, defaultSplit, importSummary, isDatasetId, parseCount, parseDataset, stripExtension } from "@/components/import/helpers"
 import { api, ApiError } from "@/lib/api"
 import { count } from "@/lib/format"
 import type { HFSplit, ImportFormat, ImportMapping, ImportPreview, ImportSource, PromptSet, SplitMode, Turns, Upload } from "@/lib/types"
@@ -47,6 +49,14 @@ export function ImportPromptsPage() {
   const [params, setParams] = useSearchParams()
   const tab: SourceTab = TABS.some((t) => t.value === params.get("source")) ? (params.get("source") as SourceTab) : "huggingface"
 
+  // Simple and Advanced show different controls over one shared state.
+  const [mode, setModeState] = useState<ImportMode>(readImportMode)
+  const simple = mode === "simple"
+  const setMode = (m: ImportMode) => {
+    setModeState(m)
+    saveImportMode(m)
+  }
+
   // Source state. Each source keeps its own state while you switch tabs.
   const [hfInput, setHfInput] = useState("")
   const [hfDataset, setHfDataset] = useState("")
@@ -66,7 +76,7 @@ export function ImportPromptsPage() {
   const [offset, setOffset] = useState("")
   const [limit, setLimit] = useState("")
   const [dedupe, setDedupe] = useState(true)
-  const [turns, setTurns] = useState<Turns>("up_to_last_user")
+  const [turns, setTurns] = useState<Turns>("first_user")
   const [detectedPrompt, setDetectedPrompt] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [nameTouched, setNameTouched] = useState(false)
@@ -148,8 +158,8 @@ export function ImportPromptsPage() {
   const effConfig = hfConfig ?? info?.config ?? null
   const effSplit = hfSplit ?? info?.split ?? null
 
-  const loadDataset = () => {
-    const ds = parseDataset(hfInput)
+  const loadDataset = (value: string = hfInput) => {
+    const ds = parseDataset(value)
     if (!ds) return
     setHfInput(ds)
     if (ds !== hfDataset) {
@@ -164,11 +174,21 @@ export function ImportPromptsPage() {
       void preview.refetch()
     }
   }
+  // Simple mode loads a dataset by itself once the input names one (a link or owner/name).
+  const settledInput = useDebounced(hfInput, 600)
+  useEffect(() => {
+    if (!simple || tab !== "huggingface") return
+    const ds = parseDataset(settledInput)
+    if (isDatasetId(ds) && ds !== hfDataset) loadDataset(settledInput)
+    // loadDataset changes with every render; the input, mode and tab decide when this runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settledInput, simple, tab])
+
   const pickConfig = (c: string) => {
     const splits = info?.splits.filter((s) => s.config === c) ?? []
-    const next = splits.find((s) => s.split === effSplit) ?? splits.find((s) => s.split === "train") ?? splits[0]
+    const keep = splits.find((s) => s.split === effSplit)?.split
     setHfConfig(c)
-    setHfSplit(next?.split ?? null)
+    setHfSplit(keep ?? defaultSplit(splits.map((s) => s.split)) ?? null)
     resetMapping()
   }
   const pickSplit = (s: string | null) => {
@@ -194,6 +214,8 @@ export function ImportPromptsPage() {
           ? "Pasted prompts"
           : ""
   const shownName = nameTouched ? name : defaultName
+  // Simple mode has no name field: a name typed in Advanced is kept, an empty one falls back.
+  const importName = simple && !shownName.trim() ? defaultName : shownName
 
   const commit = useMutation({
     mutationFn: () => {
@@ -211,7 +233,7 @@ export function ImportPromptsPage() {
             : tab === "paste"
               ? { kind: "paste", text: paste }
               : null
-      return api.post<PromptSet>("/api/imports", { source: s, mapping, name: shownName.trim() })
+      return api.post<PromptSet>("/api/imports", { source: s, mapping, name: importName.trim() })
     },
     onSuccess: (set) => {
       // The server answers 202 with the set still importing; its page shows the progress.
@@ -232,7 +254,7 @@ export function ImportPromptsPage() {
   }, [commit.error])
 
   const est = data?.estimated_prompts ?? null
-  const nameMissing = !shownName.trim()
+  const nameMissing = !importName.trim()
   const blocked =
     !data || !!previewError || est === 0 || nameMissing || !!offsetError || !!limitError || upl.isPending
   const reason = !data
@@ -243,17 +265,34 @@ export function ImportPromptsPage() {
         ? "Nothing to import with these settings."
         : nameMissing
           ? "Give the prompt set a name."
-          : null
+          : simple && (offsetError || limitError)
+            ? "Fix the row limits in Advanced."
+            : null
   const label = importing ? "Starting…" : est !== null ? `Import ${count(est, "prompt", "prompts")}` : "Import prompts"
 
   const hfFieldError = tab === "huggingface" && !data && previewError ? previewError : (commitErr?.fields["source.dataset"] ?? null)
   const fileError = upl.error ? (upl.error as Error).message : tab === "file" && !data && previewError ? previewError : null
   const panelError = tab === "huggingface" && !info ? null : previewError
 
+  const summary =
+    simple && data && !previewError
+      ? importSummary(data, {
+          source: tab,
+          turns,
+          allSplits,
+          format,
+          offset: offsetN ?? null,
+          limit: limitN ?? null,
+          dedupe,
+          name: nameTouched && name.trim() && name.trim() !== defaultName ? name.trim() : null,
+        })
+      : []
+
   return (
     <Page
       title="Import prompts"
       back={{ to: "/prompts", label: "Prompt sets" }}
+      actions={<ImportModeToggle value={mode} onChange={setMode} />}
       wide
     >
       <form
@@ -277,7 +316,7 @@ export function ImportPromptsPage() {
               <HuggingFaceFields
                 input={hfInput}
                 onInput={setHfInput}
-                onLoad={loadDataset}
+                onLoad={() => loadDataset()}
                 loading={preview.isFetching && !data}
                 error={hfFieldError}
                 splits={info?.splits ?? []}
@@ -286,6 +325,7 @@ export function ImportPromptsPage() {
                 allSplits={allSplits}
                 onConfig={pickConfig}
                 onSplit={pickSplit}
+                showSplits={!simple}
               />
             ) : tab === "file" ? (
               <FileFields
@@ -300,10 +340,12 @@ export function ImportPromptsPage() {
                 }}
                 format={format}
                 onFormat={setFormat}
+                showFormat={!simple}
               />
             ) : (
               <PasteFields value={paste} onChange={setPaste} />
             )}
+            {summary.length > 0 ? <DetectedSummary rows={summary} /> : null}
         </fieldset>
 
         <div className="min-w-0 lg:col-start-2 lg:row-span-3 lg:row-start-1">
@@ -315,10 +357,11 @@ export function ImportPromptsPage() {
             error={panelError}
             onRetry={() => void preview.refetch()}
             emptyHint={hfFieldError ? "Fix the dataset above to see its prompts." : undefined}
+            showDropped={!simple}
           />
         </div>
 
-        {data ? (
+        {data && !simple ? (
           <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-0 p-0 lg:col-start-1 lg:row-start-2">
             <Section title={data.columns.length > 0 ? "Mapping" : undefined}>
               <MappingFields
@@ -340,7 +383,7 @@ export function ImportPromptsPage() {
                 turns={turns}
                 onTurns={setTurns}
               />
-              <Field id="import-name" label="Name" error={commitErr?.fields["name"]}>
+              <Field id="import-name" label="Name" error={commitErr?.fields["name"]} info={INFO.name}>
                 <Input
                   id="import-name"
                   value={shownName}
