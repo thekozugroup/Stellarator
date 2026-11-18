@@ -55,7 +55,7 @@ export function CandidateCard({
         mark === "rejected" && "border-foreground/40",
       )}
     >
-      <header className="sticky top-14 z-10 flex items-center gap-x-3 gap-y-2 rounded-t-lg border-b bg-card px-4 py-2 sm:flex-wrap sm:items-start sm:py-3 md:top-0">
+      <header className="sticky top-14 z-10 flex items-center gap-x-3 gap-y-2 rounded-t-lg border-b bg-card px-4 py-2 sm:flex-wrap sm:items-start sm:py-3 md:top-[var(--titlebar-height)]">
         <div className="flex min-w-0 flex-[1_1_0] items-start gap-3 sm:flex-[1_1_13rem]">
           <h3 id={headingId} className="text-base leading-6 font-semibold tabular">
             <span className="sr-only">Response </span>

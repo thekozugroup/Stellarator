@@ -1,7 +1,8 @@
-import { Suspense } from "react"
+import { Suspense, useSyncExternalStore } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { Cable, FileText, GitCompareArrows, Play, Settings } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { overlayTitleBar } from "@/lib/desktop-shell"
 import { cn } from "@/lib/utils"
 
 const NAV = [
@@ -65,16 +66,45 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
+function subscribeToScroll(onChange: () => void) {
+  window.addEventListener("scroll", onChange, { passive: true })
+  return () => window.removeEventListener("scroll", onChange)
+}
+
+/**
+ * macOS app only (lib/desktop-shell.ts): the strip across the top of the window,
+ * --titlebar-height tall, that moves the window like a title bar (Tauri's data-tauri-drag-region;
+ * a double click zooms). Over the sidebar it is clear and the window controls sit on it. Over the
+ * content it has the page's ground, so content scrolls under it, with a divider once the page is
+ * scrolled, as in Mac apps. Nothing interactive is placed under it.
+ */
+function TitleBarStrip() {
+  const scrolled = useSyncExternalStore(subscribeToScroll, () => window.scrollY > 0, () => false)
+  return (
+    <>
+      <div data-tauri-drag-region aria-hidden="true" className="fixed top-0 left-0 z-30 hidden h-[var(--titlebar-height)] w-[224px] md:block" />
+      <div
+        data-tauri-drag-region
+        aria-hidden="true"
+        data-scrolled={scrolled || undefined}
+        className="fixed top-0 right-0 left-[224px] z-30 hidden h-[var(--titlebar-height)] border-b border-transparent bg-background md:block data-scrolled:border-border"
+      />
+    </>
+  )
+}
+
 export function AppShell() {
   const location = useLocation()
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[224px_minmax(0,1fr)] md:pl-[env(safe-area-inset-left)]">
-      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-[calc(var(--titlebar-height)+0.5rem)] focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2">
         Skip to content
       </a>
 
-      {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-dvh flex-col justify-between border-r bg-sidebar px-3 py-4 md:flex">
+      {overlayTitleBar ? <TitleBarStrip /> : null}
+
+      {/* Desktop sidebar. In the macOS app its content starts below the title bar strip. */}
+      <aside className="sticky top-0 hidden h-dvh flex-col justify-between border-r bg-sidebar px-3 pt-[max(1rem,var(--titlebar-height))] pb-4 md:flex">
         <div className="grid gap-6">
           <Brand />
           <nav aria-label="Main">
@@ -132,10 +162,12 @@ export function AppShell() {
         </ul>
       </nav>
 
+      {/* The pages' own top padding is 24 px or more (Page in shared/page.tsx); in the macOS app,
+          main adds what the title bar strip needs beyond that. */}
       <main
         id="main"
         key={location.pathname.split("/")[1]}
-        className="min-w-0 pb-[var(--bottom-chrome)] md:pb-0"
+        className="min-w-0 pb-[var(--bottom-chrome)] md:pt-[max(0px,calc(var(--titlebar-height)-1.5rem))] md:pb-0"
       >
         <Suspense fallback={null}>
           <Outlet />

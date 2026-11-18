@@ -18,6 +18,15 @@
 #   APPLE_ID                    the Apple ID used for notarization
 #   APPLE_PASSWORD              an app-specific password for that Apple ID
 #   APPLE_TEAM_ID               the 10-character team ID
+#
+# In-app updates are optional too. With all three of these repository secrets set, the build turns
+# the updater on (a config overlay with the public key and the endpoint), signs the update bundles
+# and uploads latest.json into the release; the app then checks
+# https://github.com/<this repo>/releases/latest/download/latest.json. Without them the builds are
+# the same as before and the app has no updater. Generate the key pair as docs/desktop.md shows.
+#   TAURI_SIGNING_PRIVATE_KEY           the private key (the contents of the .key file)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
+#   TAURI_UPDATER_PUBKEY                the public key (the contents of the .key.pub file)
 
 name: Desktop
 
@@ -280,6 +289,42 @@ jobs:
             echo "::warning::actool could not compile Stellarator.icon; this build uses the static icon.icns."
           fi
 
+      # In-app updates, only with all three secrets (see the top of this file). The overlay adds
+      # plugins.updater, which the app reads to register the updater, and has the bundler make and
+      # sign the update bundles (.app.tar.gz, the NSIS and MSI installers, the AppImage).
+      - name: Updater (when the signing secrets are set)
+        id: updater
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+          ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] || [ -z "$TAURI_UPDATER_PUBKEY" ]; then
+            echo "Updater off: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD and TAURI_UPDATER_PUBKEY are not all set."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          file="$RUNNER_TEMP/updater.json"
+          # Windows (Git Bash): D:/a/_temp/updater.json, a path both node and the Tauri CLI read.
+          if command -v cygpath >/dev/null 2>&1; then file=$(cygpath -m "$file"); fi
+          node -e '
+            const { writeFileSync } = require("node:fs")
+            const updater = {
+              pubkey: process.env.TAURI_UPDATER_PUBKEY.trim(),
+              endpoints: [process.env.ENDPOINT],
+              // Each signature carries the version it was signed for (Tauri CLI 2.12); an update
+              // whose signed version differs from latest.json is refused, so an old signed build
+              // cannot be offered as a new one.
+              requireSignedVersion: true,
+            }
+            writeFileSync(process.argv[1], JSON.stringify({ bundle: { createUpdaterArtifacts: true }, plugins: { updater } }))
+          ' "$file"
+          echo "Updater on: $ENDPOINT"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "args=--config $file" >> "$GITHUB_OUTPUT"
+
       - name: Build the app and installers
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -291,12 +336,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Windows: aws-lc-sys (rustls) uses its prebuilt assembly when NASM is not installed.
           AWS_LC_SYS_PREBUILT_NASM: "1"
+          # Signs the update bundles. Read only when the updater step turned the updater on.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
-          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }}
-          includeUpdaterJson: false
+          # Each overlay is `--config <file>` or empty; the CLI merges them in order.
+          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }} ${{ steps.updater.outputs.args }}
+          includeUpdaterJson: ${{ steps.updater.outputs.enabled == 'true' }}
           # Releases only: upload into the draft release. Empty otherwise, so nothing is uploaded.
           releaseId: ${{ needs.release.outputs.id }}
+          # The download URLs in latest.json name this tag instead of /latest/, so an update
+          # always downloads the files its signatures were made for. Only set with releaseId
+          # (a tag without one would make tauri-action create a release).
+          tagName: ${{ needs.release.outputs.id && needs.release.outputs.tag || '' }}
 
       # The upload to the release can fail on a network error after a long build ("Connect Timeout
       # Error" once ended a 30-minute Apple Silicon build). The retry finds everything compiled, so
@@ -309,11 +362,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AWS_LC_SYS_PREBUILT_NASM: "1"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
-          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }}
-          includeUpdaterJson: false
+          args: --target ${{ matrix.target }} ${{ steps.glass.outputs.args }} ${{ steps.updater.outputs.args }}
+          includeUpdaterJson: ${{ steps.updater.outputs.enabled == 'true' }}
           releaseId: ${{ needs.release.outputs.id }}
+          tagName: ${{ needs.release.outputs.id && needs.release.outputs.tag || '' }}
 
       - name: Upload the installers
         uses: actions/upload-artifact@v7
@@ -333,7 +389,60 @@ jobs:
     needs: [release, build]
     runs-on: ubuntu-latest
     steps:
-      - env:
+      # Each build adds its platforms to latest.json by downloading it, adding to it and uploading
+      # it again, so two builds that finish together can drop each other's entries. With every
+      # build done, add any platform that has a signature in the release but no entry. Nothing
+      # to do when the updater is off (no latest.json).
+      - name: Complete latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ needs.release.outputs.id }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets" --paginate --jq '.[] | "\(.id) \(.name)"')
+          json_id=$(awk '$2 == "latest.json" { print $1 }' <<<"$assets")
+          if [ -z "$json_id" ]; then
+            echo "No latest.json in the release: the updater is off."
+            exit 0
+          fi
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$json_id" > latest.json
+          added=0
+          while read -r sig_id sig_name; do
+            # The platform keys the updater looks up (os-arch, then os-arch-installer), as
+            # tauri-action writes them: the MSI and the AppImage are the plain os-arch entries.
+            case "$sig_name" in
+              *aarch64*.app.tar.gz.sig) keys="darwin-aarch64 darwin-aarch64-app" ;;
+              *.app.tar.gz.sig) keys="darwin-x86_64 darwin-x86_64-app" ;;
+              *-setup.exe.sig) keys="windows-x86_64-nsis" ;;
+              *.msi.sig) keys="windows-x86_64 windows-x86_64-msi" ;;
+              *.AppImage.sig) keys="linux-x86_64 linux-x86_64-appimage" ;;
+              *.deb.sig) keys="linux-x86_64-deb" ;;
+              *) continue ;;
+            esac
+            for key in $keys; do
+              if jq -e --arg k "$key" '.platforms[$k]' latest.json > /dev/null; then continue; fi
+              signature=$(gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$sig_id")
+              url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/${sig_name%.sig}"
+              jq --arg k "$key" --arg s "$signature" --arg u "$url" '.platforms[$k] = {signature: $s, url: $u}' latest.json > latest.tmp
+              mv latest.tmp latest.json
+              echo "Added $key ($url)"
+              added=$((added + 1))
+            done
+          done < <(grep '\.sig$' <<<"$assets")
+          jq -r '.platforms | keys[]' latest.json
+          if [ "$added" -eq 0 ]; then
+            echo "latest.json lists every platform."
+            exit 0
+          fi
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$json_id" --silent
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" \
+            --data-binary @latest.json \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=latest.json" > /dev/null
+          echo "Uploaded latest.json with $added added entries."
+
+      - name: Publish
+        env:
           GH_TOKEN: ${{ github.token }}
           ID: ${{ needs.release.outputs.id }}
           TAG: ${{ needs.release.outputs.tag }}

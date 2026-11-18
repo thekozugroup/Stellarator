@@ -1,4 +1,5 @@
-//! The macOS menu bar: the standard app, Edit, View, Window and Help menus.
+//! The macOS menu bar: the standard app, Edit, View, Window and Help menus. The app menu has
+//! Check for Updates… when the build has the updater (updater.rs).
 //!
 //! The Edit menu is required, not decoration: WKWebView text fields get Cmd+C, Cmd+V, Cmd+Z and
 //! Cmd+A only through these menu items.
@@ -8,8 +9,9 @@
 use tauri::menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, Url};
 
-use crate::{open_in_browser, MAIN, REPO_URL};
+use crate::{open_in_browser, updater, MAIN, REPO_URL};
 
+const CHECK_FOR_UPDATES: &str = "check-for-updates";
 const QUIT: &str = "quit";
 const RELOAD: &str = "reload";
 const GITHUB: &str = "github";
@@ -42,6 +44,17 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, QUIT, "Quit Stellarator", true, Some("CmdOrCtrl+Q"))?,
         ],
     )?;
+    // Right below About, where Mac apps put it. Only in builds with the updater.
+    if updater::enabled(app.config()) {
+        let check = MenuItem::with_id(
+            app,
+            CHECK_FOR_UPDATES,
+            "Check for Updates…",
+            true,
+            None::<&str>,
+        )?;
+        app_menu.insert(&check, 1)?;
+    }
     let edit = Submenu::with_items(
         app,
         "Edit",
@@ -107,6 +120,7 @@ pub fn on_event(app: &AppHandle, event: MenuEvent) {
     match event.id().as_ref() {
         // Goes through RunEvent::ExitRequested, which stops the server before exiting.
         QUIT => app.exit(0),
+        CHECK_FOR_UPDATES => updater::check_now(app),
         RELOAD => {
             if let Some(window) = app.get_webview_window(MAIN) {
                 let _ = window.reload();

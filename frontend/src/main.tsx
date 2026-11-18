@@ -6,8 +6,11 @@ import { ThemeProvider } from "@/lib/theme"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ApiError } from "@/lib/api"
+import { applyDesktopShell } from "@/lib/desktop-shell"
 import App from "./App"
 import "./index.css"
+
+applyDesktopShell()
 
 const queryClient = new QueryClient({
   defaultOptions: {

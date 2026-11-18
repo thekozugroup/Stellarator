@@ -57,6 +57,9 @@ xattr -dr com.apple.quarantine /Applications/Stellarator.app
 Or open the app once, then click Open Anyway in System Settings > Privacy & Security. On Windows,
 SmartScreen asks too: More info, then Run anyway.
 
+Once installed, the app checks the releases for a newer version and offers to install it (the `.deb`
+updates through the package manager instead; see [Updates](docs/desktop.md#updates)).
+
 <details>
 <summary>Or run it in Docker, on the GPU server itself (a DGX Spark, for example)</summary>
 

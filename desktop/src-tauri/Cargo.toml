@@ -25,6 +25,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 anyhow = "1"
 getrandom = "0.3"
+# The updater's HTTPS client. reqwest is shared with the server, which uses rustls with the aws-lc-rs
+# backend; naming the feature here keeps that backend for the updater as well. The plugin's own
+# default `rustls-tls` feature would add the ring backend and install it as the process default.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# tauri::generate_context! writes the config's `plugins` section (the updater's, in CI builds with
+# the signing secrets) as serde_json values, so the app must name the crate.
+serde_json = "1"
 stellarator-core = { path = "../../crates/core" }
 stellarator-server = { path = "../../crates/server" }
 # Tauri 2 stable. No `devtools` feature: the web inspector is only in debug builds.
@@ -32,12 +39,18 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+# In-app updates from GitHub Releases. Registered only when the build's config has
+# `plugins.updater`, which CI adds when the signing secrets are set (see docs/desktop.md).
+# No `zip` feature (only Tauri 1 update bundles need it) and no TLS feature of its own (above).
+tauri-plugin-updater = { version = "2", default-features = false, features = ["system-proxy"] }
 tauri-plugin-window-state = "2"
 tokio = { version = "1", features = ["time"] }
 tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+# Mock runtime: tests check the capability files against the app's real ACL.
+tauri = { version = "2", features = ["test"] }
 
 # Same as the server's profile (Cargo.toml): thin LTO, symbols stripped, no unwinding tables.
 # Full LTO with one codegen unit made the final compile step take 8 minutes on a fast CI Mac and

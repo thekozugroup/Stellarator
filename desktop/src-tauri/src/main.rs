@@ -7,7 +7,10 @@
 //! the cookie and redirects to `/`.
 //!
 //! Quitting (closing the window, Cmd+Q, Dock > Quit) stops the server before the process ends,
-//! so runs are paused cleanly and resume on the next launch.
+//! so runs are paused cleanly and resume on the next launch. Installing an update stops it the
+//! same way (updater.rs).
+//!
+//! On macOS the title bar is an overlay on the page (titlebar.rs).
 
 // Release builds on Windows: no console window next to the app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -16,6 +19,8 @@ mod downloads;
 // macOS only; also compiled by tests elsewhere so CI on Linux type-checks it.
 #[cfg(any(target_os = "macos", test))]
 mod menu;
+mod titlebar;
+mod updater;
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
@@ -83,6 +88,11 @@ impl ServerState {
 fn main() {
     stellarator_server::init_tracing();
 
+    // The config compiled into this build. CI adds `plugins.updater` only when the update
+    // signing secrets are set; without it the updater plugin is not registered at all.
+    let context = tauri::generate_context!();
+    let updates_on = updater::enabled(context.config());
+
     let builder = tauri::Builder::default()
         // First: a second launch hands over to the running app before anything else starts, so
         // two servers never share one database.
@@ -100,6 +110,8 @@ fn main() {
             exiting: AtomicBool::new(false),
         })
         .manage(downloads::Downloads::default())
+        .manage(updater::Updates::default())
+        .manage(titlebar::Fullscreen::default())
         // The macOS menu is installed in `setup`. Windows and Linux get no menu bar: the web UI
         // has its own navigation, and their webviews handle the editing shortcuts themselves.
         .enable_macos_default_menu(false)
@@ -109,8 +121,13 @@ fn main() {
         });
     #[cfg(target_os = "macos")]
     let builder = builder.on_menu_event(menu::on_event);
+    let builder = if updates_on {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        builder
+    };
 
-    match builder.build(tauri::generate_context!()) {
+    match builder.build(context) {
         Ok(app) => app.run(on_run_event),
         Err(e) => {
             tracing::error!(error = %e, "could not start the app");
@@ -129,8 +146,9 @@ fn setup(app: &AppHandle) {
         Ok((server, token)) => {
             let port = server.addr.port();
             *app.state::<ServerState>().lock() = Server::Running(server);
-            if let Err(e) = open_main_window(app, port, &token) {
-                fail(app, e.context("could not open the window"));
+            match open_main_window(app, port, &token) {
+                Ok(()) => updater::start(app),
+                Err(e) => fail(app, e.context("could not open the window")),
             }
         }
         Err(e) => fail(app, e),
@@ -220,14 +238,25 @@ fn open_main_window(app: &AppHandle, port: u16, token: &str) -> anyhow::Result<(
     let popup_origin = origin.clone();
     let popup_app = app.clone();
 
-    let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(start))
+    let builder = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(start))
         .title("Stellarator")
         .inner_size(1280.0, 820.0)
         .min_inner_size(900.0, 600.0)
         .center()
         // Shown once the page has loaded, so the first frame is the UI, not an empty window.
         .visible(false)
-        .background_color(GROUND_LIGHT)
+        .background_color(GROUND_LIGHT);
+    // The title bar is an overlay on the page: the sidebar runs to the top of the window with the
+    // traffic lights on it (titlebar.rs). The title stays set for the Window menu and Mission
+    // Control.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(titlebar::TRAFFIC_LIGHTS)
+        .initialization_script(titlebar::init_script(&origin.ascii_serialization()));
+
+    let window = builder
         // Only the local server loads in the window; every other link opens in the browser.
         .on_navigation(move |url| {
             if url.origin() == origin || url.scheme() == "about" {
@@ -249,6 +278,8 @@ fn open_main_window(app: &AppHandle, port: u16, token: &str) -> anyhow::Result<(
         .on_download(downloads::handle)
         .on_page_load(|window, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
+                #[cfg(target_os = "macos")]
+                titlebar::sync_fullscreen(&window, true);
                 reveal(&window);
             }
         })
@@ -319,32 +350,70 @@ fn fail(app: &AppHandle, error: anyhow::Error) {
         .show(move |_| app_.exit(1));
 }
 
+/// What [`begin_stop`] found.
+enum StopStart {
+    /// The server was running and is now stopping.
+    Started,
+    /// It was already stopping (quitting, or installing an update).
+    AlreadyStopping,
+    /// It was not running.
+    Idle,
+}
+
+/// Stop the server the way quitting does: hide the window, let requests in flight finish and
+/// pause runs, waiting at most SHUTDOWN_TIMEOUT. `then` runs once it has stopped, and only when
+/// this call started the stop.
+fn begin_stop(app: &AppHandle, then: impl FnOnce(&AppHandle) + Send + 'static) -> StopStart {
+    let state = app.state::<ServerState>();
+    let mut server = state.lock();
+    match std::mem::replace(&mut *server, Server::Idle) {
+        Server::Running(running) => {
+            hide_windows(app);
+            let app = app.clone();
+            *server = Server::Stopping(tauri::async_runtime::spawn(async move {
+                stop(running).await;
+                *app.state::<ServerState>().lock() = Server::Idle;
+                then(&app);
+            }));
+            StopStart::Started
+        }
+        Server::Stopping(task) => {
+            *server = Server::Stopping(task);
+            StopStart::AlreadyStopping
+        }
+        Server::Idle => StopStart::Idle,
+    }
+}
+
+/// Stop the server the way quitting does and wait until it has stopped. Returns false, without
+/// waiting, when it was not running: a quit is already stopping it, or it never started.
+pub(crate) async fn stop_server(app: &AppHandle) -> bool {
+    let (done, mut stopped) = tauri::async_runtime::channel::<()>(1);
+    match begin_stop(app, move |_| {
+        let _ = done.try_send(());
+    }) {
+        StopStart::Started => {
+            stopped.recv().await;
+            true
+        }
+        StopStart::AlreadyStopping | StopStart::Idle => false,
+    }
+}
+
 fn on_run_event(app: &AppHandle, event: RunEvent) {
     match event {
         // The last window closed, Cmd+Q (menu.rs), or `app.exit`: stop the server first, with
-        // the window already gone, then exit for real.
+        // the window already gone, then exit for real. A stop already under way (a quit, or an
+        // update being installed) holds the exit too; the quit's own stop exits when done, the
+        // update's restarts the app.
         RunEvent::ExitRequested { code, api, .. } => {
-            let state = app.state::<ServerState>();
-            let mut server = state.lock();
-            match std::mem::replace(&mut *server, Server::Idle) {
-                Server::Running(running) => {
-                    api.prevent_exit();
-                    hide_windows(app);
-                    let app = app.clone();
-                    *server = Server::Stopping(tauri::async_runtime::spawn(async move {
-                        stop(running).await;
-                        let state = app.state::<ServerState>();
-                        *state.lock() = Server::Idle;
-                        if !state.exiting.load(Ordering::SeqCst) {
-                            app.exit(code.unwrap_or(0));
-                        }
-                    }));
+            let stopping = begin_stop(app, move |app| {
+                if !app.state::<ServerState>().exiting.load(Ordering::SeqCst) {
+                    app.exit(code.unwrap_or(0));
                 }
-                Server::Stopping(task) => {
-                    api.prevent_exit();
-                    *server = Server::Stopping(task);
-                }
-                Server::Idle => {}
+            });
+            if !matches!(stopping, StopStart::Idle) {
+                api.prevent_exit();
             }
         }
         // macOS can end the app without asking first (Dock > Quit, logging out). The process ends
@@ -371,6 +440,18 @@ fn on_run_event(app: &AppHandle, event: RunEvent) {
         } => {
             if let Some(window) = app.get_webview_window(&label) {
                 let _ = window.set_background_color(Some(ground(theme)));
+            }
+        }
+        // Entering or leaving full screen resizes the window; macOS hides the traffic lights in
+        // full screen, so the page stops reserving room for them.
+        #[cfg(target_os = "macos")]
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            if let Some(window) = app.get_webview_window(&label) {
+                titlebar::sync_fullscreen(&window, false);
             }
         }
         _ => {}
@@ -405,6 +486,66 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    /// capabilities/title-bar.json through Tauri's own ACL, with the config compiled into this
+    /// build: the page on 127.0.0.1 (any port) in the main window may move and zoom the window,
+    /// and nothing else; other origins and other windows may not.
+    #[test]
+    fn the_page_may_only_move_and_zoom_the_main_window() {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::test::{get_ipc_response, mock_builder, MockRuntime, INVOKE_KEY};
+        use tauri::webview::InvokeRequest;
+
+        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        let main = WebviewWindowBuilder::new(&app, MAIN, WebviewUrl::default())
+            .build()
+            .unwrap();
+        let other = WebviewWindowBuilder::new(&app, "other", WebviewUrl::default())
+            .build()
+            .unwrap();
+        let allowed = |window: &WebviewWindow<MockRuntime>, cmd: &str, url: &str| {
+            get_ipc_response(
+                window,
+                InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: url.parse().unwrap(),
+                    body: InvokeBody::default(),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+            )
+            .is_ok()
+        };
+        let drag = "plugin:window|start_dragging";
+        let zoom = "plugin:window|internal_toggle_maximize";
+
+        assert!(allowed(&main, drag, "http://127.0.0.1:47823/runs?x=1"));
+        assert!(allowed(&main, zoom, "http://127.0.0.1:51234/"));
+
+        assert!(!allowed(
+            &main,
+            "plugin:window|close",
+            "http://127.0.0.1:47823/"
+        ));
+        assert!(!allowed(
+            &main,
+            "plugin:window|toggle_maximize",
+            "http://127.0.0.1:47823/"
+        ));
+        assert!(!allowed(
+            &main,
+            "plugin:dialog|message",
+            "http://127.0.0.1:47823/"
+        ));
+        assert!(!allowed(&main, drag, "http://localhost:47823/"));
+        assert!(!allowed(&main, drag, "https://127.0.0.1:47823/"));
+        assert!(!allowed(&main, drag, "http://127.0.0.2:47823/"));
+        assert!(!allowed(&main, drag, "https://example.com/"));
+        assert!(!allowed(&main, drag, "tauri://localhost/"));
+        assert!(!allowed(&other, drag, "http://127.0.0.1:47823/"));
     }
 
     #[test]

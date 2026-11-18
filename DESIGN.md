@@ -72,6 +72,8 @@ Rules:
 - Spacing scale (Tailwind units): 1, 2, 3, 4, 6, 8, 12, 16 (4 to 64 px).
 - Shell: left sidebar 224 px from 768 px up. Below that, a top bar (mark, Settings) and a bottom
   tab bar for Runs, Prompt sets, Endpoints and Preferences, above the home-indicator inset.
+- macOS app: no separate title bar. A 40 px strip across the top moves the window; the window
+  controls sit on the sidebar in it, and nothing interactive does (docs/desktop.md).
 - Page padding: 16 px phone, 24 px tablet, 32 px desktop. Page column capped at 80rem.
 - Forms: one column, 40rem wide.
 

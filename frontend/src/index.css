@@ -393,3 +393,30 @@
     font-size: 16px;
   }
 }
+
+/*
+  Desktop app on macOS (desktop/src-tauri/src/titlebar.rs, src/lib/desktop-shell.ts).
+  The window's title bar is an overlay on the page, as in Notes or Mail: the sidebar runs to the
+  top of the window and the window controls (traffic lights) sit on it. The app marks <html> with
+  data-titlebar="overlay", and with data-fullscreen while the window is in full screen, where
+  macOS hides the controls.
+  - --titlebar-height: the strip across the top of the window that moves it (TitleBarStrip in
+    app-shell.tsx). The sidebar's content and the pages start below it; nothing interactive sits
+    in it. 40 px, with the traffic lights centered in it (TRAFFIC_LIGHTS in titlebar.rs: change
+    both together). 0 everywhere else: browsers and Docker, Windows and Linux, full screen, and
+    the narrow layout, which has its own top bar.
+*/
+:root {
+  --titlebar-height: 0px;
+}
+@media (min-width: 48rem) {
+  :root[data-titlebar="overlay"]:not([data-fullscreen]) {
+    --titlebar-height: 40px;
+  }
+}
+:root[data-titlebar="overlay"] {
+  scroll-padding-top: var(--titlebar-height);
+}
+:root[data-fullscreen] [data-tauri-drag-region] {
+  display: none;
+}

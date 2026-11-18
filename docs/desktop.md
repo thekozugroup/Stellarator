@@ -43,6 +43,40 @@ sudo apt install ./Stellarator_0.2.0_amd64.deb
 chmod +x Stellarator_0.2.0_amd64.AppImage && ./Stellarator_0.2.0_amd64.AppImage
 ```
 
+## Updates
+
+The app checks this repository's
+[latest release](https://github.com/thekozugroup/Stellarator/releases/latest) for a newer version
+a few seconds after it starts, then every 6 hours while it runs. When there is one, a dialog names
+the new version and the one you have, with two buttons: **Install and Restart** and **Later**.
+Later stops the dialog for that version until the app is started again. On a Mac,
+Stellarator > Check for Updates… checks right away and says whether the app is up to date, or what
+went wrong.
+
+Install and Restart downloads the update (the Dock icon or the taskbar button shows the progress),
+then stops the server the way quitting does: requests in flight finish and runs are paused. Then it
+installs the update and starts the new version. Resume paused runs from their run page.
+
+| Install | How it updates |
+| --- | --- |
+| macOS (`.dmg`) | Replaces Stellarator.app with the release's signed `Stellarator_<arch>.app.tar.gz`. If your account cannot write to the app's folder, macOS asks for an administrator password. |
+| Windows (`-setup.exe` or `.msi`) | Downloads the same kind of installer and runs it with a progress bar only; the installer opens the new version. The `.msi` asks for administrator rights, as it did when it was installed. |
+| Linux AppImage | Replaces the `.AppImage` file. |
+| Linux `.deb` | Does not update itself. Install the new `.deb` through the package manager: `sudo apt install ./Stellarator_<version>_amd64.deb`. |
+
+- An automatic check that fails (offline, GitHub unreachable) is written to the log and nothing is
+  shown; the next check runs 6 hours later. A failed download or install is shown in a dialog. After
+  a failed install the app restarts with the version it had.
+- Updates are signed. The app installs a file only when its signature matches the public key built
+  into the app and the version in the signature matches the release's `latest.json`.
+- The update is not downloaded by a browser, so macOS does not quarantine it: the `xattr` step from
+  Install is needed only for the first install.
+- The requests go to `github.com` and GitHub's download servers, through the system proxy settings.
+- Only release builds made with the update signing key have the updater (see
+  [Update signing](#update-signing)). A build without it, such as one you build yourself, makes no
+  update requests and has no Check for Updates… item. The first release with the updater has to be
+  installed by hand once.
+
 ## Where data lives
 
 | OS | Folder |
@@ -134,10 +168,38 @@ System Settings > Privacy & Security > Local Network.
 - Only one copy runs at a time: opening the app again brings the existing window to the front, so
   two servers never share one database.
 - Quitting (closing the window, Cmd+Q, Dock > Quit) stops the server before the process ends:
-  in-flight requests finish and runs are paused, waiting at most 15 seconds.
-- Menus on macOS: Stellarator (About, Services, Hide, Quit), Edit (Undo, Redo, Cut, Copy, Paste,
-  Select All, which the webview's text fields need for the keyboard shortcuts), View (Reload,
-  full screen), Window, and Help (Stellarator on GitHub). Windows and Linux have no menu bar.
+  in-flight requests finish and runs are paused, waiting at most 15 seconds. Installing an update
+  stops it the same way (`desktop/src-tauri/src/updater.rs`).
+- Menus on macOS: Stellarator (About, Check for Updates… in builds with the updater, Services,
+  Hide, Quit), Edit (Undo, Redo, Cut, Copy, Paste, Select All, which the webview's text fields need
+  for the keyboard shortcuts), View (Reload, full screen), Window, and Help (Stellarator on GitHub).
+  Windows and Linux have no menu bar.
+
+### The title bar on macOS
+
+The window has no separate title bar, as in Notes or Mail: the page runs to the top edge, the
+sidebar reaches the top of the window and the window controls (close, minimize, zoom) sit on it.
+Windows and Linux keep their system title bars.
+
+- The window uses Tauri's overlay title bar style with the title hidden; the controls are moved to
+  16 x 18 points from the top-left corner (`TRAFFIC_LIGHTS` in `desktop/src-tauri/src/titlebar.rs`).
+- A script the app adds to the page before it loads sets `window.__STELLARATOR_DESKTOP__`. The web
+  UI (`frontend/src/lib/desktop-shell.ts`) then sets `data-titlebar="overlay"` on `<html>`, and the
+  CSS (`--titlebar-height`, 40 px, in `frontend/src/index.css`) keeps the top of the sidebar free for
+  the controls and moves the pages down by what they need. The Docker and browser UI never get the
+  global and look as before. `TRAFFIC_LIGHTS` and `--titlebar-height` go together: change both.
+- The 40 px strip across the top of the window moves it when dragged, and a double click zooms it
+  (always Zoom: it does not follow System Settings > Desktop & Dock > "Double-click a window's
+  title bar to"). Nothing you can click sits in the strip. Over the content the strip has the
+  page's background, so the page scrolls under it, and a divider line appears once it is scrolled.
+- When the window is not in front, the first click on the strip brings it forward; drag with the
+  next one (a Tauri limit, [tauri#4316](https://github.com/tauri-apps/tauri/issues/4316)).
+- In full screen macOS hides the controls; the app sets `data-fullscreen` on `<html>` and the page
+  drops the reserved space and the strip.
+- Moving and zooming are two window commands the page calls over Tauri's IPC.
+  `desktop/src-tauri/capabilities/title-bar.json` allows exactly those two, for the main window, and
+  only for pages from `http://127.0.0.1:<any port>`; the page can reach no other command. A test in
+  `main.rs` checks this against the app's compiled permissions.
 
 ## Building it yourself
 
@@ -251,6 +313,65 @@ ID and notarize it, add these repository secrets:
 Without `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` the app is signed but not notarized.
 Windows builds are unsigned.
 
+### Update signing
+
+The updater (see [Updates](#updates)) is on only in builds made with all three of these repository
+secrets:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | The private key: the contents of `stellarator.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password you chose for it |
+| `TAURI_UPDATER_PUBKEY` | The public key: the contents of `stellarator.key.pub` |
+
+Make the key pair on your own Mac, never on a shared machine or in CI, from a clone of the
+repository:
+
+```sh
+cd Stellarator/desktop
+npm ci
+mkdir -p ~/.tauri
+npx tauri signer generate -w ~/.tauri/stellarator.key
+```
+
+It asks for a password twice; use a strong one. It writes the private key to
+`~/.tauri/stellarator.key` and the public key to `~/.tauri/stellarator.key.pub`. Then add the
+secrets, either on GitHub (the repository's Settings > Secrets and variables > Actions > New
+repository secret, pasting each value) or with the GitHub CLI:
+
+```sh
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo thekozugroup/Stellarator < ~/.tauri/stellarator.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo thekozugroup/Stellarator
+gh secret set TAURI_UPDATER_PUBKEY --repo thekozugroup/Stellarator < ~/.tauri/stellarator.key.pub
+```
+
+The second command asks for the password. Keep `stellarator.key` and its password in your password
+manager or another backup, and never commit them. Every installed copy trusts only this public key:
+if the private key is lost, no new update can be signed for them, and their users have to download
+the next version by hand (it would carry a new key).
+
+With the three secrets set, each build:
+
+1. writes a config overlay (`--config`, next to the Liquid Glass one on macOS) that adds
+   `plugins.updater` with the public key and the endpoint
+   `https://github.com/thekozugroup/Stellarator/releases/latest/download/latest.json`, and turns on
+   `bundle.createUpdaterArtifacts`. The app registers the updater only when its compiled config has
+   `plugins.updater`;
+2. signs the update files (`.app.tar.gz` on macOS, the `-setup.exe` and `.msi`, the `.AppImage` and
+   the `.deb`) with the private key and uploads them with their `.sig` files into the draft release;
+3. adds its platforms to the release's `latest.json`, which tauri-action creates.
+
+Before the release is published, the Publish job adds any platform that has a signature in the
+release but is missing from `latest.json` (two builds finishing together can overwrite each other's
+entries). Publishing makes it the latest release, so installed apps find it at the endpoint above.
+If the Intel Mac build failed, `latest.json` has no Intel entry and Intel Macs keep their version
+until the next release.
+
+When any of the three secrets is missing, or empty because the event gets no secrets, the build
+is the same as before: no overlay, no updater in the app, no `latest.json`. To try the updater in a
+local build, pass the same overlay: `npx @tauri-apps/cli@2 build --config updater.json` with the
+private key and password in `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -264,3 +385,7 @@ Windows builds are unsigned.
 | Linux: the window stays blank | Start it with `WEBKIT_DISABLE_DMABUF_RENDERER=1` (some GPU drivers) or `WEBKIT_DISABLE_COMPOSITING_MODE=1`. |
 | Settings (theme, Rendered/Raw) reset after a restart | Port 47823 was taken, so the app used another address. Free the port, or set `STELLARATOR_DESKTOP_PORT`. |
 | Quitting takes a few seconds | Runs are being paused; it waits at most 15 seconds. |
+| Check for Updates… says "The latest release has no update for this computer." | That release has no build for your platform yet (the Intel Mac build is optional). The next release brings it. |
+| Check for Updates… says "The latest release has no update information." | The latest release was made without the update signing secrets. Download the next version by hand. |
+| After an update, macOS asks again for Local Network access | Builds that are not signed with a Developer ID get a new signature with each version, and macOS asks again. Allow it once more. |
+| The window cannot be dragged on the first click | It was not in front; the first click brings it forward. Drag again. |
