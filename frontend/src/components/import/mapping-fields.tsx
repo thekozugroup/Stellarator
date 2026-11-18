@@ -1,11 +1,12 @@
 import { Field } from "@/components/shared/field"
+import { INFO_ROW, InfoTip } from "@/components/shared/info-tip"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ColumnInfo, ImportPreview, SplitMode, Turns } from "@/lib/types"
-import { SPLIT_OPTIONS, splitHint } from "./helpers"
+import { INFO, SPLIT_OPTIONS, splitHint } from "./helpers"
 
 const NONE = "__none__"
 
@@ -20,6 +21,7 @@ function ColumnSelect({
   value,
   onChange,
   optional,
+  info,
 }: {
   id: string
   label: string
@@ -27,9 +29,10 @@ function ColumnSelect({
   value: string | null
   onChange: (v: string | null) => void
   optional?: boolean
+  info: string
 }) {
   return (
-    <Field id={id} label={label}>
+    <Field id={id} label={label} info={info}>
       <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)}>
         <SelectTrigger id={id} className="w-full">
           <SelectValue />
@@ -97,6 +100,7 @@ export function MappingFields({
             columns={preview.columns}
             value={promptField === undefined ? preview.prompt_field : promptField}
             onChange={onPromptField}
+            info={INFO.promptColumn}
           />
           <ColumnSelect
             id="map-system"
@@ -105,23 +109,27 @@ export function MappingFields({
             value={systemField === undefined ? preview.system_field : systemField}
             onChange={onSystemField}
             optional
+            info={INFO.systemColumn}
           />
           {preview.has_conversations ? (
             <div className="grid gap-1.5">
-              <span id="map-turns-label" className="text-sm font-medium">
-                Prompt
-              </span>
+              <div className={INFO_ROW}>
+                <span id="map-turns-label" className="text-sm leading-none font-medium">
+                  Prompt
+                </span>
+                <InfoTip label="Prompt">{INFO.turns}</InfoTip>
+              </div>
               <Tabs value={turns} onValueChange={(v) => onTurns(v as Turns)}>
                 <TabsList aria-labelledby="map-turns-label" className="w-full">
-                  <TabsTrigger value="up_to_last_user">Whole conversation</TabsTrigger>
                   <TabsTrigger value="first_user">First user turn</TabsTrigger>
+                  <TabsTrigger value="up_to_last_user">Whole conversation</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
           ) : null}
         </>
       ) : (
-        <Field id="map-split" label="Split into prompts" hint={autoHint}>
+        <Field id="map-split" label="Split into prompts" hint={autoHint} info={INFO.splitText}>
           <Select value={splitMode} onValueChange={(v) => onSplitMode(v as SplitMode)}>
             <SelectTrigger id="map-split" className="w-full">
               <SelectValue />
@@ -137,7 +145,12 @@ export function MappingFields({
         </Field>
       )}
       <div className="grid grid-cols-2 items-start gap-4">
-        <Field id="map-offset" label={tabular ? "Skip rows" : "Skip prompts"} error={offsetError}>
+        <Field
+          id="map-offset"
+          label={tabular ? "Skip rows" : "Skip prompts"}
+          error={offsetError}
+          info={tabular ? INFO.offsetRows : INFO.offsetPrompts}
+        >
           <Input
             id="map-offset"
             inputMode="numeric"
@@ -148,7 +161,7 @@ export function MappingFields({
             aria-describedby={offsetError ? "map-offset-error" : undefined}
           />
         </Field>
-        <Field id="map-limit" label="Import at most" error={limitError}>
+        <Field id="map-limit" label="Import at most" error={limitError} info={tabular ? INFO.limitRows : INFO.limitPrompts}>
           <Input
             id="map-limit"
             inputMode="numeric"
@@ -161,10 +174,13 @@ export function MappingFields({
           />
         </Field>
       </div>
-      <Label htmlFor="map-dedupe" className="flex min-h-9 items-center gap-2.5 text-sm font-medium pointer-coarse:min-h-11">
-        <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
-        Remove duplicate prompts
-      </Label>
+      <div className="flex items-center gap-1">
+        <Label htmlFor="map-dedupe" className="flex min-h-9 items-center gap-2.5 text-sm font-medium pointer-coarse:min-h-11">
+          <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
+          Remove duplicate prompts
+        </Label>
+        <InfoTip label="Remove duplicate prompts">{INFO.dedupe}</InfoTip>
+      </div>
     </div>
   )
 }

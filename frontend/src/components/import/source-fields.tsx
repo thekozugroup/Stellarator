@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { bytes } from "@/lib/format"
 import type { HFSplit, ImportFormat, Upload } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { ACCEPT, FORMAT_OPTIONS, formatLabel } from "./helpers"
+import { ACCEPT, FORMAT_OPTIONS, INFO, formatLabel } from "./helpers"
 
 const ALL = "__all__"
 
@@ -24,6 +24,7 @@ export function HuggingFaceFields({
   allSplits,
   onConfig,
   onSplit,
+  showSplits,
 }: {
   input: string
   onInput: (v: string) => void
@@ -37,12 +38,14 @@ export function HuggingFaceFields({
   onConfig: (c: string) => void
   /** null = all splits */
   onSplit: (s: string | null) => void
+  /** Advanced only: Simple uses the default config and the train split. */
+  showSplits: boolean
 }) {
   const configs = Array.from(new Set(splits.map((s) => s.config)))
   const inConfig = splits.filter((s) => s.config === config)
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <Field id="hf-dataset" label="Dataset" error={error}>
+      <Field id="hf-dataset" label="Dataset" error={error} info={INFO.dataset}>
         <div className="flex gap-2">
           <Input
             id="hf-dataset"
@@ -68,10 +71,10 @@ export function HuggingFaceFields({
           </Button>
         </div>
       </Field>
-      {splits.length > 0 ? (
+      {showSplits && splits.length > 0 ? (
         <div className={cn("grid gap-4", configs.length > 1 && "sm:grid-cols-2")}>
           {configs.length > 1 ? (
-            <Field id="hf-config" label="Config">
+            <Field id="hf-config" label="Config" info={INFO.config}>
               <Select value={config ?? undefined} onValueChange={onConfig}>
                 <SelectTrigger id="hf-config" className="w-full font-mono">
                   <SelectValue />
@@ -86,7 +89,7 @@ export function HuggingFaceFields({
               </Select>
             </Field>
           ) : null}
-          <Field id="hf-split" label="Split">
+          <Field id="hf-split" label="Split" info={INFO.split}>
             <Select value={allSplits ? ALL : (split ?? undefined)} onValueChange={(v) => onSplit(v === ALL ? null : v)}>
               <SelectTrigger id="hf-split" className="w-full">
                 <SelectValue />
@@ -115,6 +118,7 @@ export function FileFields({
   onFile,
   format,
   onFormat,
+  showFormat,
 }: {
   upload: Upload | null
   uploading: boolean
@@ -123,6 +127,8 @@ export function FileFields({
   onFile: (f: File) => void
   format: ImportFormat
   onFormat: (f: ImportFormat) => void
+  /** Advanced only: Simple reads the detected format. */
+  showFormat: boolean
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
@@ -193,8 +199,8 @@ export function FileFields({
           {error}
         </p>
       ) : null}
-      {upload ? (
-        <Field id="import-format" label="Format">
+      {showFormat && upload ? (
+        <Field id="import-format" label="Format" info={INFO.format}>
           <Select value={format} onValueChange={(v) => onFormat(v as ImportFormat)}>
             <SelectTrigger id="import-format" className="w-full">
               <SelectValue />
@@ -215,7 +221,7 @@ export function FileFields({
 
 export function PasteFields({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Field id="paste-text" label="Prompts" hint="Separate prompts with ---, a blank line or headings.">
+    <Field id="paste-text" label="Prompts" hint="Separate prompts with ---, a blank line or headings." info={INFO.paste}>
       <Textarea
         id="paste-text"
         value={value}

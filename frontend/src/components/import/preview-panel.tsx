@@ -64,6 +64,7 @@ export function PreviewPanel({
   error,
   onRetry,
   emptyHint,
+  showDropped = true,
 }: {
   preview: ImportPreview | undefined
   hasSource: boolean
@@ -72,6 +73,8 @@ export function PreviewPanel({
   error: string | null
   onRetry: () => void
   emptyHint?: string
+  /** False in Simple mode, whose summary already says what is left out. */
+  showDropped?: boolean
 }) {
   const shown = preview?.prompts.length ?? 0
   const est = preview?.estimated_prompts ?? null
@@ -104,7 +107,7 @@ export function PreviewPanel({
         </ul>
       ) : null}
 
-      {preview && preview.dropped.length > 0 ? (
+      {showDropped && preview && preview.dropped.length > 0 ? (
         <p className="px-4 pt-3 text-xs text-muted-foreground">Responses left out: {preview.dropped.join(", ")}.</p>
       ) : null}
 
