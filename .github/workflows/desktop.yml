@@ -91,6 +91,11 @@ jobs:
       id: ${{ steps.create.outputs.id }}
       tag: ${{ steps.create.outputs.tag }}
     steps:
+      # For this version's section of CHANGELOG.md.
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
       - id: create
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,6 +131,14 @@ jobs:
           Setup, data folders and troubleshooting: [docs/desktop.md](https://github.com/thekozugroup/Stellarator/blob/main/docs/desktop.md).
           EOF
           sed -i "s/@V@/$version/g" body.md
+          # What's new: the "## <version>" section of CHANGELOG.md, up to the next "## " heading.
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="## $version" '$0 == v { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md \
+              | sed 's/^### /#### /' > notes.md
+            if [ -s notes.md ] && grep -q '[^[:space:]]' notes.md; then
+              { printf "## What's new\n"; cat notes.md; printf "\n"; cat body.md; } > body.new && mv body.new body.md
+            fi
+          fi
           # This version's releases: by tag, or drafts by name (GitHub drops a draft's tag when it
           # is updated without tag_name, leaving "untagged-..."). A published one is final: a push
           # to main then only builds the installers; a tag or the checkbox fails, since a new

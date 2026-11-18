@@ -17,7 +17,8 @@ container next to your GPU.
 
 [Quick start](#quick-start) · [What it looks like](#what-it-looks-like) ·
 [What it does](#what-it-does) · [Export formats](#export-formats) ·
-[Desktop app](docs/desktop.md) · [Docker](docs/docker.md) · [Design](DESIGN.md)
+[Desktop app](docs/desktop.md) · [Docker](docs/docker.md) · [Design](DESIGN.md) ·
+[Changelog](CHANGELOG.md)
 
 </div>
 
@@ -251,8 +252,9 @@ STELLARATOR_START=rust uv run --project tests/contract pytest tests/contract -m 
 ```
 
 To release, set the same version in `Cargo.toml`, `desktop/src-tauri/Cargo.toml` and
-`desktop/package.json` and push to `main`: the installers are built for every platform and the
-release is published when they succeed. Details in [docs/desktop.md](docs/desktop.md#builds-and-releases-ci).
+`desktop/package.json`, add its section to [CHANGELOG.md](CHANGELOG.md) and push to `main`: the
+installers are built for every platform and the release is published when they succeed, with the
+changelog section as its notes. Details in [docs/desktop.md](docs/desktop.md#builds-and-releases-ci).
 
 ## Project layout
 

@@ -295,7 +295,9 @@ To release a new version:
 1. Set the same version in `Cargo.toml` (`[workspace.package]`), `desktop/src-tauri/Cargo.toml` and
    `desktop/package.json`. The workflow's first job fails if the two `Cargo.toml` versions differ.
 2. Update both lock files: `cargo update -w`, then `cargo update -w` in `desktop/src-tauri`.
-3. Commit and push to `main`.
+3. Add a `## <version>` section to `CHANGELOG.md`. The release notes start with it, under
+   "What's new", followed by the download table.
+4. Commit and push to `main`.
 
 The same release can also be started by Actions > Desktop > Run workflow with "Publish a release"
 checked, or by pushing a matching tag (`git tag v0.3.0 && git push origin v0.3.0`). Both refuse a
