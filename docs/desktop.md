@@ -177,25 +177,28 @@ System Settings > Privacy & Security > Local Network.
 
 ### The title bar on macOS
 
-The window has no separate title bar, as in Notes or Mail: the page runs to the top edge, the
-sidebar reaches the top of the window and the window controls (close, minimize, zoom) sit on it.
-Windows and Linux keep their system title bars.
+The window has no separate title bar, as in macOS 26 apps: the page runs to the top edge, the page
+toolbar (title and actions) runs across the top of the content column, and the window controls
+(close, minimize, zoom) sit at the top left of the sidebar panel, in the same band. Windows and
+Linux keep their system title bars.
 
 - The window uses Tauri's overlay title bar style with the title hidden; the controls are moved to
-  16 x 18 points from the top-left corner (`TRAFFIC_LIGHTS` in `desktop/src-tauri/src/titlebar.rs`).
+  20 x 24 points from the top-left corner (`TRAFFIC_LIGHTS` in `desktop/src-tauri/src/titlebar.rs`),
+  which centers them in the 52 px band.
 - A script the app adds to the page before it loads sets `window.__STELLARATOR_DESKTOP__`. The web
   UI (`frontend/src/lib/desktop-shell.ts`) then sets `data-titlebar="overlay"` on `<html>`, and the
-  CSS (`--titlebar-height`, 40 px, in `frontend/src/index.css`) keeps the top of the sidebar free for
-  the controls and moves the pages down by what they need. The Docker and browser UI never get the
-  global and look as before. `TRAFFIC_LIGHTS` and `--titlebar-height` go together: change both.
-- The 40 px strip across the top of the window moves it when dragged, and a double click zooms it
-  (always Zoom: it does not follow System Settings > Desktop & Dock > "Double-click a window's
-  title bar to"). Nothing you can click sits in the strip. Over the content the strip has the
-  page's background, so the page scrolls under it, and a divider line appears once it is scrolled.
-- When the window is not in front, the first click on the strip brings it forward; drag with the
+  CSS (`--titlebar-height`, 52 px, equal to the toolbar's height, in `frontend/src/index.css`) keeps
+  the top of the sidebar free for the controls. The Docker and browser UI never get the global; they
+  have the same toolbar and a sidebar that starts with the app's name. `TRAFFIC_LIGHTS` and
+  `--titlebar-height` go together: change both.
+- The band moves the window when dragged, and a double click zooms it (always Zoom: it does not
+  follow System Settings > Desktop & Dock > "Double-click a window's title bar to"): over the
+  sidebar, and over the content wherever the toolbar has no button, link or field. The toolbar is
+  the page's color at rest; once the page scrolls under it, its material and a divider fade in.
+- When the window is not in front, the first click on the band brings it forward; drag with the
   next one (a Tauri limit, [tauri#4316](https://github.com/tauri-apps/tauri/issues/4316)).
-- In full screen macOS hides the controls; the app sets `data-fullscreen` on `<html>` and the page
-  drops the reserved space and the strip.
+- In full screen macOS hides the controls; the app sets `data-fullscreen` on `<html>`, the sidebar
+  drops the reserved space and the toolbar stops moving the window.
 - Moving and zooming are two window commands the page calls over Tauri's IPC.
   `desktop/src-tauri/capabilities/title-bar.json` allows exactly those two, for the main window, and
   only for pages from `http://127.0.0.1:<any port>`; the page can reach no other command. A test in

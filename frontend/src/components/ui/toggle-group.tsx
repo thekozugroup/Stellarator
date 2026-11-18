@@ -19,6 +19,12 @@ const ToggleGroupContext = React.createContext<
   orientation: "horizontal",
 })
 
+/**
+ * With spacing={0} a toggle group is a macOS 26 segmented control: a capsule track
+ * (--segment-track) holding capsule segments, the chosen one raised (control fill, hairline, small
+ * shadow) with ink text at weight 500. Segments are 24 px tall on pointer-fine (a 28 px control),
+ * 28 px elsewhere (44 pt on touch). With spacing > 0 the items are separate toggles.
+ */
 function ToggleGroup({
   className,
   variant,
@@ -41,7 +47,8 @@ function ToggleGroup({
       data-orientation={orientation}
       style={{ "--gap": spacing } as React.CSSProperties}
       className={cn(
-        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
+        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-md data-vertical:flex-col data-vertical:items-stretch",
+        spacing === 0 && "gap-0 rounded-2xl bg-segment-track p-0.5 data-[size=sm]:rounded-2xl pointer-coarse:rounded-4xl pointer-coarse:data-[size=sm]:rounded-4xl",
         className
       )}
       {...props}
@@ -55,6 +62,9 @@ function ToggleGroup({
   )
 }
 
+const SEGMENT =
+  "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-full border border-transparent px-2 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:z-10 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:border-control-edge data-[state=on]:bg-control data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs pointer-fine:h-6 pointer-fine:min-w-6 pointer-fine:px-2.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+
 function ToggleGroupItem({
   className,
   children,
@@ -64,6 +74,7 @@ function ToggleGroupItem({
 }: React.ComponentProps<typeof ToggleGroupPrimitive.Item> &
   VariantProps<typeof toggleVariants>) {
   const context = React.useContext(ToggleGroupContext)
+  const segmented = context.spacing === 0
 
   return (
     <ToggleGroupPrimitive.Item
@@ -72,11 +83,15 @@ function ToggleGroupItem({
       data-size={context.size || size}
       data-spacing={context.spacing}
       className={cn(
-        "shrink-0 group-data-[spacing=0]/toggle-group:rounded-none group-data-[spacing=0]/toggle-group:px-2 focus:z-10 focus-visible:z-10 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-1.5 group-data-horizontal/toggle-group:data-[spacing=0]:first:rounded-l-lg group-data-vertical/toggle-group:data-[spacing=0]:first:rounded-t-lg group-data-horizontal/toggle-group:data-[spacing=0]:last:rounded-r-lg group-data-vertical/toggle-group:data-[spacing=0]:last:rounded-b-lg group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t",
-        toggleVariants({
-          variant: context.variant || variant,
-          size: context.size || size,
-        }),
+        segmented
+          ? SEGMENT
+          : cn(
+              "shrink-0 focus:z-10 focus-visible:z-10",
+              toggleVariants({
+                variant: context.variant || variant,
+                size: context.size || size,
+              })
+            ),
         className
       )}
       {...props}

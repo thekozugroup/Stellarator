@@ -1,14 +1,16 @@
-//! The macOS title bar: an overlay on the page, so the sidebar runs to the top of the window with
-//! the window controls (traffic lights) on it, as in Notes or Mail.
+//! The macOS title bar: an overlay on the page, as in macOS 26 apps. The page toolbar runs across
+//! the top of the content column, and the window controls (traffic lights) sit at the top left of
+//! the sidebar panel, in the same band.
 //!
 //! - The window uses `TitleBarStyle::Overlay` with the title hidden, and the traffic lights are
 //!   moved to [`TRAFFIC_LIGHTS`] (see `open_main_window` in main.rs).
 //! - An initialization script sets `window.__STELLARATOR_DESKTOP__ = { titleBar: "overlay" }`
 //!   before the page's own scripts run. The web UI (frontend/src/lib/desktop-shell.ts) reads it
 //!   and sets `data-titlebar="overlay"` on `<html>`: the sidebar keeps the top
-//!   `--titlebar-height` (40 px, frontend/src/index.css) free for the traffic lights, and a strip
-//!   that tall across the top of the window moves it (Tauri's `data-tauri-drag-region`; a double
-//!   click zooms). The web UI served by Docker never gets the global and is unchanged.
+//!   `--titlebar-height` (52 px, the height of the page toolbar, frontend/src/index.css) free for
+//!   the traffic lights, and that band moves the window: over the sidebar, and over the content
+//!   wherever the toolbar has no control (Tauri's `data-tauri-drag-region`; a double click
+//!   zooms). The web UI served by Docker never gets the global and is unchanged.
 //! - In full screen macOS hides the traffic lights; [`sync_fullscreen`] sets `data-fullscreen` on
 //!   `<html>` and the page drops the reserved space.
 //! - Dragging and zooming call two window commands over Tauri's IPC, from the page on 127.0.0.1.
@@ -22,10 +24,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{LogicalPosition, Manager, WebviewWindow};
 
-/// The close button's position from the window's top-left corner, in points. With the 40 px
-/// `--titlebar-height` strip in the web UI, the buttons sit centered in it and line up with the
-/// sidebar's logo (16 px from the left edge). Change both together.
-pub const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 16.0, y: 18.0 };
+/// The close button's position from the window's top-left corner, in points. Tao makes the title
+/// bar `y` plus the button's height tall and keeps the buttons at its bottom, so their center sits
+/// about `y + 2` from the top: with `y` 24 the buttons are centered in the 52 px
+/// `--titlebar-height` band of the web UI, where the page toolbar's buttons are centered too. `x`
+/// 20 puts them 12 points inside the sidebar panel, which floats 8 points from the window's edge.
+/// Change both together.
+pub const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 24.0 };
 
 /// Whether the main window was last seen in full screen. Changes are sent to the page.
 #[derive(Default)]

@@ -300,7 +300,7 @@ export function SamplesSection({ run }: { run: Run }) {
       </div>
 
       <nav aria-label="Filter samples by status" className="px-4 pb-3">
-        <ul className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-[3px]">
+        <ul className="inline-flex flex-wrap rounded-2xl bg-segment-track p-0.5 pointer-coarse:rounded-4xl">
           {SAMPLE_FILTERS.map((f) => {
             const active = f === status
             const n = filterCount(run, f)
@@ -310,8 +310,8 @@ export function SamplesSection({ run }: { run: Run }) {
                   to={{ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors duration-150",
-                    active ? "bg-background font-medium text-foreground shadow-sm dark:bg-accent" : "text-muted-foreground hover:text-foreground",
+                    "flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-fine:h-6",
+                    active ? "border-control-edge bg-control font-medium text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {FILTER_LABEL[f]}

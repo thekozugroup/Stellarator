@@ -78,7 +78,7 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
   if (!p || p.tps === null) return null
   return (
-    <div className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+    <div className="rounded-lg material-thick material-float px-3 py-2 text-xs text-popover-foreground">
       <p className="text-muted-foreground tabular">{hms.format(p.t)}</p>
       <dl className="mt-1 grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 tabular">
         <dt className="text-muted-foreground">Output tokens/s</dt>

@@ -9,7 +9,7 @@ import { api } from "@/lib/api"
 import { int } from "@/lib/format"
 import type { Run, RunLive } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { SEGMENT_ON, SEQS_CHOICES, runKeys } from "./run-data"
+import { SEQS_CHOICES, runKeys } from "./run-data"
 
 const MIN = 1
 const MAX = 4096
@@ -143,7 +143,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
         className="flex-wrap"
       >
         {SEQS_CHOICES.map((n) => (
-          <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular", SEGMENT_ON)}>
+          <ToggleGroupItem key={n} value={String(n)} className="min-w-9 tabular">
             {n}
           </ToggleGroupItem>
         ))}

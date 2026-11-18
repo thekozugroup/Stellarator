@@ -138,7 +138,7 @@ function RunMeta({ run }: { run: Run }) {
 
 function DetailSkeleton() {
   return (
-    <Page title={<Bar className="h-7 w-72 max-w-full" />} back={{ to: "/runs", label: "Runs" }} meta={<Bar className="w-80 max-w-full" />}>
+    <Page title={null} back={{ to: "/runs", label: "Runs" }} meta={<Bar className="w-80 max-w-full" />}>
       <div className="grid gap-3" aria-busy="true" aria-label="Loading run">
         <Bar className="h-8 w-56" />
         <Bar className="h-2 w-full" />
@@ -204,11 +204,7 @@ export function RunDetailPage() {
 
   return (
     <Page
-      title={
-        <span className="line-clamp-2" title={r.name}>
-          {r.name}
-        </span>
-      }
+      title={r.name}
       back={{ to: "/runs", label: "Runs" }}
       meta={<RunMeta run={r} />}
       actions={<RunActions run={r} onExport={() => setExportOpen(true)} primaryElsewhere={problem.pending || !!problem.error} />}

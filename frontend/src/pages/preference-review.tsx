@@ -107,7 +107,7 @@ export function PreferenceReviewPage() {
   if (setQ.isPending) {
     return (
       <Page
-        title={<Bar className="h-7 w-72 max-w-full align-middle" />}
+        title={null}
         meta={<Bar className="h-4 w-96 max-w-full" />}
         back={{ to: "/preferences", label: "Preferences" }}
       >
@@ -484,9 +484,6 @@ function Review({ set }: { set: PreferenceSet }) {
 
   return (
     <Page
-      // On a phone the meta line and the top padding give way to the first response. The back link
-      // stays: a nested screen keeps its chevron back to the parent (HIG).
-      className="max-sm:pt-2 max-sm:[&>a]:mb-0 max-sm:[&>header]:mb-3"
       title={set.name}
       back={{ to: "/preferences", label: "Preferences" }}
       meta={<div className="max-sm:hidden"><SetMeta set={set} /></div>}
@@ -548,7 +545,7 @@ function Review({ set }: { set: PreferenceSet }) {
               key={f}
               value={f}
               aria-label={`${FILTER_LABEL[f]}, ${int(counts[f])}`}
-              className="gap-1.5 px-3 data-[state=on]:font-semibold"
+              className="gap-1.5 px-3"
             >
               {FILTER_LABEL[f]}
               <span className="tabular font-normal text-muted-foreground">{int(counts[f])}</span>
@@ -557,7 +554,7 @@ function Review({ set }: { set: PreferenceSet }) {
         </ToggleGroup>
       </div>
 
-      <section ref={regionRef} aria-labelledby={item ? "review-question" : undefined} aria-label={item ? undefined : "Review"} className="scroll-mt-20 md:scroll-mt-6">
+      <section ref={regionRef} aria-labelledby={item ? "review-question" : undefined} aria-label={item ? undefined : "Review"} className="scroll-mt-4">
         {body}
       </section>
 

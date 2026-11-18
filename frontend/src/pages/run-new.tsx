@@ -7,7 +7,7 @@ import { Field } from "@/components/shared/field"
 import { Page } from "@/components/shared/page"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
-import { SEGMENT_ON, SEQS_CHOICES, editEndpointHref, endpointTrouble, troubleField, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
+import { SEQS_CHOICES, editEndpointHref, endpointTrouble, troubleField, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -117,8 +117,6 @@ const SERVER_FIELD: Record<string, FieldId> = {
   "params.request_timeout_s": "timeout",
   "params.pause_after_failures": "pause_after",
 }
-
-const ON = SEGMENT_ON
 
 /** "30 min", "90 s", "1 h 30 min": a whole timeout in words. */
 function seconds(s: number): string {
@@ -731,7 +729,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               className="flex-wrap"
             >
               {SEQS_CHOICES.map((n) => (
-                <ToggleGroupItem key={n} value={String(n)} className={cn("min-w-9 tabular", ON)}>
+                <ToggleGroupItem key={n} value={String(n)} className="min-w-9 tabular">
                   {n}
                 </ToggleGroupItem>
               ))}
@@ -831,10 +829,10 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
               aria-labelledby="max_tokens_field-label"
             >
-              <ToggleGroupItem value="max_tokens" className={cn("font-mono text-xs", ON)}>
+              <ToggleGroupItem value="max_tokens" className="font-mono text-xs">
                 max_tokens
               </ToggleGroupItem>
-              <ToggleGroupItem value="max_completion_tokens" className={cn("font-mono text-xs", ON)}>
+              <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs">
                 max_completion_tokens
               </ToggleGroupItem>
             </ToggleGroup>

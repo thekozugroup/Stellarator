@@ -4,7 +4,6 @@ import { useMutation, useQuery, type UseQueryResult } from "@tanstack/react-quer
 import { Download, ExternalLink } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Field } from "@/components/shared/field"
-import { SEGMENT_ON } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -177,7 +176,7 @@ export function FileTypeGroup({ value, onChange }: { value: FileType; onChange: 
         aria-labelledby={id}
       >
         {FILE_TYPES.map((t) => (
-          <ToggleGroupItem key={t.value} value={t.value} className={cn("px-3", SEGMENT_ON)}>
+          <ToggleGroupItem key={t.value} value={t.value} className="px-3">
             {t.label}
           </ToggleGroupItem>
         ))}
