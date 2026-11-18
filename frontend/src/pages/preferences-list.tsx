@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
-import { Plus } from "lucide-react"
+import { ChevronRight, Plus } from "lucide-react"
 import { NewPreferenceSetDialog } from "@/components/preferences/new-set-dialog"
 import { prefKeys } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
-import { Page, Panel } from "@/components/shared/page"
+import { Page } from "@/components/shared/page"
+import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
 import { ProgressBar } from "@/components/shared/progress-bar"
 import { Button } from "@/components/ui/button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import { int, middle, relative } from "@/lib/format"
 import type { PreferenceSet, Run } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -53,68 +56,71 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
     <>
       {/* Desktop and tablet: a table. */}
       <div className="hidden lg:block">
-        <table className="w-full table-fixed text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground">
-              <th scope="col" className="w-[28%] px-4 pt-3 pb-2 font-normal">Name</th>
-              <th scope="col" className="w-[20%] px-4 pt-3 pb-2 font-normal">Prompt set</th>
-              <th scope="col" className="w-[22%] px-4 pt-3 pb-2 font-normal">Runs</th>
-              <th scope="col" className="w-[17%] px-4 pt-3 pb-2 text-right font-normal">Progress</th>
-              <th scope="col" className="w-[13%] px-4 pt-3 pb-2 text-right font-normal">Created</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[28%]">Name</TableHead>
+              <TableHead className="w-[20%]">Prompt set</TableHead>
+              <TableHead className="w-[22%]">Runs</TableHead>
+              <TableHead className="w-[17%] text-right">Progress</TableHead>
+              <TableHead className="w-[13%] text-right">Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {sets.map((set) => (
-              <tr key={set.id} className="relative border-t align-top hover:bg-muted/50">
-                <td className="px-4 py-3">
+              <TableRow key={set.id} className="relative">
+                <TableCell className="py-1.5 whitespace-normal">
                   <Link
                     to={`/preferences/${set.id}`}
-                    className="line-clamp-2 font-medium break-words underline-offset-2 after:absolute after:inset-0 hover:underline"
+                    className="line-clamp-2 rounded-sm font-medium break-words after:absolute after:inset-0 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
                     title={set.name}
                   >
                     {set.name}
                   </Link>
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell className="py-1.5 whitespace-normal">
                   <Link
                     to={`/prompts/${set.prompt_set_id}`}
-                    className="relative z-10 line-clamp-2 break-words text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    className="relative z-10 line-clamp-2 rounded-sm break-words text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
                     title={set.prompt_set_name}
                   >
                     {set.prompt_set_name}
                   </Link>
-                </td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell className="py-1.5 whitespace-normal">
                   <RunModels set={set} />
-                </td>
-                <td className="px-4 py-3 text-right">
+                </TableCell>
+                <TableCell className="py-1.5 text-right">
                   <Progress set={set} className="ml-auto max-w-44" />
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap text-muted-foreground" title={new Date(set.created_at).toLocaleString()}>
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground" title={new Date(set.created_at).toLocaleString()}>
                   {relative(set.created_at)}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Phone: stacked rows with the name, the progress and the context. */}
-      <ul className="lg:hidden">
+      <ul className="divide-y lg:hidden">
         {sets.map((set) => (
-          <li key={set.id} className="border-t first:border-t-0">
-            <Link to={`/preferences/${set.id}`} className="grid gap-2 px-4 py-3 active:bg-muted">
-              <span className="font-medium break-words">{set.name}</span>
-              <Progress set={set} />
-              <span className="grid gap-0.5 text-sm text-muted-foreground">
-                <span className="truncate">{set.prompt_set_name}</span>
-                {set.runs.map((r) => (
-                  <span key={r.id} className="truncate font-mono text-[13px]">
-                    {r.model}
-                  </span>
-                ))}
-                <span>Created {relative(set.created_at)}</span>
+          <li key={set.id}>
+            <Link to={`/preferences/${set.id}`} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 active:bg-accent">
+              <span className="grid min-w-0 flex-1 gap-2">
+                <span className="font-medium break-words">{set.name}</span>
+                <Progress set={set} />
+                <span className="grid gap-0.5 text-sm text-muted-foreground">
+                  <span className="truncate">{set.prompt_set_name}</span>
+                  {set.runs.map((r) => (
+                    <span key={r.id} className="truncate font-mono text-[13px]">
+                      {r.model}
+                    </span>
+                  ))}
+                  <span>Created {relative(set.created_at)}</span>
+                </span>
               </span>
+              <ChevronRight className="size-4 flex-none text-muted-foreground" aria-hidden="true" />
             </Link>
           </li>
         ))}
@@ -127,7 +133,7 @@ function LoadingRows() {
   return (
     <div aria-label="Loading preference sets…" className="divide-y">
       {[0, 1, 2].map((n) => (
-        <div key={n} className="grid gap-2 px-4 py-4 md:grid-cols-[28%_20%_22%_17%_13%] md:gap-0">
+        <div key={n} className="grid gap-2 py-3 md:grid-cols-[28%_20%_22%_17%_13%] md:gap-0">
           <Bar className="h-4 w-40" />
           <Bar className="h-4 w-28" />
           <Bar className="h-4 w-36" />
@@ -144,6 +150,7 @@ export function PreferencesPage() {
   const sets = useQuery({ queryKey: prefKeys.list, queryFn: () => api.get<PreferenceSet[]>("/api/preference-sets") })
   const runs = useQuery({ queryKey: ["runs"], queryFn: () => api.get<Run[]>("/api/runs") })
   const noRuns = runs.isSuccess && runs.data.length === 0
+  const phone = !useMediaQuery(TOOLBAR_QUERY)
 
   useEffect(() => {
     document.title = "Preferences · Stellarator"
@@ -156,24 +163,29 @@ export function PreferencesPage() {
     <Page
       title="Preferences"
       actions={
-        <Button onClick={() => setOpen(true)}>
-          <Plus aria-hidden="true" />
-          New preference set
-        </Button>
+        phone ? null : (
+          <Button onClick={() => setOpen(true)}>
+            <Plus aria-hidden="true" />
+            New preference set
+          </Button>
+        )
       }
     >
-      <Panel bodyClassName="p-0">
+      <PhoneToolbarAction>
+        <Button variant="outline" size="icon" aria-label="New preference set" title="New preference set" onClick={() => setOpen(true)}>
+          <Plus aria-hidden="true" />
+        </Button>
+      </PhoneToolbarAction>
+      <>
         {sets.isPending ? (
           <LoadingRows />
         ) : sets.isError ? (
           <ErrorBlock
-            className="m-4"
             message={`Couldn't load preference sets. ${sets.error.message}`}
             onRetry={() => sets.refetch()}
           />
         ) : sets.data.length === 0 ? (
           <EmptyBlock
-            className="px-4"
             action={
               noRuns ? (
                 <Button asChild variant="outline">
@@ -191,7 +203,7 @@ export function PreferencesPage() {
         ) : (
           <SetsTable sets={sets.data} />
         )}
-      </Panel>
+      </>
       <NewPreferenceSetDialog open={open} onOpenChange={setOpen} />
     </Page>
   )

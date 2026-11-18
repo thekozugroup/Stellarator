@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTheme } from "@/lib/theme"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
@@ -14,34 +14,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
-import { Field } from "@/components/shared/field"
+import { FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
 import { Page } from "@/components/shared/page"
 import { ApiError, api } from "@/lib/api"
 import type { Settings } from "@/lib/types"
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-labelledby={`s-${title}`} className="grid max-w-[40rem] gap-3 border-t py-6 first:border-t-0 first:pt-0">
-      <h2 id={`s-${title}`} className="text-base font-semibold">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-0.5 sm:grid-cols-[9rem_1fr] sm:gap-4">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </div>
-  )
-}
 
 export function SettingsPage() {
   const query = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") }) // taste-ignore: missing-states -- settings always exist; loading shows Bar placeholders and errors an ErrorBlock
@@ -50,7 +29,7 @@ export function SettingsPage() {
       {query.isError ? (
         <ErrorBlock className="max-w-[40rem]" message={`Couldn’t load settings. ${query.error.message}`} onRetry={() => query.refetch()} />
       ) : (
-        <div>
+        <div className="grid max-w-[40rem] gap-6">
           <HuggingFaceSection settings={query.data} />
           <StorageSection settings={query.data} />
           <AppearanceSection />
@@ -85,133 +64,138 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
   })
 
   const showForm = editing
+  const linkClass =
+    "inline-flex items-center rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
 
   return (
-    <Section title="Hugging Face">
-      <dl className="grid gap-2 text-sm">
-        <Row label="Token">
-          {!settings ? (
-            <Bar className="w-48" />
-          ) : settings.hf_token_from_env ? (
-            <span>
-              Set by the <span className="font-mono text-[13px]">HF_TOKEN</span> environment variable
-              {settings.hf_token_hint ? <span className="text-muted-foreground"> ({settings.hf_token_hint})</span> : null}
-              <span className="mt-0.5 block text-xs text-muted-foreground">Set where the container starts.</span>
-            </span>
-          ) : settings.hf_token_set ? (
-            <span>
-              A token is saved <span className="font-mono text-[13px] text-muted-foreground">({settings.hf_token_hint})</span>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">No token</span>
-          )}
-        </Row>
-      </dl>
-
-      {settings && !settings.hf_token_from_env && !showForm ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setError(null)
-              setEditing(true)
-              window.requestAnimationFrame(() => document.getElementById("hf-token")?.focus())
-            }}
-          >
-            {settings.hf_token_set ? "Replace token" : "Add token"}
-          </Button>
-          {settings.hf_token_set ? (
-            <Button variant="ghost" onClick={() => setConfirmRemove(true)}>
-              Remove token
-            </Button>
+    <form
+      noValidate
+      onSubmit={(ev) => {
+        ev.preventDefault()
+        if (!showForm || write.isPending) return
+        if (!token.trim()) {
+          setError("Paste a token that starts with hf_.")
+          document.getElementById("hf-token")?.focus()
+          return
+        }
+        setError(null)
+        write.mutate(token.trim())
+      }}
+    >
+      <FormGroup
+        title="Hugging Face"
+        footnote={
+          <>
+            For gated datasets and Hub pushes.{" "}
+            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" data-touch="inline" className={linkClass}>
+              Create a token
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </>
+        }
+      >
+        <FormRow group label="Token">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex min-h-7 min-w-0 items-center pointer-coarse:min-h-0">
+              {!settings ? (
+                <Bar className="w-48" />
+              ) : settings.hf_token_from_env ? (
+                <span>
+                  Set by the <span className="font-mono text-[13px]">HF_TOKEN</span> environment variable
+                  {settings.hf_token_hint ? <span className="text-muted-foreground"> ({settings.hf_token_hint})</span> : null}
+                  <span className="mt-0.5 block text-xs text-muted-foreground">Set where the container starts.</span>
+                </span>
+              ) : settings.hf_token_set ? (
+                <span>
+                  A token is saved <span className="font-mono text-[13px] text-muted-foreground">({settings.hf_token_hint})</span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">No token</span>
+              )}
+            </div>
+            {settings && !settings.hf_token_from_env && !showForm ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setError(null)
+                    setEditing(true)
+                    window.requestAnimationFrame(() => document.getElementById("hf-token")?.focus())
+                  }}
+                >
+                  {settings.hf_token_set ? "Replace token" : "Add token"}
+                </Button>
+                {settings.hf_token_set ? (
+                  <Button type="button" variant="ghost" onClick={() => setConfirmRemove(true)}>
+                    Remove token
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          {!showForm && error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
           ) : null}
-        </div>
-      ) : null}
+        </FormRow>
 
-      {showForm ? (
-        <form
-          noValidate
-          className="grid gap-3"
-          onSubmit={(ev) => {
-            ev.preventDefault()
-            if (write.isPending) return
-            if (!token.trim()) {
-              setError("Paste a token that starts with hf_.")
-              document.getElementById("hf-token")?.focus()
-              return
-            }
-            setError(null)
-            write.mutate(token.trim())
-          }}
-        >
-          <Field id="hf-token" label="Access token" error={error}>
-            <div className="relative">
-              <Input
-                id="hf-token"
-                name="hf-access-token"
-                type={show ? "text" : "password"}
-                value={token}
-                placeholder="hf_012345…"
-                autoComplete="off"
-                spellCheck={false}
-                autoCapitalize="none"
-                className="pr-10 font-mono pointer-fine:text-[13px]"
-                aria-invalid={!!error}
-                aria-describedby={error ? "hf-token-error" : undefined}
-                onChange={(e) => {
-                  setToken(e.target.value)
-                  setError(null)
-                }}
-              />
+        {showForm ? (
+          <>
+            <FormRow id="hf-token" label="Access token" error={error}>
+              <div className="relative">
+                <Input
+                  id="hf-token"
+                  name="hf-access-token"
+                  type={show ? "text" : "password"}
+                  value={token}
+                  placeholder="hf_012345…"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  className="pr-10 font-mono pointer-fine:text-[13px]"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? "hf-token-error" : undefined}
+                  onChange={(e) => {
+                    setToken(e.target.value)
+                    setError(null)
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-0.5 right-0.5"
+                  aria-label={show ? "Hide token" : "Show token"}
+                  aria-pressed={show}
+                  onClick={() => setShow((s) => !s)}
+                >
+                  {show ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </Button>
+              </div>
+            </FormRow>
+            <FormItem className="flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="absolute top-0.5 right-0.5"
-                aria-label={show ? "Hide token" : "Show token"}
-                aria-pressed={show}
-                onClick={() => setShow((s) => !s)}
+                variant="outline"
+                disabled={write.isPending}
+                onClick={() => {
+                  setEditing(false)
+                  setToken("")
+                  setError(null)
+                }}
               >
-                {show ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                Cancel
               </Button>
-            </div>
-          </Field>
-          <div className="flex gap-2">
-            <Button type="submit" aria-disabled={write.isPending}>
-              {write.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-              {write.isPending ? "Saving…" : "Save token"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={write.isPending}
-              onClick={() => {
-                setEditing(false)
-                setToken("")
-                setError(null)
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        For gated datasets and Hub pushes.
-        <a
-          href="https://huggingface.co/settings/tokens"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-6 items-center rounded-sm text-foreground pointer-coarse:min-h-11 pointer-coarse:rounded-md pointer-coarse:border pointer-coarse:px-3 underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          Create a token
-        </a>
-      </p>
+              <Button type="submit" aria-disabled={write.isPending}>
+                {write.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                {write.isPending ? "Saving…" : "Save token"}
+              </Button>
+            </FormItem>
+          </>
+        ) : null}
+      </FormGroup>
 
       <AlertDialog open={confirmRemove} onOpenChange={(o) => !write.isPending && setConfirmRemove(o)}>
         <AlertDialogContent>
@@ -223,60 +207,63 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={write.isPending}>Cancel</AlertDialogCancel>
-            <Button variant="destructive" disabled={write.isPending} onClick={() => write.mutate("")}>
+            <Button type="button" variant="destructive" disabled={write.isPending} onClick={() => write.mutate("")}>
               {write.isPending ? "Removing…" : "Remove token"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Section>
+    </form>
   )
 }
 
 function StorageSection({ settings }: { settings?: Settings }) {
   return (
-    <Section title="Storage">
-      <dl className="grid gap-2 text-sm">
-        <Row label="Data directory">
-          {settings ? (
-            <span className="flex min-w-0 items-center gap-0.5">
-              <span title={settings.data_dir} className="min-w-0 truncate font-mono text-[13px]">
-                {settings.data_dir}
-              </span>
-              <CopyButton value={settings.data_dir} label="Copy data directory" />
+    <FormGroup title="Storage" footnote="Back up this folder to keep your data.">
+      <FormRow group label="Data directory">
+        {settings ? (
+          <span className="flex min-w-0 items-center gap-0.5">
+            <span title={settings.data_dir} className="min-w-0 truncate font-mono text-[13px]">
+              {settings.data_dir}
             </span>
-          ) : (
-            <Bar className="w-56" />
-          )}
-        </Row>
-      </dl>
-      <p className="text-xs text-muted-foreground">Back up this folder to keep your data.</p>
-    </Section>
+            <CopyButton value={settings.data_dir} label="Copy data directory" />
+          </span>
+        ) : (
+          <Bar className="w-56" />
+        )}
+      </FormRow>
+    </FormGroup>
   )
 }
+
+const THEMES = [
+  ["light", "Light"],
+  ["dark", "Dark"],
+  ["system", "System"],
+] as const
 
 function AppearanceSection() {
   const { theme, setTheme } = useTheme()
   return (
-    <Section title="Appearance">
-      <fieldset className="grid gap-1.5">
-        <legend className="sr-only">Theme</legend>
-        <RadioGroup value={theme ?? "system"} onValueChange={setTheme} className="grid-cols-1 gap-1 sm:max-w-md sm:grid-cols-3">
-          {(
-            [
-              ["light", "Light"],
-              ["dark", "Dark"],
-              ["system", "System"],
-            ] as const
-          ).map(([value, label]) => (
-            <Label key={value} htmlFor={`theme-${value}`} className="flex min-h-9 items-center gap-2.5 rounded-md border px-3 text-sm font-normal pointer-coarse:min-h-11">
-              <RadioGroupItem id={`theme-${value}`} value={value} />
+    <FormGroup title="Appearance">
+      <FormRow group label="Theme" align="end">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          spacing={0}
+          value={theme ?? "system"}
+          onValueChange={(v) => v && setTheme(v as (typeof THEMES)[number][0])}
+          aria-label="Theme"
+          className="w-full @md/fg:w-fit"
+        >
+          {THEMES.map(([value, label]) => (
+            <ToggleGroupItem key={value} value={value} className="flex-1 px-3">
               {label}
-            </Label>
+            </ToggleGroupItem>
           ))}
-        </RadioGroup>
-      </fieldset>
-    </Section>
+        </ToggleGroup>
+      </FormRow>
+    </FormGroup>
   )
 }
 
@@ -284,11 +271,15 @@ const MODE: Record<Settings["mode"], string> = { desktop: "Desktop app", docker:
 
 function AboutSection({ settings }: { settings?: Settings }) {
   return (
-    <Section title="About">
-      <dl className="grid gap-2 text-sm">
-        <Row label="Version">{settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}</Row>
-        {settings ? <Row label="Mode">{MODE[settings.mode]}</Row> : null}
-      </dl>
-    </Section>
+    <FormGroup title="About">
+      <FormRow group label="Version">
+        <span className="flex min-h-7 items-center">{settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}</span>
+      </FormRow>
+      {settings ? (
+        <FormRow group label="Mode">
+          <span className="flex min-h-7 items-center">{MODE[settings.mode]}</span>
+        </FormRow>
+      ) : null}
+    </FormGroup>
   )
 }

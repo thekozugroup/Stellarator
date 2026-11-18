@@ -18,6 +18,8 @@ import {
 } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
+import { PhoneToolbarAction } from "@/components/shared/phone-chrome"
+import { actionBarClass } from "@/components/shared/action-bar"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -34,6 +36,7 @@ import { Kbd } from "@/components/ui/kbd"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { api, ApiError } from "@/lib/api"
 import { int } from "@/lib/format"
+import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import type { Candidate, Page as PageOf, PreferenceItem, PreferenceSet } from "@/lib/types"
 
 /** How long a finished pair stays on screen before the next prompt replaces it. */
@@ -127,6 +130,8 @@ export function PreferenceReviewPage() {
 // --------------------------------------------------------------------------- review
 
 function Review({ set }: { set: PreferenceSet }) {
+  const wide = useMediaQuery(TOOLBAR_QUERY)
+  const sm = useMediaQuery("(min-width: 40rem)")
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
   const filter = parseFilter(params.get("filter"))
@@ -482,29 +487,20 @@ function Review({ set }: { set: PreferenceSet }) {
     )
   }
 
-  return (
-    <Page
-      title={set.name}
-      back={{ to: "/preferences", label: "Preferences" }}
-      meta={<div className="max-sm:hidden"><SetMeta set={set} /></div>}
-      actions={
-        <>
-          {set.runs.length >= 2 ? (
-            <Button variant="outline" className="max-sm:hidden" onClick={() => setAutoOpen(true)}>
-              Auto-pair by run…
-            </Button>
-          ) : null}
-          <Button className="max-sm:hidden" onClick={() => setExportOpen(true)}>
-            Export pairs…
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
-                <Ellipsis aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <div className="sm:hidden">
+  // Below 768 px the screen starts with a large title and the "…" menu sits in the toolbar, so
+  // the menu also carries Export and Auto-pair; from 768 px they are buttons in the toolbar.
+  const menu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="More actions" title="More actions">
+          <Ellipsis aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        {!wide ? (
+          <>
+            {!sm ? (
+              <>
                 <DropdownMenuLabel>Show prompts</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as ItemFilter)}>
                   {(["undecided", "decided", "all"] as const).map((f) => (
@@ -514,22 +510,41 @@ function Review({ set }: { set: PreferenceSet }) {
                   ))}
                 </DropdownMenuRadioGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setExportOpen(true)}>Export pairs…</DropdownMenuItem>
-              </div>
-              {set.runs.length >= 2 ? (
-                <DropdownMenuItem className="sm:hidden" onSelect={() => setAutoOpen(true)}>
-                  Auto-pair by run…
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
-                <Trash2 aria-hidden="true" />
-                Delete preference set…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
+              </>
+            ) : null}
+            <DropdownMenuItem onSelect={() => setExportOpen(true)}>Export pairs…</DropdownMenuItem>
+            {set.runs.length >= 2 ? <DropdownMenuItem onSelect={() => setAutoOpen(true)}>Auto-pair by run…</DropdownMenuItem> : null}
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+          <Trash2 aria-hidden="true" />
+          Delete preference set…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  return (
+    <Page
+      title={set.name}
+      back={{ to: "/preferences", label: "Preferences" }}
+      meta={sm ? <SetMeta set={set} /> : undefined}
+      actions={
+        wide ? (
+          <>
+            {set.runs.length >= 2 ? (
+              <Button variant="outline" onClick={() => setAutoOpen(true)}>
+                Auto-pair by run…
+              </Button>
+            ) : null}
+            <Button onClick={() => setExportOpen(true)}>Export pairs…</Button>
+            {menu}
+          </>
+        ) : null
       }
     >
+      <PhoneToolbarAction>{menu}</PhoneToolbarAction>
       <div className="mb-4 max-sm:hidden sm:mb-6">
         <ToggleGroup
           type="single"
@@ -559,7 +574,7 @@ function Review({ set }: { set: PreferenceSet }) {
       </section>
 
       {item ? (
-        <div className="sticky bottom-[var(--bottom-chrome)] z-20 -mx-4 mt-6 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className={actionBarClass(null, "mt-6")}>
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div id="review-status" className="min-w-0 flex-1 basis-64 empty:hidden">
               <StatusLine item={item} sel={sel} status={status} onRetry={retry} />

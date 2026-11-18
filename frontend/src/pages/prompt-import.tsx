@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { Page } from "@/components/shared/page"
 import { Field } from "@/components/shared/field"
+import { actionBarClass } from "@/components/shared/action-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -418,7 +419,8 @@ export function ImportPromptsPage() {
 
         <div
           className={cn(
-            "sticky bottom-[var(--bottom-chrome)] z-10 -mx-4 grid content-start gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:col-start-1 lg:mx-0 lg:border-0 lg:px-0 lg:py-0",
+            // Under 1024 px a sticky bar in the bar material that runs down behind the tab bar.
+            actionBarClass("lg", "grid content-start gap-2 lg:col-start-1"),
             // Simple mode has no mapping row: the action follows the source directly.
             simple ? "lg:row-start-2" : "lg:row-start-3",
           )}

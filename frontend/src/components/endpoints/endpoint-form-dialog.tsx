@@ -39,7 +39,7 @@ export function EndpointFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden sm:max-w-lg"
         onOpenAutoFocus={(ev) => {
           const target = focusField ?? (preset?.needs_api_key ? "api_key" : null)
           if (!target) return
@@ -190,10 +190,10 @@ function EndpointForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
-      <DialogHeader className="px-4 pt-4 pr-12 pb-3">
+      <DialogHeader className="pr-8 pb-4">
         <DialogTitle>{editing ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 pt-1 pb-4">
+      <div className="-mx-5 grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-5 py-1">
       {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
 
       <Field id="ep-name" label="Name" error={errors.name}>
@@ -392,7 +392,7 @@ function EndpointForm({
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="grid gap-2 border-t pt-4">
+      <div className="grid gap-2 pt-1">
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
@@ -437,7 +437,7 @@ function EndpointForm({
       ) : null}
       </div>
 
-      <DialogFooter className="m-0 shrink-0 rounded-b-xl px-4 py-3">
+      <DialogFooter className="m-0 shrink-0 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={save.isPending}>
           Cancel
         </Button>

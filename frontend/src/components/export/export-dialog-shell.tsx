@@ -6,7 +6,7 @@ import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Field } from "@/components/shared/field"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -315,8 +315,9 @@ function HubPush({
 /**
  * One layout for every export: the dialog's own options on the left, the result on the right (the
  * record count, what is skipped, the first record exactly as written), the Hugging Face push inline
- * below, and Cancel and Download in the footer. On phones the first record comes before the
- * options and the count sits in the footer, so the effect of each option stays in view.
+ * below, and Cancel and Download at the end with no footer band. On phones the first record comes
+ * before the options and the count sits above the buttons, so the effect of each option stays in
+ * view.
  */
 export function ExportDialogShell({
   title,
@@ -366,13 +367,15 @@ export function ExportDialogShell({
           e.preventDefault()
           returnTo.current?.focus()
         }}
-        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[56rem]">
-        <DialogHeader className="border-b px-4 py-4 pr-14 sm:px-6">
+        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[56rem]"
+      >
+        <DialogHeader className="pr-8">
           <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="grid gap-8 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* The scroll area runs to the dialog's edges so its scrollbar and focus rings are not clipped. */}
+        <div className="-mx-5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-1">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <section
               aria-label="Preview"
               aria-busy={stale || undefined}
@@ -417,7 +420,7 @@ export function ExportDialogShell({
             <div className="grid min-w-0 content-start gap-7 lg:col-start-1 lg:row-start-1">{children}</div>
           </div>
 
-          <section aria-labelledby={`${uid}-hub`} className="grid gap-4 border-t px-4 py-5 sm:px-6">
+          <section aria-labelledby={`${uid}-hub`} className="mt-8 grid gap-3">
             <h3 id={`${uid}-hub`} className="text-sm font-semibold">
               Push to Hugging Face
             </h3>
@@ -425,13 +428,14 @@ export function ExportDialogShell({
           </section>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-2 border-t bg-muted/50 px-4 py-3 sm:px-6">
-          {data ? (
-            <p aria-live="polite" className="basis-full text-sm text-muted-foreground tabular sm:mr-auto sm:basis-auto lg:hidden">
-              <span className="font-medium text-foreground">{count(data.count, "record", "records")}</span>
-              {skipped ? `. ${skipped}` : null}
-            </p>
-          ) : null}
+        {/* Phones: the count sits above the buttons, since the right-hand column is gone. */}
+        {data ? (
+          <p aria-live="polite" className="text-sm text-muted-foreground tabular lg:hidden">
+            <span className="font-medium text-foreground">{count(data.count, "record", "records")}</span>
+            {skipped ? `. ${skipped}` : null}
+          </p>
+        ) : null}
+        <DialogFooter className="pt-0">
           <DialogClose asChild>
             <Button type="button" variant="outline">
               Cancel
@@ -450,7 +454,7 @@ export function ExportDialogShell({
               Download {typeLabel}
             </Button>
           )}
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

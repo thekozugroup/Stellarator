@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { SampleStatusPill } from "@/components/shared/status-pill"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DASH, duration, int } from "@/lib/format"
 import type { Run, SampleSummary } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { PAGE_SIZE, SAMPLE_FILTERS, isActive, sampleLabel, useSamplePage, type SampleFilter } from "./run-data"
 import { SampleViewer } from "./sample-viewer"
+import { StepPair } from "./step-pair"
 
 const FILTER_LABEL: Record<SampleFilter, string> = {
   all: "All",
@@ -89,68 +92,61 @@ function SampleRows({
   const showThinking = items.some(noTrace)
   return (
     <>
-      <table className="hidden w-full table-fixed text-sm md:table">
-        <caption className="sr-only">Samples. Select a row to read the sample in full.</caption>
-        <thead>
-          <tr className="text-left text-xs text-muted-foreground">
-            <th scope="col" className="h-9 w-[5.5rem] px-4 font-normal">#</th>
-            <th scope="col" className="h-9 px-3 font-normal">Prompt</th>
-            <th scope="col" className="hidden h-9 px-3 font-normal lg:table-cell">Response</th>
-            {showThinking ? <th scope="col" className="hidden h-9 w-[5.5rem] px-3 font-normal xl:table-cell">Thinking</th> : null}
-            <th scope="col" className="h-9 w-[6rem] px-3 text-right font-normal">Tokens</th>
-            <th scope="col" className={cn("h-9 w-[6rem] text-right font-normal", showStatus ? "px-3" : "pr-4 pl-3")}>Latency</th>
-            {showStatus ? <th scope="col" className="h-9 w-[7.5rem] px-4 font-normal">Status</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((s) => (
-            <tr
-              key={s.id}
-              aria-selected={selected === s.id || undefined}
-              className={cn(
-                "relative border-t transition-colors duration-150 hover:bg-muted/60 has-[a:focus-visible]:bg-muted/60",
-                selected === s.id && "bg-muted",
-              )}
-            >
-              <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
-                {sampleLabel(s.prompt_idx, s.sample_idx, spp)}
-              </td>
-              <td className="px-3 py-2.5">
-                <Link
-                  data-touch="inline"
-                  to={open(s.id)}
-                  state={{ viewer: true }}
-                  data-sample-link={s.id}
-                  title={s.prompt_preview}
-                  className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
-                >
-                  {s.prompt_preview || DASH}
-                </Link>
-              </td>
-              {/* A failed row's error is gray: the red mark in Status already says it failed. */}
-              <td className="hidden truncate px-3 py-2.5 text-muted-foreground lg:table-cell" title={s.error ?? undefined}>
-                {s.status === "failed" && s.error ? s.error : s.response_preview || DASH}
-              </td>
-              {showThinking ? (
-                <td className="hidden px-3 py-2.5 text-muted-foreground xl:table-cell">{noTrace(s) ? "None" : null}</td>
-              ) : null}
-              <td className={cn("px-3 py-2.5 text-right tabular", s.completion_tokens === null && "text-muted-foreground")}>
-                {int(s.completion_tokens)}
-              </td>
-              <td className={cn("py-2.5 text-right text-muted-foreground tabular", showStatus ? "px-3" : "pr-4 pl-3")}>{duration(s.latency_ms)}</td>
-              {showStatus ? (
-                <td className="px-4 py-2.5">
-                  <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="hidden md:block">
+        <Table className="table-fixed">
+          <caption className="sr-only">Samples. Select a row to read the sample in full.</caption>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead scope="col" className="w-[5.5rem]">#</TableHead>
+              <TableHead scope="col">Prompt</TableHead>
+              <TableHead scope="col" className="hidden lg:table-cell">Response</TableHead>
+              {showThinking ? <TableHead scope="col" className="hidden w-[5.5rem] xl:table-cell">Thinking</TableHead> : null}
+              <TableHead scope="col" numeric className="w-[6rem]">Tokens</TableHead>
+              <TableHead scope="col" numeric className="w-[6rem]">Latency</TableHead>
+              {showStatus ? <TableHead scope="col" className="w-[7.5rem]">Status</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((s) => (
+              <TableRow key={s.id} aria-selected={selected === s.id || undefined} className="relative">
+                <TableCell className="font-mono text-xs text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</TableCell>
+                <TableCell>
+                  <Link
+                    data-touch="inline"
+                    to={open(s.id)}
+                    state={{ viewer: true }}
+                    data-sample-link={s.id}
+                    title={s.prompt_preview}
+                    className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                  >
+                    {s.prompt_preview || DASH}
+                  </Link>
+                </TableCell>
+                {/* A failed row's error is gray: the red mark in Status already says it failed. */}
+                <TableCell className="hidden truncate text-muted-foreground lg:table-cell" title={s.error ?? undefined}>
+                  {s.status === "failed" && s.error ? s.error : s.response_preview || DASH}
+                </TableCell>
+                {showThinking ? <TableCell className="hidden text-muted-foreground xl:table-cell">{noTrace(s) ? "None" : null}</TableCell> : null}
+                <TableCell numeric className={cn(s.completion_tokens === null && "text-muted-foreground")}>
+                  {int(s.completion_tokens)}
+                </TableCell>
+                <TableCell numeric className="text-muted-foreground">
+                  {duration(s.latency_ms)}
+                </TableCell>
+                {showStatus ? (
+                  <TableCell>
+                    <SampleStatusPill status={s.status} finishReason={s.finish_reason} />
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
 
       <ul className="divide-y border-t md:hidden">
         {items.map((s) => (
-          <li key={s.id} className={cn("relative px-4 py-3 has-[a:focus-visible]:bg-muted/60", selected === s.id && "bg-muted")}>
+          <li key={s.id} className={cn("relative py-3 has-[a:focus-visible]:bg-foreground/4", selected === s.id && "bg-accent")}>
             <div className="flex items-center gap-2 text-xs">
               <span className="font-mono text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</span>
               {showStatus ? <SampleStatusPill status={s.status} finishReason={s.finish_reason} /> : null}
@@ -179,13 +175,13 @@ function RowsLoading() {
   return (
     <div aria-busy="true" aria-label="Loading samples">
       {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className="flex h-[45px] items-center gap-4 border-t px-4">
+        <div key={i} className="flex h-11 items-center gap-4 border-b px-3 md:h-8">
           <Bar className="h-3 w-10" />
           <Bar className="w-1/3" />
           <Bar className="hidden w-1/4 lg:inline-block" />
           <span className="ml-auto flex gap-4">
             <Bar className="w-12" />
-            <Bar className="h-5 w-14 rounded-full" />
+            <Bar className="h-4 w-14" />
           </span>
         </div>
       ))}
@@ -271,13 +267,68 @@ export function SamplesSection({ run }: { run: Run }) {
   const stepViewer = (id: number) =>
     navigate({ search: withParams(params, { sample: String(id) }) }, { replace: true, state: location.state })
 
+  const filterHref = (f: SampleFilter) => ({ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) })
+
   return (
-    <section ref={sectionRef} aria-labelledby="samples-heading" className="scroll-mt-4 rounded-xl border">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 pt-3 pb-3">
-        <h2 id="samples-heading" tabIndex={-1} className="text-base font-semibold">
-          Samples
-        </h2>
-        <div className="relative w-full sm:w-72">
+    <section
+      ref={sectionRef}
+      aria-labelledby="samples-heading"
+      className="scroll-mt-(--top-chrome) [--sticky-below:2.75rem] pointer-coarse:[--sticky-below:3.75rem]"
+    >
+      <h2 id="samples-heading" tabIndex={-1} className="mb-1 text-base font-semibold">
+        Samples
+      </h2>
+
+      {/* Search and the status filter stay under the toolbar while the rows scroll. */}
+      <div className="sticky top-(--top-chrome) z-20 flex h-11 items-center gap-2 bg-background pointer-coarse:h-[3.75rem]">
+        <nav aria-label="Filter samples by status" className="hidden xl:block">
+          <ul className="inline-flex rounded-2xl bg-segment-track p-0.5">
+            {SAMPLE_FILTERS.map((f) => {
+              const active = f === status
+              const n = filterCount(run, f)
+              return (
+                <li key={f}>
+                  <Link
+                    to={filterHref(f)}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-fine:h-6",
+                      active ? "border-control-edge bg-control font-medium text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {FILTER_LABEL[f]}
+                    {!q ? (
+                      <span className={cn("tabular", f === "failed" && n > 0 ? "text-destructive" : "text-muted-foreground")}>{int(n)}</span>
+                    ) : null}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+        <div className="xl:hidden">
+          <Select value={status} onValueChange={(v) => navigate(filterHref(v as SampleFilter), { replace: false })}>
+            <SelectTrigger aria-label="Filter samples by status" className="min-w-28">
+              <SelectValue>
+                {FILTER_LABEL[status]}
+                {!q ? <span className="text-muted-foreground tabular">{int(filterCount(run, status))}</span> : null}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent position="popper" align="start">
+              {SAMPLE_FILTERS.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {FILTER_LABEL[f]}
+                  {!q ? (
+                    <span className={cn("ml-2 tabular", f === "failed" && filterCount(run, f) > 0 ? "text-destructive" : "text-muted-foreground")}>
+                      {int(filterCount(run, f))}
+                    </span>
+                  ) : null}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="relative min-w-0 flex-1 sm:ml-auto sm:max-w-72">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             type="search"
@@ -299,40 +350,14 @@ export function SamplesSection({ run }: { run: Run }) {
         </div>
       </div>
 
-      <nav aria-label="Filter samples by status" className="px-4 pb-3">
-        <ul className="inline-flex flex-wrap rounded-2xl bg-segment-track p-0.5 pointer-coarse:rounded-4xl">
-          {SAMPLE_FILTERS.map((f) => {
-            const active = f === status
-            const n = filterCount(run, f)
-            return (
-              <li key={f}>
-                <Link
-                  to={{ search: withParams(params, { status: f === "all" ? null : f, page: null, sample: null }) }}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-fine:h-6",
-                    active ? "border-control-edge bg-control font-medium text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {FILTER_LABEL[f]}
-                  {!q ? (
-                    <span className={cn("tabular", f === "failed" && n > 0 ? "text-destructive" : "text-muted-foreground")}>{int(n)}</span>
-                  ) : null}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </nav>
-
       {samples.isError && !data ? (
-        <div className="border-t p-4">
+        <div className="py-4">
           <ErrorBlock message={`Couldn't load samples. ${samples.error.message}`} onRetry={() => void samples.refetch()} />
         </div>
       ) : !data ? (
         <RowsLoading />
       ) : items.length === 0 ? (
-        <div className="border-t px-4">
+        <div className="border-t">
           <EmptyBlock
             action={
               q ? (
@@ -357,39 +382,23 @@ export function SamplesSection({ run }: { run: Run }) {
       )}
 
       {data && total > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t py-3 text-sm">
           <p className="text-muted-foreground tabular" aria-live="polite">
             Showing {int(from)}–{int(to)} of {int(total)}
           </p>
           {pages > 1 ? (
-            <div className="flex items-center gap-2">
-              {page > 1 ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link to={{ search: withParams(params, { page: page - 1 > 1 ? String(page - 1) : null, sample: null }) }}>
-                    <ChevronLeft aria-hidden="true" />
-                    Previous
-                  </Link>
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" disabled>
-                  <ChevronLeft aria-hidden="true" />
-                  Previous
-                </Button>
-              )}
-              {page < pages ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link to={{ search: withParams(params, { page: String(page + 1), sample: null }) }}>
-                    Next
-                    <ChevronRight aria-hidden="true" />
-                  </Link>
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" disabled>
-                  Next
-                  <ChevronRight aria-hidden="true" />
-                </Button>
-              )}
-            </div>
+            <StepPair
+              prev={{
+                label: "Previous page",
+                to: { search: withParams(params, { page: page - 1 > 1 ? String(page - 1) : null, sample: null }) },
+                disabled: page <= 1,
+              }}
+              next={{
+                label: "Next page",
+                to: { search: withParams(params, { page: String(page + 1), sample: null }) },
+                disabled: page >= pages,
+              }}
+            />
           ) : null}
         </div>
       ) : null}

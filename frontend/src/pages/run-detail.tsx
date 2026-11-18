@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
-import { Page, Panel } from "@/components/shared/page"
+import { GroupBox } from "@/components/shared/form-group"
+import { Page } from "@/components/shared/page"
 import { RunStatusPill } from "@/components/shared/status-pill"
 import { ExportDialog } from "@/components/runs/export-dialog"
 import { InFlightList } from "@/components/runs/in-flight"
@@ -109,7 +110,7 @@ function RunMeta({ run }: { run: Run }) {
   const link = "inline-flex items-center underline decoration-muted-foreground/40 underline-offset-4 hover:text-foreground hover:decoration-current"
   const endpoint =
     run.endpoint_id !== null ? (
-      <Link to={editEndpointHref(run.endpoint_id, `/runs/${run.id}`, null)} className={link}>
+      <Link data-touch="inline" to={editEndpointHref(run.endpoint_id, `/runs/${run.id}`, null)} className={link}>
         {run.endpoint_name}
       </Link>
     ) : (
@@ -127,7 +128,7 @@ function RunMeta({ run }: { run: Run }) {
   )
   if (showSet) {
     items.push(
-      <Link to={`/prompts/${run.prompt_set_id}`} className={link}>
+      <Link data-touch="inline" to={`/prompts/${run.prompt_set_id}`} className={link}>
         {run.prompt_set_name}
       </Link>,
     )
@@ -230,27 +231,31 @@ export function RunDetailPage() {
 
       {showChart ? (
         <div className={cn("mt-8 grid grid-cols-1 gap-6", active && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
-          <Panel title="Throughput">
+          <GroupBox title="Throughput" boxClassName="p-4">
             <ThroughputChart
               metrics={data.metrics}
               live={active && !lostContact ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight, at: live.dataUpdatedAt } : null}
             />
-          </Panel>
+          </GroupBox>
           {active ? (
-            <section aria-labelledby="inflight-heading" className="flex min-h-0 flex-col rounded-xl border xl:[contain:size]">
-              <h2 id="inflight-heading" className="flex items-baseline gap-2 border-b px-4 py-3 text-base font-semibold">
-                In flight
-                <span className="text-sm font-normal text-muted-foreground tabular">{int(data.in_flight)}</span>
-              </h2>
+            <GroupBox
+              title={
+                <>
+                  In flight <span className="ml-1 font-normal tabular">{int(data.in_flight)}</span>
+                </>
+              }
+              className="xl:[contain:size] xl:grid-rows-[auto_minmax(0,1fr)]"
+              boxClassName="flex min-h-0 flex-col"
+            >
               <div
                 tabIndex={data.sequences.length ? 0 : undefined}
                 role={data.sequences.length ? "region" : undefined}
                 aria-label={data.sequences.length ? "Sequences in flight" : undefined}
-                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-3 xl:max-h-none"
+                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl p-4 xl:max-h-none"
               >
                 <InFlightList sequences={data.sequences} inFlight={data.in_flight} samplesPerPrompt={r.params.samples_per_prompt} />
               </div>
-            </section>
+            </GroupBox>
           ) : null}
         </div>
       ) : null}

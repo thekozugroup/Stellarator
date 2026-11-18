@@ -36,8 +36,8 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
   const expandable = overflows || open || !!system || others.length > 0
 
   return (
-    <li className="grid grid-cols-[3.25rem_1fr] gap-x-2 py-3.5 sm:grid-cols-[4rem_1fr]">
-      <span className="pt-px font-mono text-[13px] text-muted-foreground tabular">#{int(prompt.idx + 1)}</span>
+    <li className="grid grid-cols-[3rem_1fr] gap-x-2 px-4 py-3 sm:grid-cols-[3rem_1fr]">
+      <span className="font-mono text-[13px] text-muted-foreground tabular">#{int(prompt.idx + 1)}</span>
       <div className="min-w-0">
         {open && system ? (
           <div className="mb-2">
@@ -93,9 +93,9 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
 
 export function PromptRowsSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <ul aria-busy="true" aria-label="Loading prompts" className="divide-y border-y">
+    <ul aria-busy="true" aria-label="Loading prompts" className="divide-y overflow-hidden rounded-xl border bg-card">
       {Array.from({ length: rows }, (_, i) => (
-        <li key={i} className="grid grid-cols-[3.25rem_1fr] gap-x-2 py-3.5 sm:grid-cols-[4rem_1fr]">
+        <li key={i} className="grid grid-cols-[3rem_1fr] gap-x-2 px-4 py-3 sm:grid-cols-[3rem_1fr]">
           <span className="mt-0.5 inline-block h-4 w-8 rounded bg-muted" />
           <div className="grid gap-1.5">
             <span className="inline-block h-4 w-full max-w-[70ch] rounded bg-muted" />

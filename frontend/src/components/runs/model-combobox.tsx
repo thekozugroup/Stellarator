@@ -50,7 +50,7 @@ export function ModelCombobox({
           aria-describedby={describedBy}
           disabled={disabled}
           className={cn(
-            "h-8 w-full justify-between border-input px-2.5 font-normal dark:border-input",
+            "w-full justify-between border-input px-2.5 font-normal dark:border-input",
             !value && "text-muted-foreground",
           )}
         >

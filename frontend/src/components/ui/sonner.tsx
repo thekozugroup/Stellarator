@@ -28,15 +28,16 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
+          "--normal-bg": "color-mix(in oklch, var(--popover) var(--material-thick-alpha), transparent)",
           "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--normal-border": "transparent",
+          "--border-radius": "var(--radius-xl)",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          // The thick material and its hairline edge; sonner sets its own fill and shadow, so these win.
+          toast: "cn-toast material-thick! material-float!",
         },
       }}
       {...props}

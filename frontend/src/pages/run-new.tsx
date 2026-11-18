@@ -1,25 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ChevronRight, RotateCw } from "lucide-react"
+import { RotateCw } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
-import { Field } from "@/components/shared/field"
+import { FormDisclosure, FormGroup, FormRow } from "@/components/shared/form-group"
 import { Page } from "@/components/shared/page"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
-import { SEQS_CHOICES, editEndpointHref, endpointTrouble, troubleField, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
+import { SeqsChoices } from "@/components/runs/seqs-choices"
+import { editEndpointHref, endpointTrouble, troubleField, runKeys, useEndpoints, usePromptSets, useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ApiError, api } from "@/lib/api"
 import { count, dateTime, duration, int } from "@/lib/format"
 import type { Endpoint, PromptSet, Run, RunCreate } from "@/lib/types"
-import { cn } from "@/lib/utils"
 
 // ------------------------------------------------------------------ form state
 
@@ -254,59 +252,17 @@ function toBody(f: Form): RunCreate {
 
 // ------------------------------------------------------------------ pieces
 
-function Section({ id, title, children, className }: { id: string; title?: string; children: ReactNode; className?: string }) {
-  if (!title) return <div className={cn("grid gap-5 pt-10 first:pt-0", className)}>{children}</div>
-  return (
-    <section aria-labelledby={id} className={cn("grid gap-5 pt-10 first:pt-0", className)}>
-      <h2 id={id} className="-mb-1 text-base font-semibold">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-function Disclosure({
-  title,
-  summary,
-  open,
-  onOpenChange,
-  children,
-}: {
-  title: string
-  summary: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  children: ReactNode
-}) {
-  return (
-    <Collapsible open={open} onOpenChange={onOpenChange} className="pt-10">
-      <h2 className="text-base font-semibold">
-        <CollapsibleTrigger className="group -mx-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:text-foreground">
-          <ChevronRight
-            className="size-4 text-muted-foreground transition-transform duration-200 ease-out group-data-[state=open]:rotate-90"
-            aria-hidden="true"
-          />
-          {title}
-        </CollapsibleTrigger>
-      </h2>
-      {!open ? <p className="mt-1 pl-6 text-sm text-muted-foreground">{summary}</p> : null}
-      <CollapsibleContent className="grid gap-5 pt-4">{children}</CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 function describe(id: string, error?: string, hint?: boolean) {
   return error ? `${id}-error` : hint ? `${id}-hint` : undefined
 }
 
 function FormSkeleton() {
   return (
-    <div className="grid max-w-[40rem] gap-5" aria-busy="true" aria-label="Loading endpoints and prompt sets">
+    <div className="max-w-[40rem] rounded-xl border" aria-busy="true" aria-label="Loading endpoints and prompt sets">
       {["Endpoint", "Model", "Prompt set"].map((l) => (
-        <div key={l} className="grid gap-1.5">
-          <span className="text-sm font-medium">{l}</span>
-          <Bar className="h-8 w-full rounded-lg" />
+        <div key={l} className="flex h-11 items-center justify-between gap-4 border-b px-3 last:border-b-0">
+          <span className="text-sm">{l}</span>
+          <Bar className="h-7 w-48 max-w-[55%] rounded-lg" />
         </div>
       ))}
     </div>
@@ -559,12 +515,14 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           .join(", ")
       : "None"
 
-  return (
-    <form onSubmit={submit} noValidate className="max-w-[40rem]">
-      {sourceError ? <ErrorBlock className="mb-6" message={sourceError} /> : null}
+  const numberInput = "w-28 tabular"
 
-      <Section id="sec-model">
-        <Field
+  return (
+    <form onSubmit={submit} noValidate className="grid max-w-[40rem] gap-6">
+      {sourceError ? <ErrorBlock message={sourceError} /> : null}
+
+      <FormGroup>
+        <FormRow
           id="endpoint"
           label="Endpoint"
           error={errors.endpoint}
@@ -573,6 +531,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
               <span className="text-sm">
                 <span className="text-destructive">{trouble === "Key rejected" ? "Key rejected at last check." : "Unreachable at last check."}</span>{" "}
                 <Link
+                  data-touch="inline"
                   to={editEndpointHref(endpoint.id, `/runs/new?endpoint=${endpoint.id}${form.prompt_set ? `&prompt_set=${form.prompt_set}` : ""}`, troubleField(trouble))}
                   className="inline-flex items-center text-foreground underline underline-offset-4"
                 >
@@ -580,7 +539,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
                 </Link>
               </span>
             ) : endpoint ? (
-              <span className="font-mono">{endpoint.base_url}</span>
+              <span className="font-mono [overflow-wrap:anywhere]">{endpoint.base_url}</span>
             ) : undefined
           }
         >
@@ -611,53 +570,44 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           ) : (
             <p id="endpoint" tabIndex={-1} className="text-sm text-muted-foreground">
               No endpoints yet.{" "}
-              <Link to="/endpoints" className="text-foreground underline underline-offset-4">
+              <Link data-touch="inline" to="/endpoints" className="text-foreground underline underline-offset-4">
                 Add an endpoint
               </Link>
             </p>
           )}
-        </Field>
+        </FormRow>
 
-        <div className="grid gap-1.5">
-          <div className="flex items-end justify-between gap-3">
-            <Label htmlFor="model" className="text-sm font-medium">
-              Model
-            </Label>
+        <FormRow id="model" label="Model" error={errors.model} hint={errors.model ? undefined : modelHint} hintLive>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <ModelCombobox
+                id="model"
+                value={form.model}
+                onChange={(m) => set("model", m)}
+                models={endpoint?.models ?? []}
+                invalid={!!errors.model}
+                describedBy={errors.model ? "model-error" : modelHint ? "model-hint" : undefined}
+                disabled={!endpoint}
+              />
+            </div>
             {endpoint ? (
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
-                className="-my-1 text-muted-foreground"
+                variant="outline"
+                size="icon"
+                aria-label="Refresh models"
+                title="Refresh models"
+                aria-busy={refreshModels.isPending || undefined}
                 disabled={refreshModels.isPending}
                 onClick={() => refreshModels.mutate(endpoint.id)}
               >
-                <RotateCw aria-hidden="true" />
-                {refreshModels.isPending ? "Refreshing…" : "Refresh models"}
+                <RotateCw className={refreshModels.isPending ? "animate-spin" : undefined} aria-hidden="true" />
               </Button>
             ) : null}
           </div>
-          <ModelCombobox
-            id="model"
-            value={form.model}
-            onChange={(m) => set("model", m)}
-            models={endpoint?.models ?? []}
-            invalid={!!errors.model}
-            describedBy={errors.model ? "model-error" : modelHint ? "model-hint" : undefined}
-            disabled={!endpoint}
-          />
-          {errors.model ? (
-            <p id="model-error" className="text-sm text-destructive">
-              {errors.model}
-            </p>
-          ) : (
-            <p id="model-hint" aria-live="polite" className={cn("text-xs", modelsNote && !modelsNote.ok ? "text-destructive" : "text-muted-foreground")}>
-              {modelHint}
-            </p>
-          )}
-        </div>
+        </FormRow>
 
-        <Field id="prompt_set" label="Prompt set" error={errors.prompt_set}>
+        <FormRow id="prompt_set" label="Prompt set" error={errors.prompt_set}>
           {sets.data?.length ? (
             <Select value={form.prompt_set} onValueChange={(v) => set("prompt_set", v)}>
               <SelectTrigger
@@ -693,63 +643,37 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           ) : (
             <p id="prompt_set" tabIndex={-1} className="text-sm text-muted-foreground">
               No prompt sets yet.{" "}
-              <Link to="/prompts/import" className="text-foreground underline underline-offset-4">
+              <Link data-touch="inline" to="/prompts/import" className="text-foreground underline underline-offset-4">
                 Import prompts
               </Link>
             </p>
           )}
-        </Field>
-      </Section>
+        </FormRow>
+      </FormGroup>
 
-      <Section id="sec-requests" title="Requests">
-        <div className="grid gap-1.5">
-          <Label htmlFor="concurrency" className="text-sm font-medium">
-            Seqs
-          </Label>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <NumberStepper
-              id="concurrency"
-              name="seqs"
-              value={form.concurrency}
-              onChange={(v) => set("concurrency", v)}
-              onBlur={blur("concurrency")}
-              min={1}
-              max={4096}
-              invalid={!!errors.concurrency}
-              describedBy={errors.concurrency ? "concurrency-error" : "concurrency-hint"}
-            />
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={0}
-              value={SEQS_CHOICES.includes(Number(form.concurrency)) ? form.concurrency : ""}
-              onValueChange={(v) => v && set("concurrency", v)}
-              aria-label="Common seqs values"
-              className="flex-wrap"
-            >
-              {SEQS_CHOICES.map((n) => (
-                <ToggleGroupItem key={n} value={String(n)} className="min-w-9 tabular">
-                  {n}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
-          {errors.concurrency ? (
-            <p id="concurrency-error" className="text-sm text-destructive">
-              {errors.concurrency}
-            </p>
-          ) : (
-            <p id="concurrency-hint" className="text-xs text-muted-foreground">
-              {cloud ? "Stay under your provider's rate limit." : "Match your server's --max-num-seqs."} Changeable while running.
-            </p>
-          )}
-        </div>
+      <FormGroup title="Requests">
+        <FormRow
+          id="concurrency"
+          label="Seqs"
+          align="end"
+          error={errors.concurrency}
+          hint={`${cloud ? "Stay under your provider's rate limit." : "Match your server's --max-num-seqs."} Changeable while running.`}
+        >
+          <NumberStepper
+            id="concurrency"
+            name="seqs"
+            value={form.concurrency}
+            onChange={(v) => set("concurrency", v)}
+            onBlur={blur("concurrency")}
+            min={1}
+            max={4096}
+            invalid={!!errors.concurrency}
+            describedBy={errors.concurrency ? "concurrency-error" : "concurrency-hint"}
+          />
+          <SeqsChoices value={Number(form.concurrency)} onChange={(n) => set("concurrency", String(n))} />
+        </FormRow>
 
-        <div className="grid gap-1.5">
-          <Label htmlFor="samples" className="text-sm font-medium">
-            Samples per prompt
-          </Label>
+        <FormRow id="samples" label="Samples per prompt" align="end" error={errors.samples} hint="2 or more for preference pairs.">
           <NumberStepper
             id="samples"
             name="samples per prompt"
@@ -761,94 +685,66 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             invalid={!!errors.samples}
             describedBy={errors.samples ? "samples-error" : "samples-hint"}
           />
-          {errors.samples ? (
-            <p id="samples-error" className="text-sm text-destructive">
-              {errors.samples}
-            </p>
-          ) : (
-            <p id="samples-hint" className="text-xs text-muted-foreground">
-              2 or more for preference pairs.
-            </p>
-          )}
-        </div>
+        </FormRow>
+      </FormGroup>
 
-      </Section>
-
-      <Section id="sec-sampling" title="Sampling">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field id="temperature" label="Temperature" optional hint="0–2. Empty: server default." error={errors.temperature}>
-            <Input
-              id="temperature"
-              inputMode="decimal"
-              value={form.temperature}
-              onChange={(e) => set("temperature", e.target.value)}
-              onBlur={blur("temperature")}
-              aria-invalid={!!errors.temperature || undefined}
-              aria-describedby={describe("temperature", errors.temperature, true)}
-              className="tabular"
-            />
-          </Field>
-          <Field id="top_p" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
-            <Input
-              id="top_p"
-              inputMode="decimal"
-              value={form.top_p}
-              onChange={(e) => set("top_p", e.target.value)}
-              onBlur={blur("top_p")}
-              aria-invalid={!!errors.top_p || undefined}
-              aria-describedby={describe("top_p", errors.top_p, true)}
-              className="tabular"
-            />
-          </Field>
-        </div>
-
-        <div className="grid gap-1.5">
-          <Label htmlFor="max_tokens" className="text-sm font-medium">
-            Max tokens
-          </Label>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Input
-              id="max_tokens"
-              inputMode="numeric"
-              value={form.max_tokens}
-              onChange={(e) => set("max_tokens", e.target.value)}
-              onBlur={blur("max_tokens")}
-              aria-invalid={!!errors.max_tokens || undefined}
-              aria-describedby={errors.max_tokens ? "max_tokens-error" : "max_tokens-hint"}
-              className="w-32 tabular"
-            />
-            <span id="max_tokens_field-label" className="text-sm text-muted-foreground">
-              sent as
-            </span>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={0}
-              value={form.max_tokens_field}
-              onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
-              aria-labelledby="max_tokens_field-label"
-            >
-              <ToggleGroupItem value="max_tokens" className="font-mono text-xs">
-                max_tokens
-              </ToggleGroupItem>
-              <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs">
-                max_completion_tokens
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-          {errors.max_tokens ? (
-            <p id="max_tokens-error" className="text-sm text-destructive">
-              {errors.max_tokens}
-            </p>
-          ) : (
-            <p id="max_tokens-hint" className="text-xs text-muted-foreground">
-              Includes the thinking trace.
-            </p>
-          )}
-        </div>
-
-        <Field id="seed" label="Seed" optional error={errors.seed} className="sm:w-1/2">
+      <FormGroup title="Sampling">
+        <FormRow id="temperature" align="end" label="Temperature" optional hint="0–2. Empty: server default." error={errors.temperature}>
+          <Input
+            id="temperature"
+            inputMode="decimal"
+            value={form.temperature}
+            onChange={(e) => set("temperature", e.target.value)}
+            onBlur={blur("temperature")}
+            aria-invalid={!!errors.temperature || undefined}
+            aria-describedby={describe("temperature", errors.temperature, true)}
+            className={numberInput}
+          />
+        </FormRow>
+        <FormRow id="top_p" align="end" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
+          <Input
+            id="top_p"
+            inputMode="decimal"
+            value={form.top_p}
+            onChange={(e) => set("top_p", e.target.value)}
+            onBlur={blur("top_p")}
+            aria-invalid={!!errors.top_p || undefined}
+            aria-describedby={describe("top_p", errors.top_p, true)}
+            className={numberInput}
+          />
+        </FormRow>
+        <FormRow id="max_tokens" align="end" label="Max tokens" hint="Includes the thinking trace." error={errors.max_tokens}>
+          <Input
+            id="max_tokens"
+            inputMode="numeric"
+            value={form.max_tokens}
+            onChange={(e) => set("max_tokens", e.target.value)}
+            onBlur={blur("max_tokens")}
+            aria-invalid={!!errors.max_tokens || undefined}
+            aria-describedby={describe("max_tokens", errors.max_tokens, true)}
+            className={numberInput}
+          />
+        </FormRow>
+        <FormRow group label="Sent as" align="end">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={form.max_tokens_field}
+            onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
+            aria-label="Token limit field name"
+            className="max-w-full flex-wrap"
+          >
+            <ToggleGroupItem value="max_tokens" className="font-mono text-xs">
+              max_tokens
+            </ToggleGroupItem>
+            <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs">
+              max_completion_tokens
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </FormRow>
+        <FormRow id="seed" align="end" label="Seed" optional error={errors.seed}>
           <Input
             id="seed"
             inputMode="numeric"
@@ -857,13 +753,14 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             onBlur={blur("seed")}
             aria-invalid={!!errors.seed || undefined}
             aria-describedby={describe("seed", errors.seed)}
-            className="tabular"
+            className={numberInput}
           />
-        </Field>
-      </Section>
+        </FormRow>
+      </FormGroup>
 
-      <Disclosure title="Prompt options" summary={promptSummary} open={promptOpen} onOpenChange={setPromptOpen}>
-        <Field
+      <FormDisclosure title="Prompt options" summary={promptSummary} open={promptOpen} onOpenChange={setPromptOpen}>
+        <FormRow
+          stacked
           id="system_prompt"
           label="System prompt"
           optional
@@ -879,14 +776,8 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             aria-describedby={describe("system_prompt", errors.system_prompt, true)}
             className="min-h-20"
           />
-        </Field>
-        <Field
-          id="user_template"
-          label="Prompt template"
-          optional
-          hint="Must contain {prompt}."
-          error={errors.user_template}
-        >
+        </FormRow>
+        <FormRow stacked id="user_template" label="Prompt template" optional hint="Must contain {prompt}." error={errors.user_template}>
           <Textarea
             id="user_template"
             rows={3}
@@ -898,17 +789,11 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             aria-describedby={describe("user_template", errors.user_template, true)}
             className="min-h-20"
           />
-        </Field>
-      </Disclosure>
+        </FormRow>
+      </FormDisclosure>
 
-      <Disclosure title="Advanced" summary={advancedSummary} open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <Field
-          id="extra_body"
-          label="Extra request body"
-          optional
-          hint="Merged into every request."
-          error={errors.extra_body}
-        >
+      <FormDisclosure title="Advanced" summary={advancedSummary} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <FormRow stacked id="extra_body" label="Extra request body" optional hint="Merged into every request." error={errors.extra_body}>
           <Textarea
             id="extra_body"
             rows={3}
@@ -923,100 +808,76 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             aria-describedby={describe("extra_body", errors.extra_body, true)}
             className="min-h-20 font-mono md:text-[13px]"
           />
-        </Field>
-
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="stream"
-            checked={form.stream}
-            onCheckedChange={(c) => set("stream", c === true)}
-            aria-describedby="stream-hint"
-            className="mt-0.5"
+        </FormRow>
+        <FormRow id="stream" label="Stream responses" align="end" hint="Needed for live progress and time to first token.">
+          <Checkbox id="stream" checked={form.stream} onCheckedChange={(c) => set("stream", c === true)} aria-describedby="stream-hint" />
+        </FormRow>
+        <FormRow id="think_open" label="Thinking opens with" error={errors.think_open}>
+          <Input
+            id="think_open"
+            value={form.think_open}
+            onChange={(e) => set("think_open", e.target.value)}
+            onBlur={blur("think_open")}
+            spellCheck={false}
+            autoCapitalize="none"
+            aria-invalid={!!errors.think_open || undefined}
+            aria-describedby={describe("think_open", errors.think_open)}
+            className="font-mono"
           />
-          <div className="grid gap-1">
-            <Label htmlFor="stream" className="text-sm font-medium">
-              Stream responses
-            </Label>
-            <p id="stream-hint" className="text-xs text-muted-foreground">
-              Needed for live progress and time to first token.
-            </p>
-          </div>
-        </div>
+        </FormRow>
+        <FormRow id="think_close" label="Thinking closes with" hint="Only for inline <think> traces." error={errors.think_close}>
+          <Input
+            id="think_close"
+            value={form.think_close}
+            onChange={(e) => set("think_close", e.target.value)}
+            onBlur={blur("think_close")}
+            spellCheck={false}
+            autoCapitalize="none"
+            aria-invalid={!!errors.think_close || undefined}
+            aria-describedby={describe("think_close", errors.think_close, true)}
+            className="font-mono"
+          />
+        </FormRow>
+        <FormRow id="max_attempts" align="end" label="Attempts per sample" error={errors.max_attempts}>
+          <Input
+            id="max_attempts"
+            inputMode="numeric"
+            value={form.max_attempts}
+            onChange={(e) => set("max_attempts", e.target.value)}
+            onBlur={blur("max_attempts")}
+            aria-invalid={!!errors.max_attempts || undefined}
+            aria-describedby={describe("max_attempts", errors.max_attempts)}
+            className={numberInput}
+          />
+        </FormRow>
+        <FormRow id="timeout" align="end" label="Request timeout (s)" error={errors.timeout}>
+          <Input
+            id="timeout"
+            inputMode="numeric"
+            value={form.timeout}
+            onChange={(e) => set("timeout", e.target.value)}
+            onBlur={blur("timeout")}
+            aria-invalid={!!errors.timeout || undefined}
+            aria-describedby={describe("timeout", errors.timeout)}
+            className={numberInput}
+          />
+        </FormRow>
+        <FormRow id="pause_after" align="end" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
+          <Input
+            id="pause_after"
+            inputMode="numeric"
+            value={form.pause_after}
+            onChange={(e) => set("pause_after", e.target.value)}
+            onBlur={blur("pause_after")}
+            aria-invalid={!!errors.pause_after || undefined}
+            aria-describedby={describe("pause_after", errors.pause_after, true)}
+            className={numberInput}
+          />
+        </FormRow>
+      </FormDisclosure>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field id="think_open" label="Thinking opens with" error={errors.think_open}>
-            <Input
-              id="think_open"
-              value={form.think_open}
-              onChange={(e) => set("think_open", e.target.value)}
-              onBlur={blur("think_open")}
-              spellCheck={false}
-              autoCapitalize="none"
-              aria-invalid={!!errors.think_open || undefined}
-              aria-describedby={describe("think_open", errors.think_open)}
-              className="font-mono"
-            />
-          </Field>
-          <Field id="think_close" label="Thinking closes with" error={errors.think_close}>
-            <Input
-              id="think_close"
-              value={form.think_close}
-              onChange={(e) => set("think_close", e.target.value)}
-              onBlur={blur("think_close")}
-              spellCheck={false}
-              autoCapitalize="none"
-              aria-invalid={!!errors.think_close || undefined}
-              aria-describedby={describe("think_close", errors.think_close)}
-              className="font-mono"
-            />
-          </Field>
-          <p className="-mt-3 text-xs text-muted-foreground sm:col-span-2">
-            Only for inline &lt;think&gt; traces.
-          </p>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-3">
-          <Field id="max_attempts" label="Attempts per sample" error={errors.max_attempts}>
-            <Input
-              id="max_attempts"
-              inputMode="numeric"
-              value={form.max_attempts}
-              onChange={(e) => set("max_attempts", e.target.value)}
-              onBlur={blur("max_attempts")}
-              aria-invalid={!!errors.max_attempts || undefined}
-              aria-describedby={describe("max_attempts", errors.max_attempts)}
-              className="tabular"
-            />
-          </Field>
-          <Field id="timeout" label="Request timeout (s)" error={errors.timeout}>
-            <Input
-              id="timeout"
-              inputMode="numeric"
-              value={form.timeout}
-              onChange={(e) => set("timeout", e.target.value)}
-              onBlur={blur("timeout")}
-              aria-invalid={!!errors.timeout || undefined}
-              aria-describedby={describe("timeout", errors.timeout)}
-              className="tabular"
-            />
-          </Field>
-          <Field id="pause_after" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
-            <Input
-              id="pause_after"
-              inputMode="numeric"
-              value={form.pause_after}
-              onChange={(e) => set("pause_after", e.target.value)}
-              onBlur={blur("pause_after")}
-              aria-invalid={!!errors.pause_after || undefined}
-              aria-describedby={describe("pause_after", errors.pause_after, true)}
-              className="tabular"
-            />
-          </Field>
-        </div>
-      </Disclosure>
-
-      <Section id="sec-name">
-        <Field id="name" label="Run name" optional error={errors.name}>
+      <FormGroup>
+        <FormRow id="name" label="Run name" optional error={errors.name}>
           <Input
             id="name"
             value={form.name}
@@ -1025,21 +886,21 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             maxLength={300}
             aria-describedby={describe("name", errors.name)}
           />
-        </Field>
-      </Section>
+        </FormRow>
+      </FormGroup>
 
-      <div className="mt-8 grid gap-4 border-t pt-6">
+      <div className="grid gap-3">
         {formError ? <ErrorBlock message={formError} /> : null}
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" size="lg" aria-disabled={start.isPending || undefined} className="px-4">
-            {start.isPending ? "Starting…" : "Start run"}
-          </Button>
-          <Button asChild variant="ghost" size="lg">
-            <Link to="/runs">Cancel</Link>
-          </Button>
-          <span className="text-sm text-muted-foreground tabular" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-3">
+          <span className="basis-full text-sm text-muted-foreground tabular empty:hidden sm:mr-auto sm:basis-auto" aria-live="polite">
             {total}
           </span>
+          <Button asChild variant="outline">
+            <Link to="/runs">Cancel</Link>
+          </Button>
+          <Button type="submit" aria-disabled={start.isPending || undefined}>
+            {start.isPending ? "Starting…" : "Start run"}
+          </Button>
         </div>
       </div>
     </form>

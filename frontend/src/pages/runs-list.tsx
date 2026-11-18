@@ -1,4 +1,5 @@
-import { Fragment, useEffect, type ReactNode } from "react"
+import { Fragment, useEffect, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { Link } from "react-router"
 import { Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
@@ -8,20 +9,33 @@ import { RunStatusPill } from "@/components/shared/status-pill"
 import { SetupChecklist } from "@/components/runs/setup-checklist"
 import { useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { dateTime, int, relative } from "@/lib/format"
+import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import type { Run } from "@/lib/types"
 
-/** "1,284 of 5,000" over the bar; the failed count in red only when there is one. */
-function RunProgress({ run }: { run: Run }) {
-  return (
-    <div className="grid gap-1.5">
-      <div className="flex items-baseline justify-between gap-3 text-sm tabular">
-        <span className="whitespace-nowrap">
-          {int(run.done)} <span className="text-muted-foreground">of {int(run.total)}</span>
-        </span>
-        {run.failed > 0 ? <span className="whitespace-nowrap text-destructive">{int(run.failed)} failed</span> : null}
+/** The bar with "1,284 of 5,000" beside it on one line; the failed count in red only when there is one. */
+function RunProgress({ run, stacked = false }: { run: Run; stacked?: boolean }) {
+  const figures = (
+    <span className="flex items-baseline gap-x-2 text-sm whitespace-nowrap tabular">
+      <span>
+        {int(run.done)} <span className="text-muted-foreground">of {int(run.total)}</span>
+      </span>
+      {run.failed > 0 ? <span className="text-destructive">{int(run.failed)} failed</span> : null}
+    </span>
+  )
+  if (stacked) {
+    return (
+      <div className="grid gap-1.5">
+        <div className="flex items-baseline justify-between gap-3">{figures}</div>
+        <ProgressBar done={run.done} failed={run.failed} total={run.total} />
       </div>
-      <ProgressBar done={run.done} failed={run.failed} total={run.total} />
+    )
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <ProgressBar done={run.done} failed={run.failed} total={run.total} className="w-20 flex-none" />
+      {figures}
     </div>
   )
 }
@@ -55,55 +69,55 @@ function factsTitle(run: Run) {
 function RunsTable({ runs }: { runs: Run[] }) {
   return (
     <>
-      {/* Tablet and desktop: a table. The name link covers its row. */}
-      <div className="hidden overflow-hidden rounded-lg border lg:block">
-        <table className="w-full table-fixed text-sm">
+      {/* Tablet and desktop: a list. The name link covers its row. */}
+      <div className="hidden lg:block">
+        <Table className="table-fixed">
           <caption className="sr-only">Runs, newest first</caption>
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground">
-              <th scope="col" className="h-10 px-4 font-normal">Name</th>
-              <th scope="col" className="h-10 w-[11rem] px-3 font-normal">Progress</th>
-              <th scope="col" className="hidden h-10 w-[4rem] px-3 text-right font-normal xl:table-cell">Seqs</th>
-              <th scope="col" className="h-10 w-[11.5rem] px-3 font-normal">Status</th>
-              <th scope="col" className="h-10 w-[8.5rem] px-4 text-right font-normal">Created</th>
-            </tr>
-          </thead>
-          <tbody>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead scope="col">Name</TableHead>
+              <TableHead scope="col" className="w-[17.5rem]">Progress</TableHead>
+              <TableHead scope="col" numeric className="hidden w-[4.5rem] xl:table-cell">Seqs</TableHead>
+              <TableHead scope="col" className="w-[8rem]">Status</TableHead>
+              <TableHead scope="col" numeric className="w-[7rem]">Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {runs.map((run) => (
-              <tr key={run.id} className="relative border-t transition-colors duration-150 hover:bg-muted/60 has-[a:focus-visible]:bg-muted/60">
-                <td className="px-4 py-3 align-middle">
+              <TableRow key={run.id} className="relative">
+                <TableCell>
                   <Link
                     data-touch="inline"
                     to={`/runs/${run.id}`}
-                    title={run.name}
-                    className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                    title={`${run.name}\n${factsTitle(run)}`}
+                    className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                   >
-                    {run.name}
+                    <span className="font-medium">{run.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      <RunFacts run={run} />
+                    </span>
                   </Link>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground" title={factsTitle(run)}>
-                    <RunFacts run={run} />
-                  </p>
-                </td>
-                <td className="px-3 py-3">
+                </TableCell>
+                <TableCell>
                   <RunProgress run={run} />
-                </td>
-                <td className="hidden px-3 py-3 text-right tabular xl:table-cell">{int(run.concurrency)}</td>
-                <td className="px-3 py-3">
+                </TableCell>
+                <TableCell numeric className="hidden xl:table-cell">{int(run.concurrency)}</TableCell>
+                <TableCell>
                   <RunStatusPill status={run.status} failed={run.failed} />
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap text-muted-foreground tabular" title={dateTime(run.created_at)}>
+                </TableCell>
+                <TableCell numeric className="text-muted-foreground" title={dateTime(run.created_at)}>
                   {relative(run.created_at)}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
-      {/* Phone: one row per run with its name, progress and status. */}
+      {/* Phone and tablet: one row per run with its name, status and progress. */}
       <ul className="divide-y border-y lg:hidden">
         {runs.map((run) => (
-          <li key={run.id} className="relative py-3">
+          <li key={run.id} className="relative px-0 py-3 has-[a:focus-visible]:bg-foreground/4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link
@@ -121,7 +135,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
               <RunStatusPill status={run.status} failed={run.failed} />
             </div>
             <div className="mt-2.5">
-              <RunProgress run={run} />
+              <RunProgress run={run} stacked />
             </div>
           </li>
         ))}
@@ -132,32 +146,67 @@ function RunsTable({ runs }: { runs: Run[] }) {
 
 function RunsLoading() {
   return (
-    <div className="overflow-hidden rounded-lg border" aria-busy="true" aria-label="Loading runs">
-      <div className="hidden h-10 items-center gap-4 px-4 text-xs text-muted-foreground lg:flex">
+    <div aria-busy="true" aria-label="Loading runs">
+      <div className="hidden h-7 items-center gap-4 border-b px-3 text-xs text-muted-foreground lg:flex">
         <span className="flex-1">Name</span>
-        <span className="w-[11rem]">Progress</span>
-        <span className="w-[11.5rem]">Status</span>
-        <span className="w-[6rem] text-right">Created</span>
+        <span className="w-[17.5rem]">Progress</span>
+        <span className="w-[8rem]">Status</span>
+        <span className="w-[7rem] text-right">Created</span>
       </div>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="flex h-[61px] items-center gap-4 border-t px-4 first:border-t-0 lg:first:border-t">
-          <div className="grid flex-1 gap-1.5">
+        <div key={i} className="flex h-[61px] items-center gap-4 border-b px-3 lg:h-8 lg:px-3">
+          <div className="grid flex-1 gap-1.5 lg:block">
             <Bar className="w-48" />
-            <Bar className="h-3 w-64 max-w-full" />
+            <Bar className="h-3 w-64 max-w-full lg:hidden" />
           </div>
-          <div className="hidden w-[11rem] gap-1.5 lg:grid">
-            <Bar className="w-24" />
-            <Bar className="h-1.5 w-full" />
-          </div>
-          <span className="hidden w-[11.5rem] lg:block">
-            <Bar className="h-5 w-20 rounded-full" />
+          <span className="hidden w-[17.5rem] lg:block">
+            <Bar className="w-40" />
           </span>
-          <span className="hidden w-[6rem] text-right lg:block">
+          <span className="hidden w-[8rem] lg:block">
+            <Bar className="w-20" />
+          </span>
+          <span className="hidden w-[7rem] text-right lg:block">
             <Bar className="w-16" />
           </span>
         </div>
       ))}
     </div>
+  )
+}
+
+/**
+ * Creating a run: the push button "New run" in the toolbar from 768 px up; on a phone a "+"
+ * capsule at the end of the navigation bar, as iOS puts the add action. Page keeps its actions
+ * under the title below 1024 px, so on a phone this reaches into the bar's trailing slot.
+ */
+function NewRunAction() {
+  const wide = useMediaQuery(TOOLBAR_QUERY)
+  const [slot, setSlot] = useState<Element | null>(null)
+  useEffect(() => {
+    if (wide) return
+    // After the toolbar has mounted: it renders in the same commit as this component.
+    const frame = requestAnimationFrame(() => setSlot(document.querySelector('[data-slot="toolbar"] > div > div:last-child')))
+    return () => cancelAnimationFrame(frame)
+  }, [wide])
+  if (!wide) {
+    return slot
+      ? createPortal(
+          <Button asChild variant="outline" size="icon">
+            <Link to="/runs/new" aria-label="New run" title="New run">
+              <Plus aria-hidden="true" />
+            </Link>
+          </Button>,
+          slot,
+        )
+      : null
+  }
+  return (
+    <Button asChild>
+      <Link to="/runs/new">
+        <Plus aria-hidden="true" />
+        New run
+      </Link>
+    </Button>
   )
 }
 
@@ -174,14 +223,7 @@ export function RunsListPage() {
   return (
     <Page
       title="Runs"
-      actions={
-        <Button asChild>
-          <Link to="/runs/new">
-            <Plus aria-hidden="true" />
-            New run
-          </Link>
-        </Button>
-      }
+      actions={<NewRunAction />}
     >
       {runs.isPending ? (
         <RunsLoading />

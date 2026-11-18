@@ -151,7 +151,7 @@ export function PromptSetDetailPage() {
       }
     >
       {set?.status === "importing" ? (
-        <div className="mb-6 grid gap-2.5 border-y py-4">
+        <div className="mb-6 grid gap-2.5 rounded-xl border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <p role="status" className="text-sm tabular">
               Importing… {int(set.rows_read)}
@@ -203,7 +203,7 @@ export function PromptSetDetailPage() {
       ) : !data ? (
         <PromptRowsSkeleton />
       ) : data.items.length === 0 ? (
-        <div className="border-y py-6 text-sm text-muted-foreground">
+        <div className="rounded-xl border bg-card px-4 py-6 text-sm text-muted-foreground">
           {q ? (
             <p>
               No prompt contains “{q}”.{" "}
@@ -231,7 +231,7 @@ export function PromptSetDetailPage() {
           )}
         </div>
       ) : (
-        <ul className={`divide-y border-y transition-opacity duration-150 ${prompts.isFetching ? "opacity-60" : ""}`}>
+        <ul className={`divide-y overflow-hidden rounded-xl border bg-card transition-opacity duration-150 ${prompts.isFetching ? "opacity-60" : ""}`}>
           {data.items.map((p) => (
             <PromptRow key={p.id} prompt={p} />
           ))}

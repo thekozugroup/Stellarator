@@ -168,12 +168,12 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
               </Link>
             </p>
           ) : (
-            <div className="max-h-80 overflow-y-auto rounded-lg border">
+            <div className="max-h-80 overflow-y-auto rounded-lg border bg-popover">
               {groups.map((g) => {
                 const blocked = lockedSet !== null && lockedSet !== g.promptSetId
                 return (
                   <div key={g.promptSetId} className="border-b last:border-b-0">
-                    <div className="sticky top-0 z-10 bg-popover px-3 pt-3 pb-1.5">
+                    <div className="material-thick sticky top-0 z-10 px-3 pt-3 pb-1.5">
                       <p className="truncate text-sm font-medium" title={g.promptSetName}>
                         {g.promptSetName}
                       </p>

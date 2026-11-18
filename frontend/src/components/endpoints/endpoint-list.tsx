@@ -1,9 +1,9 @@
-import { MoreHorizontal, RefreshCw, Trash2 } from "lucide-react"
+import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Bar } from "@/components/shared/block-states"
-import { int } from "@/lib/format"
+import { int, middle } from "@/lib/format"
 import type { Endpoint } from "@/lib/types"
 import { BaseUrl } from "./base-url"
 import { CheckedAt, EndpointStatus } from "./endpoint-status"
@@ -27,7 +27,7 @@ function NameButton({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: (e: Endp
       type="button"
       onClick={() => onOpen(endpoint)}
       title={endpoint.name}
-      className="max-w-full rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+      className="max-w-full rounded-sm text-left font-medium focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span className="line-clamp-2 break-words">{endpoint.name}</span>
     </button>
@@ -38,7 +38,7 @@ function RowActions({ endpoint, onEdit, onDelete }: Omit<Handlers, "onOpen"> & {
   const check = useCheckEndpoint(endpoint)
   return (
     <div className="flex items-center justify-end gap-1">
-      <Button variant="ghost" size="sm" onClick={() => onEdit(endpoint)} aria-label={`Edit ${endpoint.name}`}>
+      <Button variant="ghost" size="sm" className="max-md:hidden" onClick={() => onEdit(endpoint)} aria-label={`Edit ${endpoint.name}`}>
         Edit
       </Button>
       <DropdownMenu>
@@ -48,6 +48,10 @@ function RowActions({ endpoint, onEdit, onDelete }: Omit<Handlers, "onOpen"> & {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem className="md:hidden" onSelect={() => onEdit(endpoint)}>
+            <Pencil aria-hidden="true" />
+            Edit…
+          </DropdownMenuItem>
           <DropdownMenuItem disabled={check.isPending} onSelect={() => check.mutate()}>
             <RefreshCw aria-hidden="true" />
             {check.isPending ? "Checking…" : "Check now"}
@@ -63,8 +67,6 @@ function RowActions({ endpoint, onEdit, onDelete }: Omit<Handlers, "onOpen"> & {
   )
 }
 
-const head = "text-xs font-normal text-muted-foreground"
-
 export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Handlers) {
   return (
     <>
@@ -72,12 +74,12 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className={`${head} w-[40%]`}>Endpoint</TableHead>
-              <TableHead className={head}>Status</TableHead>
-              <TableHead className={head}>Checked</TableHead>
-              <TableHead className={`${head} text-right`}>Default seqs</TableHead>
-              <TableHead className={`${head} text-right`}>Runs</TableHead>
-              <TableHead className={`${head} text-right`}>
+              <TableHead className="w-[40%]">Endpoint</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Checked</TableHead>
+              <TableHead numeric>Default seqs</TableHead>
+              <TableHead numeric>Runs</TableHead>
+              <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -85,21 +87,21 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
           <TableBody>
             {endpoints.map((e) => (
               <TableRow key={e.id} className="cursor-pointer" onClick={openOnRowClick(() => h.onOpen(e))}>
-                <TableCell className="max-w-0 min-w-56 py-3 align-top whitespace-normal">
+                <TableCell className="max-w-0 min-w-56 py-1.5 whitespace-normal">
                   <div className="grid gap-0.5">
                     <NameButton endpoint={e} onOpen={h.onOpen} />
                     <BaseUrl url={e.base_url} />
                   </div>
                 </TableCell>
-                <TableCell className="py-3 align-top whitespace-normal">
+                <TableCell className="whitespace-normal">
                   <EndpointStatus endpoint={e} />
                 </TableCell>
-                <TableCell className="py-3 align-top whitespace-nowrap text-muted-foreground">
+                <TableCell className="text-muted-foreground">
                   <CheckedAt endpoint={e} />
                 </TableCell>
-                <TableCell className="py-3 text-right align-top tabular">{int(e.default_concurrency)}</TableCell>
-                <TableCell className="py-3 text-right align-top tabular">{int(e.run_count)}</TableCell>
-                <TableCell className="py-2.5 align-top">
+                <TableCell numeric>{int(e.default_concurrency)}</TableCell>
+                <TableCell numeric>{int(e.run_count)}</TableCell>
+                <TableCell>
                   <RowActions endpoint={e} onEdit={h.onEdit} onDelete={h.onDelete} />
                 </TableCell>
               </TableRow>
@@ -108,23 +110,23 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
         </Table>
       </div>
 
-      <ul className="divide-y border-y md:hidden">
+      {/* Phone: one tappable row opens the details; the menu holds the other actions. */}
+      <ul className="divide-y md:hidden">
         {endpoints.map((e) => (
-          <li key={e.id} className="grid gap-1.5 py-3" onClick={openOnRowClick(() => h.onOpen(e))} /* taste-ignore: clickable-div -- convenience only; the name button is the keyboard path */>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2">
-              <div className="grid min-w-0 content-start gap-0.5">
-                <NameButton endpoint={e} onOpen={h.onOpen} />
-                <BaseUrl url={e.base_url} />
-              </div>
-              <RowActions endpoint={e} onEdit={h.onEdit} onDelete={h.onDelete} />
-            </div>
-            <div className="text-sm">
-              <EndpointStatus endpoint={e} />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Checked <CheckedAt endpoint={e} /> · <span className="tabular">{int(e.default_concurrency)}</span> seqs ·{" "}
-              <span className="tabular">{int(e.run_count)}</span> {e.run_count === 1 ? "run" : "runs"}
-            </p>
+          <li key={e.id} className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => h.onOpen(e)}
+              className="-mx-2 grid min-w-0 flex-1 gap-0.5 rounded-lg px-2 py-2.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring active:bg-accent"
+            >
+              <span className="line-clamp-2 font-medium break-words">{e.name}</span>
+              <span className="truncate font-mono text-[13px] text-muted-foreground">{middle(e.base_url, 34)}</span>
+              <span className="text-xs text-muted-foreground">
+                <EndpointStatus endpoint={e} detail={false} /> · Checked <CheckedAt endpoint={e} /> · <span className="tabular">{int(e.default_concurrency)}</span> seqs ·{" "}
+                <span className="tabular">{int(e.run_count)}</span> {e.run_count === 1 ? "run" : "runs"}
+              </span>
+            </button>
+            <RowActions endpoint={e} onEdit={h.onEdit} onDelete={h.onDelete} />
           </li>
         ))}
       </ul>
@@ -135,9 +137,9 @@ export function EndpointList({ endpoints, ...h }: { endpoints: Endpoint[] } & Ha
 /** Loading rows at the real pitch and column positions. */
 export function EndpointListSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading endpoints" className="divide-y border-y">
+    <div aria-busy="true" aria-label="Loading endpoints" className="divide-y">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="grid gap-2 py-3 md:grid-cols-[40%_1fr_1fr_6rem_4rem_8rem] md:items-start md:gap-4">
+        <div key={i} className="grid gap-2 py-2.5 md:grid-cols-[40%_1fr_1fr_6rem_4rem_8rem] md:items-start md:gap-4">
           <div className="grid gap-1.5">
             <Bar className="h-5 w-40" />
             <Bar className="h-4 w-56 max-w-full" />

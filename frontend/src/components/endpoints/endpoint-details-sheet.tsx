@@ -24,7 +24,7 @@ export function EndpointDetailsSheet({
 }) {
   return (
     <Sheet open={endpoint !== null} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full gap-0 sm:max-w-md">{endpoint ? <Details endpoint={endpoint} onEdit={onEdit} /> : null}</SheetContent>
+      <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">{endpoint ? <Details endpoint={endpoint} onEdit={onEdit} /> : null}</SheetContent>
     </Sheet>
   )
 }
@@ -37,12 +37,12 @@ function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoin
   const searchable = endpoint.models.length > 20
   return (
     <>
-      <SheetHeader className="gap-1 pr-12">
+      <SheetHeader className="gap-1 px-5 pt-5 pr-14">
         <SheetTitle className="text-base break-words">{endpoint.name}</SheetTitle>
         <SheetDescription className="sr-only">Connection details and the models this endpoint serves.</SheetDescription>
         <BaseUrl url={endpoint.base_url} />
       </SheetHeader>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 border-b px-4 pb-4 text-sm">
+      <dl className="mx-5 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl border p-3 text-sm">
         <dt className="text-muted-foreground">Status</dt>
         <dd>
           <EndpointStatus endpoint={endpoint} />
@@ -57,7 +57,7 @@ function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoin
         <dd className="tabular">{int(endpoint.run_count)}</dd>
       </dl>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 px-5 pt-4">
         <h3 className="text-base font-semibold">Models</h3>
         {endpoint.models.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -86,22 +86,22 @@ function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoin
                 {int(models.length)} of {int(endpoint.models.length)}
               </p>
             ) : null}
-            <ul className="-mx-1 min-h-0 flex-1 overflow-y-auto pb-4">
+            <ul className="min-h-0 overflow-y-auto rounded-xl border p-1">
               {models.map((m) => (
-                <li key={m} className="flex items-center justify-between gap-1 rounded-md px-1 hover:bg-muted">
+                <li key={m} className="flex items-center justify-between gap-1 rounded-lg pl-2 hover:bg-accent">
                   <span title={m} className="min-w-0 py-1 font-mono text-[13px] break-all">
                     {m}
                   </span>
                   <CopyButton value={m} label={`Copy ${m}`} />
                 </li>
               ))}
-              {models.length === 0 ? <li className="px-1 py-2 text-sm text-muted-foreground">No model matches “{q}”.</li> : null}
+              {models.length === 0 ? <li className="px-2 py-2 text-sm text-muted-foreground">No model matches “{q}”.</li> : null}
             </ul>
           </>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t p-4">
+      <div className="flex flex-wrap justify-end gap-2 px-5 pt-1 pb-5">
         <Link
           to={`/runs/new?endpoint=${endpoint.id}`}
           className={cn(buttonVariants({ variant: endpoint.last_ok === false ? "outline" : "default" }), "pointer-coarse:min-h-11")}

@@ -4,12 +4,12 @@ import { Minus, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { api } from "@/lib/api"
 import { int } from "@/lib/format"
 import type { Run, RunLive } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { SEQS_CHOICES, runKeys } from "./run-data"
+import { runKeys } from "./run-data"
+import { SeqsChoices } from "./seqs-choices"
 
 const MIN = 1
 const MAX = 4096
@@ -117,7 +117,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
             if (invalid || draft.trim() === "") setDraft(String(run.concurrency))
           }}
           className={cn(
-            "h-8 w-20 border-copper text-center text-base font-medium text-copper-ink tabular md:text-base dark:border-copper",
+            "w-20 border-copper text-center text-base font-medium text-copper-ink tabular md:text-base dark:border-copper",
             "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           )}
         />
@@ -132,22 +132,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
           <Plus aria-hidden="true" />
         </Button>
       </div>
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        size="sm"
-        spacing={0}
-        value={SEQS_CHOICES.includes(current) ? String(current) : ""}
-        onValueChange={(v) => v && apply(Number(v))}
-        aria-label="Common seqs values"
-        className="flex-wrap"
-      >
-        {SEQS_CHOICES.map((n) => (
-          <ToggleGroupItem key={n} value={String(n)} className="min-w-9 tabular">
-            {n}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <SeqsChoices value={current} onChange={apply} />
       {hint ? (
         <p id="seqs-hint" className={cn("text-xs tabular", invalid ? "text-destructive" : "text-muted-foreground")}>
           {hint}

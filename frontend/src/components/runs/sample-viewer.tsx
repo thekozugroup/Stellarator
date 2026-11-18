@@ -1,16 +1,15 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
 import { ModelText, TextModeToggle } from "@/components/shared/model-text"
 import { SampleStatusPill } from "@/components/shared/status-pill"
-import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Kbd } from "@/components/ui/kbd"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { DASH, count, dateTime, duration, int } from "@/lib/format"
 import type { Sample } from "@/lib/types"
 import { ROLE_LABEL, finishReasonText, sampleLabel, useSample } from "./run-data"
+import { StepPair } from "./step-pair"
 
 const SHORT_TRACE = 1500
 
@@ -208,28 +207,10 @@ export function SampleViewer({
             The prompt, thinking trace and response of one sample. Press J for the next sample and K for the previous one.
           </SheetDescription>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={prevId === null}
-              onClick={() => prevId !== null && onStep(prevId)}
-            >
-              <ChevronLeft aria-hidden="true" />
-              Previous
-              <Kbd className="ml-1 hidden sm:inline-flex">K</Kbd>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={nextId === null}
-              onClick={() => nextId !== null && onStep(nextId)}
-            >
-              Next
-              <ChevronRight aria-hidden="true" />
-              <Kbd className="ml-1 hidden sm:inline-flex">J</Kbd>
-            </Button>
+            <StepPair
+              prev={{ label: "Previous sample", shortcut: "k", disabled: prevId === null, onClick: () => prevId !== null && onStep(prevId) }}
+              next={{ label: "Next sample", shortcut: "j", disabled: nextId === null, onClick: () => nextId !== null && onStep(nextId) }}
+            />
             <TextModeToggle className="ml-auto" />
           </div>
         </SheetHeader>
