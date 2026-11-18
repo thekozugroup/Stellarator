@@ -58,6 +58,40 @@ def mark_paths():
     return [coil(-1), coil(+1)]  # [ink coil, copper coil]
 
 
+def coil_outline(sign, half_width, scale, off, steps=240):
+    """The filled outline of a coil stroked `2 * half_width` wide (mark units), in canvas pixels.
+
+    actool crops each Icon Composer layer to its paths' geometry, which leaves out a stroke's
+    width and slices the outer edge of every lobe; a filled outline has the full width in its
+    geometry. The band between the curve offset by +/- half_width along its normal is filled
+    with the even-odd rule. The coil's tightest bend (radius about 0.99 units) is wider than the
+    offset (0.925), so the inner edge does not fold over itself.
+    """
+    outer, inner = [], []
+    for i in range(steps):
+        t = 2 * math.pi * i / steps
+        r = 8 + sign * 1.8 * math.sin(5 * t)
+        dr = sign * 9.0 * math.cos(5 * t)
+        x, y = 12 + r * math.cos(t), 12 + r * math.sin(t)
+        dx, dy = dr * math.cos(t) - r * math.sin(t), dr * math.sin(t) + r * math.cos(t)
+        n = math.hypot(dx, dy)
+        nx, ny = dy / n, -dx / n
+        outer.append((off + (x + half_width * nx) * scale, off + (y + half_width * ny) * scale))
+        inner.append((off + (x - half_width * nx) * scale, off + (y - half_width * ny) * scale))
+
+    def loop(pts):
+        n = len(pts)
+        d = [f"M{pts[0][0]:.2f} {pts[0][1]:.2f}"]
+        for i in range(n):
+            p0, p1, p2, p3 = pts[i - 1], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+            c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+            c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+            d.append(f"C{c1[0]:.2f} {c1[1]:.2f} {c2[0]:.2f} {c2[1]:.2f} {p2[0]:.2f} {p2[1]:.2f}")
+        return "".join(d) + "Z"
+
+    return loop(outer) + loop(inner)
+
+
 def squircle(cx, cy, half, steps=90):
     """Apple's icon shape: a rounded square with continuous corners.
 
@@ -220,12 +254,12 @@ def icon_composer(variant):
             f'<stop offset="1" stop-color="{glow}" stop-opacity="0"/></radialGradient></defs>'
             '<rect width="1024" height="1024" fill="url(#g)"/></svg>\n'
         )
-    for name, d in (("coil-back", ink), ("coil-front", copper)):
+    for name, sign in (("coil-back", -1), ("coil-front", +1)):
+        d = coil_outline(sign, 1.85 / 2, scale, off)
         with open(os.path.join(out, "Assets", f"{name}.svg"), "w") as f:
             f.write(
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
-                f'<g transform="translate({off:.2f} {off:.2f}) scale({scale:.4f})" fill="none" stroke="#fff" '
-                f'stroke-width="2.05" stroke-linejoin="round" stroke-linecap="round"><path d="{d}"/></g></svg>\n'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
+                f'<path d="{d}" fill="#fff" fill-rule="evenodd"/></svg>\n'
             )
     # Every group carries shadow {kind, opacity} and translucency {enabled, value}, and every layer a
     # position, as Icon Composer writes them; actool rejects a document with these left out.
