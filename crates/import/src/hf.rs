@@ -291,7 +291,14 @@ pub fn choose_split(
         }
     };
     let names: Vec<String> = splits.iter().filter(|s| s.config == config).map(|s| s.split.clone()).collect();
-    let default = if names.iter().any(|n| n == "train") { "train".to_string() } else { names[0].clone() };
+    // "train", else the first split named like it (ultrachat_200k has train_sft and train_gen),
+    // else the first split.
+    let default = names
+        .iter()
+        .find(|n| *n == "train")
+        .or_else(|| names.iter().find(|n| n.starts_with("train")))
+        .unwrap_or(&names[0])
+        .clone();
     if all_splits {
         return Ok((config, names, default));
     }

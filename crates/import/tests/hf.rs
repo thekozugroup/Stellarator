@@ -68,6 +68,25 @@ fn split_choice() {
     assert_eq!(e.message, "o/d (socratic) has no split called 'test'. Splits are: train.");
 }
 
+#[test]
+fn split_choice_prefers_a_train_like_name() {
+    let s = |sp: &str| stellarator_core::schemas::HfSplit { config: "default".into(), split: sp.into(), num_rows: None };
+    // HuggingFaceH4/ultrachat_200k: no "train", so the first split that starts with "train".
+    let splits = vec![s("test_sft"), s("train_sft"), s("test_gen"), s("train_gen")];
+    assert_eq!(choose_split("o/d", &splits, None, None, false).unwrap(), ("default".into(), vec!["train_sft".into()], "train_sft".into()));
+    // All splits still read every split and show the train-like one.
+    assert_eq!(choose_split("o/d", &splits, None, None, true).unwrap().2, "train_sft");
+    // An exact "train" wins over an earlier train-like name.
+    let splits = vec![s("train_sft"), s("train")];
+    assert_eq!(choose_split("o/d", &splits, None, None, false).unwrap().2, "train");
+    // Nothing train-like: the first split.
+    let splits = vec![s("validation"), s("test")];
+    assert_eq!(choose_split("o/d", &splits, None, None, false).unwrap().2, "validation");
+    // "training" counts as train-like too.
+    let splits = vec![s("eval"), s("training")];
+    assert_eq!(choose_split("o/d", &splits, None, None, false).unwrap().2, "training");
+}
+
 #[tokio::test]
 async fn preview_defaults_and_sizes() {
     let hf = MockHf::start().await;
