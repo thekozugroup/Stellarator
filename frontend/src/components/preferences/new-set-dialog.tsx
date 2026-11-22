@@ -21,6 +21,13 @@ import type { PreferenceSet, Run } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { prefKeys, shortModel } from "./queries"
 
+/**
+ * Inside the thick material the page's --muted is the same tone as the dialog (244 on 244 in light),
+ * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
+ * sections do on iOS sheets.
+ */
+const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
+
 interface Group {
   promptSetId: number
   promptSetName: string
@@ -51,7 +58,7 @@ function suggestName(selected: Run[]): string {
 export function NewPreferenceSetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl">
+      <DialogContent aria-describedby={undefined} className={cn("max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-xl", ON_MATERIAL)}>
         {open ? <NewSetForm onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>
     </Dialog>

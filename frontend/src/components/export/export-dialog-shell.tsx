@@ -15,6 +15,13 @@ import { count, int } from "@/lib/format"
 import type { ExportPreview, FileType, HubPushIn, HubPushOut, ReasoningPlacement, Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+/**
+ * Inside the thick material the page's --muted is the same tone as the dialog (244 on 244 in light),
+ * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
+ * sections do on iOS sheets.
+ */
+const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
+
 // ------------------------------------------------------------------ shared words
 
 export const FILE_TYPES: { value: FileType; label: string }[] = [
@@ -399,7 +406,7 @@ export function ExportDialogShell({
           e.preventDefault()
           returnTo.current?.focus()
         }}
-        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[56rem]"
+        className={cn("flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[56rem]", ON_MATERIAL)}
       >
         <DialogHeader className="pr-8">
           <DialogTitle>{title}</DialogTitle>

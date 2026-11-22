@@ -15,6 +15,13 @@ import { int } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Endpoint } from "@/lib/types"
 
+/**
+ * Inside the thick material the page's --muted is the same tone as the dialog (244 on 244 in light),
+ * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
+ * sections do on iOS sheets.
+ */
+const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
+
 /** Everything about one endpoint, including the model ids it serves. */
 export function EndpointDetailsSheet({
   endpoint,
@@ -27,7 +34,7 @@ export function EndpointDetailsSheet({
 }) {
   return (
     <Sheet open={endpoint !== null} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">{endpoint ? <Details endpoint={endpoint} onEdit={onEdit} /> : null}</SheetContent>
+      <SheetContent className={cn("gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md", ON_MATERIAL)}>{endpoint ? <Details endpoint={endpoint} onEdit={onEdit} /> : null}</SheetContent>
     </Sheet>
   )
 }

@@ -20,6 +20,13 @@ import type { Page, PreferenceItem, PreferenceSet } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { prefKeys, shortModel } from "./queries"
 
+/**
+ * Inside the thick material the page's --muted is the same tone as the dialog (244 on 244 in light),
+ * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
+ * sections do on iOS sheets.
+ */
+const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
+
 interface AutoPairOut {
   created: number
   skipped: number
@@ -36,7 +43,7 @@ export function AutoPairDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+      <DialogContent aria-describedby={undefined} className={cn("sm:max-w-md", ON_MATERIAL)}>
         {open ? <AutoPairForm set={set} onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>
     </Dialog>

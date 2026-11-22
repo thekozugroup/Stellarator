@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils"
 import { TextModeToggle } from "@/components/shared/model-text"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
@@ -40,6 +41,13 @@ import { api, ApiError } from "@/lib/api"
 import { int } from "@/lib/format"
 import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import type { Candidate, Page as PageOf, PreferenceItem, PreferenceSet } from "@/lib/types"
+
+/**
+ * Inside the thick material the page's --muted is the same tone as the dialog (244 on 244 in light),
+ * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
+ * sections do on iOS sheets.
+ */
+const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
 
 /**
  * The review bar is the preference review's own state, so its material takes the accent at 10%
@@ -790,7 +798,7 @@ function ShortcutsDialog({
   ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="sm:max-w-sm">
+      <DialogContent aria-describedby={undefined} className={cn("sm:max-w-sm", ON_MATERIAL)}>
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
@@ -798,7 +806,7 @@ function ShortcutsDialog({
           {rows.map((r) => (
             <div key={r.action} className="flex min-h-10 items-center justify-between gap-6 not-first:border-t">
               <dt>{r.action}</dt>
-              <dd className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground [&_[data-slot=kbd]]:bg-background dark:[&_[data-slot=kbd]]:bg-secondary">{r.keys}</dd>
+              <dd className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground dark:[&_[data-slot=kbd]]:bg-background">{r.keys}</dd>
             </div>
           ))}
         </dl>

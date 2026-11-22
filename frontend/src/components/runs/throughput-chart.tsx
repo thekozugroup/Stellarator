@@ -175,6 +175,35 @@ function ChartTooltip({ active, payload, multiDay }: TooltipContentProps & { mul
 }
 
 /**
+ * A time label under the plot, centered on its tick, except near either end of the chart, where
+ * it lines up with the tick's edge so it is never cut off.
+ */
+function TimeTick({
+  x = 0,
+  y = 0,
+  payload,
+  label,
+  rightRoom,
+}: {
+  x?: number
+  y?: number
+  payload?: { value: number }
+  label: (x: number) => string
+  rightRoom: number
+}) {
+  const plot = usePlotArea()
+  const text = payload ? label(payload.value) : ""
+  const half = (text.length * MONO_CHAR_W) / 2
+  const right = plot ? plot.x + plot.width + rightRoom : Infinity
+  const anchor = x + half > right ? "end" : x - half < 0 ? "start" : "middle"
+  return (
+    <text x={x} y={y} dy="0.71em" textAnchor={anchor} fontSize={12} fill="var(--muted-foreground)">
+      {text}
+    </text>
+  )
+}
+
+/**
  * Names each scale above its own axis, with a stroke of its line: output tokens/s on the left,
  * seqs on the right. Above the plot, a name never sits on a line or on the fill.
  */
@@ -364,7 +393,7 @@ export function ThroughputChart({
             domain={[xMin, xMax]}
             ticks={xTicks.map((k) => k.x)}
             tickFormatter={(x: number) => labelAt.get(x) ?? ""}
-            tick={AXIS_TICK}
+            tick={<TimeTick label={(x) => labelAt.get(x) ?? ""} rightRoom={seqsAxisWidth} />}
             tickLine={false}
             axisLine={false}
             tickMargin={8}
