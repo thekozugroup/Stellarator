@@ -101,7 +101,7 @@ function RenameDialog({ run, open, onOpenChange, returnFocus }: { run: Run; open
             />
           </Field>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" aria-disabled={rename.isPending || undefined}>
@@ -199,37 +199,37 @@ export function RunActions({ run, onExport, primaryElsewhere = false }: { run: R
   return (
     <>
       {canRetry ? (
-        <Button variant={primary === "retry" ? "default" : "outline"} disabled={busy === "retry-failed"} onClick={() => action.mutate("retry-failed")}>
+        <Button variant={primary === "retry" ? "default" : "secondary"} disabled={busy === "retry-failed"} onClick={() => action.mutate("retry-failed")}>
           <RotateCcw aria-hidden="true" />
           {busy === "retry-failed" ? "Retrying…" : `Retry failed (${int(run.failed)})`}
         </Button>
       ) : null}
       {exportable ? (
-        <Button variant={primary === "export" ? "default" : "outline"} onClick={onExport}>
+        <Button variant={primary === "export" ? "default" : "secondary"} onClick={onExport}>
           {/* Without its icon on phones, so a paused run's actions and menu fit one row at 320 px. */}
           <Download aria-hidden="true" className="max-sm:hidden" />
           Export dataset…
         </Button>
       ) : null}
       {run.status === "running" ? (
-        <Button variant="outline" disabled={busy === "pause"} onClick={() => action.mutate("pause")}>
+        <Button variant="secondary" disabled={busy === "pause"} onClick={() => action.mutate("pause")}>
           <Pause aria-hidden="true" />
           {busy === "pause" ? "Pausing…" : "Pause run"}
         </Button>
       ) : run.status === "pausing" ? (
-        <Button variant="outline" disabled>
+        <Button variant="secondary" disabled>
           <Pause aria-hidden="true" />
           Pausing…
         </Button>
       ) : paused ? (
-        <Button variant={primary === "resume" ? "default" : "outline"} disabled={busy === resume} onClick={() => action.mutate(resume)}>
+        <Button variant={primary === "resume" ? "default" : "secondary"} disabled={busy === resume} onClick={() => action.mutate(resume)}>
           <Play aria-hidden="true" className="max-sm:hidden" />
           {busy === resume ? "Resuming…" : "Resume run"}
         </Button>
       ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button ref={menuButton} variant="outline" size="icon" aria-label="More actions for this run">
+          <Button ref={menuButton} variant="secondary" size="icon" aria-label="More actions for this run">
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>

@@ -15,11 +15,12 @@ const MIN = 1
 const MAX = 4096
 
 /**
- * The run's one accent control, for a run that is going or paused. Each change is applied to the
+ * The run's one accent control (a periwinkle field), for a run that is going or paused. It sits in
+ * the throughput card's header, over the seqs step line it moves. Each change is applied to the
  * screen at once and sent to the server after 400 ms of quiet; a failure puts the old value back
- * and says why. Common values sit below as the same segmented row as on New run.
+ * and says why. Common values sit beside it as the same segmented row as on New run.
  */
-export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
+export function SeqsControl({ run }: { run: Run }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState(String(run.concurrency))
   const [editing, setEditing] = useState(false)
@@ -70,71 +71,69 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
   const current = Number.isFinite(parsed) ? parsed : run.concurrency
   const invalid = draft.trim() !== "" && (!/^\d+$/.test(draft.trim()) || parsed < MIN || parsed > MAX)
 
-  const hint = invalid
-    ? `Enter a whole number from ${MIN} to ${int(MAX)}.`
-    : run.status === "pausing"
-      ? `Pausing. ${int(inFlight)} still in flight.`
-      : run.status === "running"
-        ? `In flight: ${int(inFlight)} of ${int(current)}`
-        : null
+  // The in-flight count sits on the In flight panel and the pausing state on the status badge, so
+  // the only note here is a typing error.
+  const hint = invalid ? `Enter a whole number from ${MIN} to ${int(MAX)}.` : null
 
   return (
     <div className="grid gap-1.5">
-      <label htmlFor="seqs-value" className="text-xs text-muted-foreground">
-        Seqs
-      </label>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label="Decrease seqs"
-          disabled={current <= MIN}
-          onClick={() => apply(current - 1)}
-        >
-          <Minus aria-hidden="true" />
-        </Button>
-        <Input
-          id="seqs-value"
-          type="number"
-          inputMode="numeric"
-          min={MIN}
-          max={MAX}
-          value={draft}
-          aria-invalid={invalid || undefined}
-          aria-describedby={hint ? "seqs-hint" : undefined}
-          onFocus={() => setEditing(true)}
-          onChange={(e) => {
-            setDraft(e.target.value)
-            const v = e.target.value.trim()
-            if (/^\d+$/.test(v) && Number(v) >= MIN && Number(v) <= MAX) apply(Number(v))
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur()
-          }}
-          onBlur={() => {
-            setEditing(false)
-            if (invalid || draft.trim() === "") setDraft(String(run.concurrency))
-          }}
-          className={cn(
-            "w-20 border-periwinkle text-center text-base font-medium text-periwinkle-ink tabular md:text-base dark:border-periwinkle",
-            "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-          )}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label="Increase seqs"
-          disabled={current >= MAX}
-          onClick={() => apply(current + 1)}
-        >
-          <Plus aria-hidden="true" />
-        </Button>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label htmlFor="seqs-value" className="text-sm text-muted-foreground">
+          Seqs
+        </label>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Decrease seqs"
+            disabled={current <= MIN}
+            onClick={() => apply(current - 1)}
+          >
+            <Minus aria-hidden="true" />
+          </Button>
+          <Input
+            id="seqs-value"
+            type="number"
+            inputMode="numeric"
+            min={MIN}
+            max={MAX}
+            value={draft}
+            aria-invalid={invalid || undefined}
+            aria-describedby={hint ? "seqs-hint" : undefined}
+            onFocus={() => setEditing(true)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              const v = e.target.value.trim()
+              if (/^\d+$/.test(v) && Number(v) >= MIN && Number(v) <= MAX) apply(Number(v))
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur()
+            }}
+            onBlur={() => {
+              setEditing(false)
+              if (invalid || draft.trim() === "") setDraft(String(run.concurrency))
+            }}
+            className={cn(
+              "w-16 border-periwinkle bg-background text-center font-mono text-sm font-medium text-periwinkle-ink tabular dark:border-periwinkle dark:bg-background",
+              "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+            )}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Increase seqs"
+            disabled={current >= MAX}
+            onClick={() => apply(current + 1)}
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        </div>
+        <SeqsChoices value={current} onChange={apply} />
       </div>
-      <SeqsChoices value={current} onChange={apply} />
       {hint ? (
-        <p id="seqs-hint" className={cn("text-xs tabular", invalid ? "text-destructive" : "text-muted-foreground")}>
+        <p id="seqs-hint" className="text-xs text-destructive">
           {hint}
         </p>
       ) : null}

@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 /**
- * A whole-number input with − and + beside it. The value stays a string so typing is never
- * blocked; the buttons clamp to [min, max]. Up and Down arrows work as in any number input.
+ * A whole-number input with − and + beside it, the buttons in the raised (secondary) tone. The
+ * value stays a string so typing is never blocked; the buttons clamp to [min, max]. Up and Down
+ * arrows work as in any number input.
  */
 export function NumberStepper({
   id,
@@ -44,7 +45,7 @@ export function NumberStepper({
     <div className={cn("flex items-center gap-1", className)}>
       <Button
         type="button"
-        variant="outline"
+        variant="secondary"
         size="icon"
         aria-label={`Decrease ${name}`}
         disabled={disabled || current <= min}
@@ -72,7 +73,7 @@ export function NumberStepper({
       />
       <Button
         type="button"
-        variant="outline"
+        variant="secondary"
         size="icon"
         aria-label={`Increase ${name}`}
         disabled={disabled || current >= max}

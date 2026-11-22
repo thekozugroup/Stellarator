@@ -12,7 +12,6 @@ export function SeqsChoices({ value, onChange, className }: { value: number; onC
   return (
     <ToggleGroup
       type="single"
-      variant="outline"
       size="sm"
       spacing={0}
       value={SEQS_CHOICES.includes(value) ? String(value) : ""}

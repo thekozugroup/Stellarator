@@ -5,8 +5,11 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { CopyButton } from "@/components/shared/copy-button"
+import { Plasma } from "@/components/shared/plasma"
+import { Tile, Tiles } from "@/components/shared/tiles"
 import { BaseUrl } from "./base-url"
-import { CheckedAt, EndpointStatus } from "./endpoint-status"
+import { CheckedAt, EndpointStatusBadge, endpointState } from "./endpoint-status"
+import { endpointSeed } from "./endpoint-list"
 import { useCheckEndpoint } from "./use-check-endpoint"
 import { int } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -29,41 +32,64 @@ export function EndpointDetailsSheet({
   )
 }
 
+/**
+ * The sheet follows a detail screen's header (DESIGN.md, Layout): the tile and name, then the status
+ * and when it was checked, then the facts as tiles; the models below in a muted box.
+ */
 function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoint) => void }) {
   const check = useCheckEndpoint(endpoint)
   const [q, setQ] = useState("")
   const needle = q.trim().toLowerCase()
   const models = needle ? endpoint.models.filter((m) => m.toLowerCase().includes(needle)) : endpoint.models
   const searchable = endpoint.models.length > 20
+  const failing = endpoint.last_ok === false
+  const { reason } = endpointState(endpoint)
   return (
     <>
-      <SheetHeader className="gap-1 px-5 pt-5 pr-14">
-        <SheetTitle className="text-base break-words">{endpoint.name}</SheetTitle>
+      <SheetHeader className="gap-0 px-5 pt-5 pr-14 pb-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Plasma seed={endpointSeed(endpoint)} cells={8} className="size-10 rounded-md" />
+          <div className="grid min-w-0 flex-1 gap-0.5">
+            <SheetTitle className="text-base leading-5 font-semibold break-words">{endpoint.name}</SheetTitle>
+            <BaseUrl url={endpoint.base_url} />
+          </div>
+        </div>
         <SheetDescription className="sr-only">Connection details and the models this endpoint serves.</SheetDescription>
-        <BaseUrl url={endpoint.base_url} />
       </SheetHeader>
-      <dl className="mx-5 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl border p-3 text-sm">
-        <dt className="text-muted-foreground">Status</dt>
-        <dd>
-          <EndpointStatus endpoint={endpoint} />
-        </dd>
-        <dt className="text-muted-foreground">Checked</dt>
-        <dd>
-          <CheckedAt endpoint={endpoint} />
-        </dd>
-        <dt className="text-muted-foreground">Default seqs</dt>
-        <dd className="tabular">{int(endpoint.default_concurrency)}</dd>
-        <dt className="text-muted-foreground">Runs</dt>
-        <dd className="tabular">{int(endpoint.run_count)}</dd>
-      </dl>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 px-5 pt-4">
-        <h3 className="text-base font-semibold">Models</h3>
+      <div className="grid gap-4 px-5">
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <EndpointStatusBadge endpoint={endpoint} />
+            <span className="text-sm text-muted-foreground">
+              Checked <CheckedAt endpoint={endpoint} />
+              {endpoint.has_api_key ? (
+                <>
+                  {" · "}Key <span className="font-mono text-xs">{endpoint.api_key_hint ?? "set"}</span>
+                </>
+              ) : null}
+            </span>
+          </div>
+          {reason ? (
+            <p title={endpoint.last_error ?? undefined} className="text-sm text-muted-foreground">
+              {reason}
+            </p>
+          ) : null}
+        </div>
+        <Tiles className="grid-cols-3 lg:grid-cols-3">
+          <Tile label={endpoint.models.length === 1 ? "Model" : "Models"} value={int(endpoint.models.length)} />
+          <Tile label="Default seqs" value={int(endpoint.default_concurrency)} />
+          <Tile label={endpoint.run_count === 1 ? "Run" : "Runs"} value={int(endpoint.run_count)} />
+        </Tiles>
+      </div>
+
+      <section aria-labelledby="endpoint-models" className="flex min-h-0 flex-1 flex-col gap-2 px-5 pt-6">
+        <h3 id="endpoint-models" className="px-1 text-sm font-semibold">
+          Models
+        </h3>
         {endpoint.models.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {endpoint.last_ok === false
-              ? "The last check failed."
-              : "No models listed."}
+          <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            {failing ? "The last check failed, so the model list is empty." : "The server lists no models."}
           </p>
         ) : (
           <>
@@ -82,39 +108,40 @@ function Details({ endpoint, onEdit }: { endpoint: Endpoint; onEdit: (e: Endpoin
               </div>
             ) : null}
             {needle ? (
-              <p className="text-xs text-muted-foreground tabular" aria-live="polite">
+              <p className="px-1 text-xs text-muted-foreground tabular" aria-live="polite">
                 {int(models.length)} of {int(endpoint.models.length)}
               </p>
             ) : null}
-            <ul className="min-h-0 overflow-y-auto rounded-xl border p-1">
+            {/* A muted box with 8 px padding holds rows with 8 px corners (16 - 8), concentric. */}
+            <ul className="min-h-0 overflow-y-auto overscroll-contain rounded-xl bg-muted p-2">
               {models.map((m) => (
-                <li key={m} className="flex items-center justify-between gap-1 rounded-lg pl-2 hover:bg-accent">
-                  <span title={m} className="min-w-0 py-1 font-mono text-[13px] break-all">
+                <li key={m} className="flex min-h-8 items-center justify-between gap-1 rounded-sm pl-2 hover:bg-accent">
+                  <span title={m} className="min-w-0 py-1 font-mono text-xs break-all">
                     {m}
                   </span>
                   <CopyButton value={m} label={`Copy ${m}`} />
                 </li>
               ))}
-              {models.length === 0 ? <li className="px-2 py-2 text-sm text-muted-foreground">No model matches “{q}”.</li> : null}
+              {models.length === 0 ? <li className="px-2 py-1.5 text-sm text-muted-foreground">No model matches “{q}”.</li> : null}
             </ul>
           </>
         )}
-      </div>
+      </section>
 
-      <div className="flex flex-wrap justify-end gap-2 px-5 pt-1 pb-5">
-        <Link
-          to={`/runs/new?endpoint=${endpoint.id}`}
-          className={cn(buttonVariants({ variant: endpoint.last_ok === false ? "outline" : "default" }), "pointer-coarse:min-h-11")}
-        >
-          New run
-        </Link>
-        <Button variant="outline" onClick={() => onEdit(endpoint)}>
+      <div className="flex flex-wrap justify-end gap-2 px-5 pt-4 pb-5">
+        <Button variant="secondary" onClick={() => onEdit(endpoint)}>
           Edit
         </Button>
-        <Button variant={endpoint.last_ok === false ? "default" : "outline"} disabled={check.isPending} onClick={() => check.mutate()}>
+        <Button variant={failing ? "default" : "secondary"} disabled={check.isPending} onClick={() => check.mutate()}>
           {check.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           {check.isPending ? "Checking…" : "Check now"}
         </Button>
+        <Link
+          to={`/runs/new?endpoint=${endpoint.id}`}
+          className={cn(buttonVariants({ variant: failing ? "secondary" : "default" }), "pointer-coarse:min-h-11")}
+        >
+          New run
+        </Link>
       </div>
     </>
   )
