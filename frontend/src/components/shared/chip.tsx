@@ -27,7 +27,10 @@ export function Chip({
     "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm text-foreground",
     leading && "pl-1.5",
     mono && "font-mono text-xs",
-    to && "transition-colors duration-150 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    // A linked chip keeps the row's 28 px on touch screens (data-touch="inline" opts out of the
+    // 44 pt minimum in index.css) and gets an invisible hit area that reaches 44 pt instead.
+    to &&
+      "relative transition-colors duration-150 outline-none after:absolute after:-inset-y-2 after:inset-x-0 after:content-[''] hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     className,
   )
   const body = (
@@ -37,7 +40,7 @@ export function Chip({
     </>
   )
   return to ? (
-    <Link to={to} title={title} className={classes}>
+    <Link to={to} title={title} data-touch="inline" className={classes}>
       {body}
     </Link>
   ) : (

@@ -280,7 +280,13 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
 - Axis labels `label-mono` in muted ink; gridlines dashed hairlines; a threshold is a dashed line
   in the series' color with a mono label.
 - The readout (hover) is `material-thick`, 8 px corners, mono values.
-- A flag on a chart (an annotation) is a capsule in the signal's tint with `label-mono` text.
+- A flag on a chart (an annotation) is a capsule in the signal's tint with `label-mono` text. On a
+  run, once there are readings on both sides of the last seqs change, a periwinkle flag gives the
+  change in tokens per second ("+102% TOK/S").
+- A live run's time axis counts back from NOW ("-10M ... NOW"). Paused time is cut out of the axis
+  and marked with a dashed line; across days, a session's first label carries the date.
+- A run's samples bar (tabs and search) becomes `material-bar` when it sticks under the toolbar and
+  shows the run's progress in it.
 
 ## Iconography
 
