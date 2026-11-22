@@ -62,11 +62,8 @@ jobs:
 
           v = {}
           v["1-default"] = copy.deepcopy(base)
-          v["2-field"] = copy.deepcopy(base)
-          v["2-field"]["groups"].append({
-              "layers": [{"glass": False, "image-name": "field.svg", "name": "field", "position": pos}],
-              "shadow": {"kind": "none", "opacity": 0}, "translucency": {"enabled": False, "value": 0}})
-          v["3-glass"] = copy.deepcopy(v["2-field"]); v["3-glass"]["groups"][0]["layers"][0]["glass"] = True
+          v["2-gradient"] = copy.deepcopy(base); v["2-gradient"]["fill"] = plain(full)["fill"]
+          v["3-glass"] = copy.deepcopy(v["2-gradient"]); v["3-glass"]["groups"][0]["layers"][0]["glass"] = True
           v["4-plain"] = plain(full)
           v["5-full"] = full
 
