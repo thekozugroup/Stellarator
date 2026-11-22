@@ -289,7 +289,7 @@ export function RunDetailPage() {
                 tabIndex={data.sequences.length ? 0 : undefined}
                 role={data.sequences.length ? "region" : undefined}
                 aria-label={data.sequences.length ? "Sequences in flight" : undefined}
-                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-6 outline-none [-webkit-mask-image:linear-gradient(to_bottom,#000_calc(100%-1.5rem),transparent)] [mask-image:linear-gradient(to_bottom,#000_calc(100%-1.5rem),transparent)] xl:max-h-none" /* taste-ignore: outline-check -- the card around it draws the ring (has-[:focus-visible]:outline-2) */
+                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-6 outline-none [-webkit-mask-image:linear-gradient(to_bottom,#000_calc(100%-1.5rem),transparent)] [mask-image:linear-gradient(to_bottom,#000_calc(100%-1.5rem),transparent)] xl:max-h-none" /* taste-ignore: outline-check, gradient -- the card around it draws the ring (has-[:focus-visible]:outline-2); the gradient is an alpha mask for the scroll fade, not a fill */
               >
                 <InFlightList sequences={data.sequences} inFlight={data.in_flight} samplesPerPrompt={r.params.samples_per_prompt} />
               </div>
