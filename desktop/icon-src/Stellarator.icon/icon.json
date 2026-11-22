@@ -1,39 +1,50 @@
 {
-  "fill": {
-    "linear-gradient": [
-      "srgb:0.06275,0.08627,0.27059,1.00000",
-      "srgb:0.60392,0.22745,0.65098,1.00000"
-    ],
-    "orientation": {
-      "start": {
-        "x": 0.3,
-        "y": 0
-      },
-      "stop": {
-        "x": 0.7,
-        "y": 1
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.13725,0.17255,0.47059,1.00000",
+          "srgb:0.33333,0.40000,0.86275,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.04314,0.08235,0.08235,1.00000",
+          "srgb:0.10980,0.14118,0.38824,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
       }
     }
-  },
+  ],
   "groups": [
     {
       "layers": [
         {
           "glass": true,
-          "image-name": "coil-front.svg",
-          "name": "coil-front",
-          "position": {
-            "scale": 1,
-            "translation-in-points": [
-              0,
-              0
-            ]
-          }
-        },
-        {
-          "glass": true,
-          "image-name": "coil-back.svg",
-          "name": "coil-back",
+          "image-name": "mark.svg",
+          "name": "mark",
           "position": {
             "scale": 1,
             "translation-in-points": [
@@ -49,15 +60,53 @@
       },
       "translucency": {
         "enabled": true,
-        "value": 0.35
+        "value": 0.3
       }
     },
     {
       "layers": [
         {
           "glass": false,
-          "image-name": "glow.svg",
-          "name": "glow",
+          "hidden-specializations": [
+            {
+              "value": true
+            },
+            {
+              "appearance": "dark",
+              "value": false
+            },
+            {
+              "appearance": "tinted",
+              "value": true
+            }
+          ],
+          "image-name": "field-dark.svg",
+          "name": "field-dark",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "glass": false,
+          "hidden-specializations": [
+            {
+              "value": false
+            },
+            {
+              "appearance": "dark",
+              "value": true
+            },
+            {
+              "appearance": "tinted",
+              "value": true
+            }
+          ],
+          "image-name": "field.svg",
+          "name": "field",
           "position": {
             "scale": 1,
             "translation-in-points": [
@@ -71,6 +120,7 @@
         "kind": "none",
         "opacity": 0
       },
+      "specular": false,
       "translucency": {
         "enabled": false,
         "value": 0

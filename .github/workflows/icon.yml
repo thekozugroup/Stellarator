@@ -2,7 +2,8 @@
 # way the Desktop workflow does, in a couple of minutes instead of a full app build. It also
 # compiles simpler variants of the document, from Icon Composer's minimal default up to the full
 # design, so a rejected document shows which part actool objects to. The artifact holds each
-# variant's actool output and, for the ones that compile, Apple's flattened rendering as PNG.
+# variant's actool output and, for the ones that compile, Apple's flattened rendering as PNG, plus
+# the default, dark and tinted renderings when Icon Composer's ictool is present.
 
 name: Icon
 
@@ -36,19 +37,37 @@ jobs:
           src = "desktop/icon-src/Stellarator.icon"
           full = json.load(open(f"{src}/icon.json"))
           pos = {"scale": 1, "translation-in-points": [0, 0]}
-          front = {"image-name": "coil-front.svg", "name": "coil-front", "position": pos}
-          group = {"layers": [front], "shadow": {"kind": "neutral", "opacity": 0.5},
+          mark = {"image-name": "mark.svg", "name": "mark", "position": pos}
+          group = {"layers": [mark], "shadow": {"kind": "neutral", "opacity": 0.5},
                    "translucency": {"enabled": True, "value": 0.5}}
-          base = {"fill": {"automatic-gradient": "srgb:0.22745,0.14510,0.58824,1.00000"},
+          base = {"fill": {"automatic-gradient": "srgb:0.33333,0.40000,0.86275,1.00000"},
                   "groups": [group], "supported-platforms": {"squares": "shared"}}
+
+          def plain(node):
+              # The document without per-appearance values and the specular switch: each
+              # "<key>-specializations" list becomes "<key>" with its first (default) value.
+              if isinstance(node, list):
+                  return [plain(n) for n in node]
+              if not isinstance(node, dict):
+                  return node
+              out = {}
+              for k, val in node.items():
+                  if k == "specular":
+                      continue
+                  if k.endswith("-specializations"):
+                      out[k[: -len("-specializations")]] = plain(val[0]["value"])
+                  else:
+                      out[k] = plain(val)
+              return out
 
           v = {}
           v["1-default"] = copy.deepcopy(base)
-          v["2-gradient"] = copy.deepcopy(base); v["2-gradient"]["fill"] = full["fill"]
-          v["3-glass"] = copy.deepcopy(v["2-gradient"]); v["3-glass"]["groups"][0]["layers"][0]["glass"] = True
-          v["4-two-coils"] = copy.deepcopy(v["3-glass"])
-          v["4-two-coils"]["groups"][0]["layers"].append(
-              {"glass": True, "image-name": "coil-back.svg", "name": "coil-back", "position": pos})
+          v["2-field"] = copy.deepcopy(base)
+          v["2-field"]["groups"].append({
+              "layers": [{"glass": False, "image-name": "field.svg", "name": "field", "position": pos}],
+              "shadow": {"kind": "none", "opacity": 0}, "translucency": {"enabled": False, "value": 0}})
+          v["3-glass"] = copy.deepcopy(v["2-field"]); v["3-glass"]["groups"][0]["layers"][0]["glass"] = True
+          v["4-plain"] = plain(full)
           v["5-full"] = full
 
           for name, doc in v.items():
@@ -78,8 +97,24 @@ jobs:
                                          capture_output=True)
           PY
           if [ -s icon-check/5-full/out/Assets.car ]; then
-            xcrun assetutil --info icon-check/5-full/out/Assets.car | head -80 || true
+            xcrun assetutil --info icon-check/5-full/out/Assets.car | grep -E '"(Appearance|AssetType|Name|RenditionName)"' | sort | uniq -c | head -60 || true
           fi
+
+      - name: Appearances with ictool (best effort)
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          ictool=$(find "$(xcode-select -p)/../Applications" -maxdepth 5 -name ictool -type f 2>/dev/null | head -1)
+          if [ -z "$ictool" ]; then echo "ictool not found"; exit 0; fi
+          echo "$ictool"
+          "$ictool" --help 2>&1 | head -60 || true
+          mkdir -p icon-check/appearances
+          for a in Light Dark TintedLight TintedDark ClearLight ClearDark; do
+            "$ictool" desktop/icon-src/Stellarator.icon --export-preview macOS "$a" 512 512 1 0 \
+              "icon-check/appearances/$a.png" 2>&1 | head -5 || true
+          done
+          ls -la icon-check/appearances
 
       - name: Upload the results
         if: always()

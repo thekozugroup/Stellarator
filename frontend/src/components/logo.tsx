@@ -1,21 +1,26 @@
 import { cn } from "@/lib/utils"
 
 /**
- * The Stellarator mark: two coils braided around one ring, the way a stellarator's magnet coils
- * twist around its plasma. One strand is ink, the other coil copper.
+ * The Stellarator mark: one bold strand that winds twice around a ring and crosses itself five
+ * times, passing over and under in turn, so its outline is a ring with five lobes. It comes from
+ * the earlier mark's two coils braided around a ring. Drawn in the current text color, as five
+ * identical pieces turned 72 degrees apart. desktop/icon-src/make_icon.py draws the same mark for
+ * the app icon, and `python3 make_icon.py --logo` prints PIECE.
  */
+const PIECE =
+  "M20.24 15.21C20.44 15.92 20.57 16.71 20.52 17.53C20.48 18.34 20.27 19.18 19.83 19.90C19.40 20.63 18.74 21.24 17.97 21.60C17.19 21.95 16.32 22.06 15.50 21.98C14.68 21.89 13.89 21.61 13.21 21.25C12.53 20.89 11.94 20.45 11.45 20.02C10.97 19.58 10.58 19.16 10.26 18.81C9.93 18.45 9.68 18.16 9.46 17.93C9.24 17.70 9.05 17.52 8.86 17.35C8.67 17.19 8.48 17.04 8.29 16.90C8.09 16.76 7.88 16.64 7.65 16.51C7.42 16.38 7.16 16.25 6.83 16.10L7.93 13.75C8.29 13.91 8.61 14.07 8.92 14.24C9.22 14.40 9.49 14.58 9.75 14.76C10.01 14.94 10.26 15.13 10.51 15.34C10.76 15.56 11.02 15.79 11.27 16.06C11.53 16.33 11.79 16.62 12.07 16.94C12.35 17.25 12.65 17.58 13.00 17.91C13.35 18.23 13.74 18.55 14.17 18.81C14.59 19.06 15.04 19.26 15.47 19.34C15.90 19.43 16.30 19.42 16.63 19.33C16.95 19.24 17.21 19.07 17.42 18.82C17.63 18.57 17.79 18.24 17.87 17.83C17.95 17.42 17.95 16.94 17.86 16.45Z"
+
 export function Logo({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="none"
-      strokeWidth={1.6}
-      strokeLinejoin="round"
+      fill="currentColor"
       aria-hidden="true"
       className={cn("size-5 shrink-0", className)}
     >
-      <path className="stroke-foreground" d="M12.0 2.2L13.0 2.5L13.9 3.3L14.5 4.4L14.9 5.5L15.2 6.4L15.6 7.0L16.3 7.2L17.3 7.2L18.5 7.3L19.7 7.6L20.7 8.1L21.3 9.0L21.3 10.0L20.9 11.1L20.0 12.0L19.1 12.7L18.3 13.3L17.9 13.9L17.9 14.6L18.1 15.5L18.5 16.7L18.6 18.0L18.4 19.1L17.8 19.9L16.8 20.3L15.6 20.1L14.5 19.6L13.5 18.9L12.7 18.4L12.0 18.2L11.3 18.4L10.5 18.9L9.5 19.6L8.4 20.1L7.2 20.3L6.2 19.9L5.6 19.1L5.4 18.0L5.5 16.7L5.9 15.6L6.1 14.6L6.1 13.9L5.7 13.3L4.9 12.7L4.0 12.0L3.1 11.1L2.7 10.0L2.7 9.0L3.3 8.1L4.3 7.5L5.5 7.3L6.7 7.2L7.7 7.2L8.4 7.0L8.8 6.4L9.1 5.5L9.5 4.4L10.1 3.3L11.0 2.5Z" />
-      <path className="stroke-copper" d="M12.0 5.8L12.7 5.6L13.5 5.1L14.5 4.4L15.6 3.9L16.8 3.7L17.8 4.1L18.4 4.9L18.6 6.0L18.5 7.3L18.1 8.4L17.9 9.4L17.9 10.1L18.3 10.7L19.1 11.3L20.0 12.0L20.9 12.9L21.3 14.0L21.3 15.0L20.7 15.9L19.7 16.4L18.5 16.7L17.3 16.8L16.3 16.8L15.6 17.0L15.2 17.6L14.9 18.5L14.5 19.6L13.9 20.7L13.0 21.5L12.0 21.8L11.0 21.5L10.1 20.7L9.5 19.6L9.1 18.5L8.8 17.6L8.4 17.0L7.7 16.8L6.7 16.8L5.5 16.7L4.3 16.4L3.3 15.9L2.7 15.0L2.7 14.0L3.1 12.9L4.0 12.0L4.9 11.3L5.7 10.7L6.1 10.1L6.1 9.4L5.9 8.4L5.5 7.3L5.4 6.0L5.6 4.9L6.2 4.1L7.2 3.7L8.4 3.9L9.5 4.4L10.5 5.1L11.3 5.6Z" />
+      {[0, 72, 144, 216, 288].map((angle) => (
+        <path key={angle} d={PIECE} transform={`rotate(${angle} 12 12)`} />
+      ))}
     </svg>
   )
 }
