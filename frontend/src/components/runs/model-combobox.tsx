@@ -43,19 +43,19 @@ export function ModelCombobox({
         <Button
           id={id}
           type="button"
-          variant="outline"
+          variant="secondary"
           role="combobox"
           aria-expanded={open}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           disabled={disabled}
           className={cn(
-            "w-full justify-between border-input px-2.5 font-normal dark:border-input",
+            "w-full justify-between pr-2 pl-3 font-normal",
             !value && "text-muted-foreground",
           )}
         >
-          <span className={cn("min-w-0 truncate", value && "font-mono text-[13px]")}>{value || "Choose or type a model id"}</span>
-          <ChevronsUpDown className="text-muted-foreground" aria-hidden="true" />
+          <span className={cn("min-w-0 truncate", value && "font-mono text-xs pointer-coarse:text-[13px]")}>{value || "Choose or type a model id"}</span>
+          <ChevronsUpDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-72 p-0">
@@ -90,7 +90,7 @@ export function ModelCombobox({
                       setOpen(false)
                     }}
                   >
-                    <span className="min-w-0 truncate font-mono text-[13px]" title={m}>
+                    <span className="min-w-0 truncate font-mono text-xs pointer-coarse:text-[13px]" title={m}>
                       {m}
                     </span>
                   </CommandItem>

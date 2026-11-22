@@ -2,49 +2,100 @@
 //! the top of the content column, and the window controls (traffic lights) sit at the top left of
 //! the sidebar panel, in the same band.
 //!
-//! - The window uses `TitleBarStyle::Overlay` with the title hidden, and the traffic lights are
-//!   moved to [`TRAFFIC_LIGHTS`] (see `open_main_window` in main.rs).
-//! - An initialization script sets `window.__STELLARATOR_DESKTOP__ = { titleBar: "overlay" }`
-//!   before the page's own scripts run. The web UI (frontend/src/lib/desktop-shell.ts) reads it
-//!   and sets `data-titlebar="overlay"` on `<html>`: the sidebar keeps the top
-//!   `--titlebar-height` (52 px, the height of the page toolbar, frontend/src/index.css) free for
-//!   the traffic lights, and that band moves the window: over the sidebar, and over the content
-//!   wherever the toolbar has no control (Tauri's `data-tauri-drag-region`; a double click
-//!   zooms). The web UI served by Docker never gets the global and is unchanged.
+//! - The window uses `TitleBarStyle::Overlay` with the title hidden, and [`use_toolbar_window`]
+//!   gives it an empty unified toolbar. That is what macOS 26 apps with a sidebar have, and it
+//!   changes two things (measured on macOS 26.6 with the same window style and a WKWebView):
+//!   - the window's corners are 26 pt instead of 16 pt, so the floating sidebar (8 pt inside the
+//!     window, 18 pt corners) is concentric with them;
+//!   - macOS centers the traffic lights at (26, 26) pt, 19 pt from the left edge: in the middle of
+//!     the 52 px band the page keeps free for them. Nothing moves them by hand.
+//!   Clicks anywhere in that band still reach the page (the web view is the hit-tested view).
+//! - An initialization script sets `window.__STELLARATOR_DESKTOP__` before the page's own scripts
+//!   run: `titleBar: "overlay"` on macOS, and on every platform `windowRadius`, the window's corner
+//!   radius in points ([`window_radius`]). The web UI (frontend/src/lib/desktop-shell.ts) reads
+//!   it: the sidebar keeps the top `--titlebar-height` (52 px, frontend/src/index.css) free for the
+//!   traffic lights, that band moves the window (Tauri's `data-tauri-drag-region`; a double click
+//!   zooms), and every nested corner derives from `--window-radius`. The web UI served by Docker
+//!   never gets the global and uses its design values.
 //! - In full screen macOS hides the traffic lights; [`sync_fullscreen`] sets `data-fullscreen` on
 //!   `<html>` and the page drops the reserved space.
 //! - Dragging and zooming call two window commands over Tauri's IPC, from the page on 127.0.0.1.
 //!   `capabilities/title-bar.json` allows exactly those two, for the main window only.
 //!
-//! Windows and Linux keep their native frames, and nothing here runs there.
+//! Windows and Linux keep their native frames; only `windowRadius` reaches the page there.
 
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{LogicalPosition, Manager, WebviewWindow};
+use tauri::{Manager, WebviewWindow};
 
-/// The close button's position from the window's top-left corner, in points. Tao makes the title
-/// bar `y` plus the button's height tall and keeps the buttons at its bottom, so their center sits
-/// about `y + 2` from the top: with `y` 24 the buttons are centered in the 52 px
-/// `--titlebar-height` band of the web UI, where the page toolbar's buttons are centered too. `x`
-/// 20 puts them 12 points inside the sidebar panel, which floats 8 points from the window's edge.
-/// Change both together.
-pub const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 24.0 };
+/// The main window's corner radius in points, as macOS, Windows or Linux draws it. The page makes
+/// its sidebar and every nested corner concentric with it, and below 20 it lays the sidebar flush
+/// against the window's edge instead of floating it.
+pub fn window_radius() -> u32 {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS 26: a window with a unified toolbar (use_toolbar_window). macOS 11 to 15: 10.
+        if macos_major_version() >= 26 { 26 } else { 10 }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        8
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        0
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_major_version() -> isize {
+    objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion().majorVersion
+}
+
+/// Gives the window an empty unified toolbar: macOS 26's toolbar-window corners and traffic-light
+/// placement (see the module docs). Runs on the main thread, where AppKit must be called.
+#[cfg(target_os = "macos")]
+pub fn use_toolbar_window(window: &WebviewWindow) {
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        use objc2::{MainThreadMarker, MainThreadOnly};
+        use objc2_app_kit::{NSToolbar, NSWindow, NSWindowToolbarStyle};
+        use objc2_foundation::NSString;
+
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(ptr) = target.ns_window() else {
+            return;
+        };
+        // SAFETY: Tauri returns this window's NSWindow, which lives as long as the window, and we
+        // are on the main thread.
+        let ns_window: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
+        let toolbar = NSToolbar::initWithIdentifier(
+            NSToolbar::alloc(mtm),
+            &NSString::from_str("stellarator.main-window"),
+        );
+        ns_window.setToolbar(Some(&toolbar));
+        ns_window.setToolbarStyle(NSWindowToolbarStyle::Unified);
+    });
+}
+
+/// Runs before the page's scripts on every load of `origin` (the local server) in the window.
+/// Other origins never load in the window (main.rs blocks them), and the check keeps it that way.
+pub fn init_script(origin: &str, overlay_title_bar: bool, radius: u32) -> String {
+    let title_bar = if overlay_title_bar { "titleBar: \"overlay\", " } else { "" };
+    format!(
+        "if (window.location.origin === \"{origin}\") {{\n  \
+           window.__STELLARATOR_DESKTOP__ = Object.freeze({{ {title_bar}windowRadius: {radius} }})\n\
+         }}\n"
+    )
+}
 
 /// Whether the main window was last seen in full screen. Changes are sent to the page.
 #[derive(Default)]
 pub struct Fullscreen(AtomicBool);
-
-/// Runs before the page's scripts on every load of `origin` (the local server) in the window.
-/// Other origins never load in the window (main.rs blocks them), and the check keeps it that way.
-pub fn init_script(origin: &str) -> String {
-    format!(
-        "if (window.location.origin === \"{origin}\") {{\n  \
-           window.__STELLARATOR_DESKTOP__ = Object.freeze({{ titleBar: \"overlay\" }})\n\
-         }}\n"
-    )
-}
 
 /// Tell the page whether the window is in full screen when that changed since the last call, or
 /// when `page_loaded` and it is (a page loaded in full screen starts without the attribute).
@@ -68,10 +119,17 @@ mod tests {
 
     #[test]
     fn init_script_sets_the_global_only_for_the_local_server() {
-        let script = init_script("http://127.0.0.1:47823");
+        let script = init_script("http://127.0.0.1:47823", true, 26);
         assert!(script.starts_with("if (window.location.origin === \"http://127.0.0.1:47823\") {"));
-        assert!(script
-            .contains("window.__STELLARATOR_DESKTOP__ = Object.freeze({ titleBar: \"overlay\" })"));
+        assert!(script.contains(
+            "window.__STELLARATOR_DESKTOP__ = Object.freeze({ titleBar: \"overlay\", windowRadius: 26 })"
+        ));
+    }
+
+    #[test]
+    fn init_script_without_the_overlay_only_gives_the_radius() {
+        let script = init_script("http://127.0.0.1:47823", false, 8);
+        assert!(script.contains("window.__STELLARATOR_DESKTOP__ = Object.freeze({ windowRadius: 8 })"));
     }
 
     #[test]

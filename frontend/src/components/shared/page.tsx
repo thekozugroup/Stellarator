@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { Link, NavLink } from "react-router"
 import { ChevronLeft, Settings } from "lucide-react"
 import { Bar } from "@/components/shared/block-states"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { buttonVariants } from "@/components/ui/button"
 import { useToolbarDragRegion } from "@/lib/desktop-shell"
 import { TOOLBAR_ACTIONS_QUERY, TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import { cn } from "@/lib/utils"
@@ -39,32 +38,44 @@ function useToolbarScroll(bar: RefObject<HTMLElement | null>, largeTitle: RefObj
   return state
 }
 
-/** Back to the parent screen. A chevron toolbar button on wide screens; "‹ Runs" on phones, as iOS. */
-function BackControl({ back, compact, labelHidden = false }: { back: { to: string; label: string }; compact: boolean; labelHidden?: boolean }) {
-  if (compact) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button asChild variant="outline" size="icon">
-            <Link to={back.to} aria-label={`Back to ${back.label}`}>
-              <ChevronLeft aria-hidden="true" />
-            </Link>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Back to {back.label}</TooltipContent>
-      </Tooltip>
-    )
-  }
+/** Phones: back to the parent screen, "‹ Runs", as iOS. The label goes once the small title takes the bar. */
+function BackControl({ back, labelHidden = false }: { back: { to: string; label: string }; labelHidden?: boolean }) {
   return (
     <Link
       to={back.to}
       aria-label={`Back to ${back.label}`}
-      className="-ml-2 inline-flex h-11 min-w-11 items-center gap-0.5 rounded-lg pr-2 text-[17px] text-foreground"
+      className="-ml-2 inline-flex h-11 min-w-11 items-center gap-0.5 rounded-md pr-2 text-[17px] text-foreground"
     >
       <ChevronLeft className="size-6 flex-none" strokeWidth={2} aria-hidden="true" />
-      {/* iOS 26: the label goes once the small title takes the middle of the bar. */}
       {labelHidden ? null : <span className="truncate">{back.label}</span>}
     </Link>
+  )
+}
+
+/**
+ * From 768 px: where a detail screen sits, "Runs / Distill gsm8k", in the toolbar. The parent is a
+ * link in muted ink, the current screen ink; both truncate, the parent last.
+ */
+function Breadcrumb({ back, current, hoverTitle }: { back: { to: string; label: string }; current: ReactNode; hoverTitle?: string }) {
+  return (
+    <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
+      <ol className="flex min-w-0 items-center gap-1.5 text-[15px] leading-5 tracking-[-0.011em]">
+        <li className="flex min-w-0 shrink items-center gap-1.5">
+          <Link
+            to={back.to}
+            className="-mx-1 truncate rounded-xs px-1 font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          >
+            {back.label}
+          </Link>
+          <span aria-hidden="true" className="text-muted-foreground/60">
+            /
+          </span>
+        </li>
+        <li aria-current="page" title={hoverTitle} className="min-w-0 shrink-[2] truncate font-semibold">
+          {current}
+        </li>
+      </ol>
+    </nav>
   )
 }
 
@@ -75,10 +86,10 @@ function PhoneSettingsLink() {
       to="/settings"
       aria-label="Settings"
       title="Settings"
-      // The Button's own attributes, so the touch rules size it like the "+" and "..." capsules.
+      // The Button's own attributes, so the touch rules size it like the "+" and "..." buttons.
       data-slot="button"
       data-size="icon"
-      className={({ isActive }) => cn(buttonVariants({ variant: "outline", size: "icon" }), isActive && "bg-accent")}
+      className={({ isActive }) => cn(buttonVariants({ variant: "secondary", size: "icon" }), "rounded-full", isActive && "bg-accent")}
     >
       <Settings aria-hidden="true" />
     </NavLink>
@@ -86,18 +97,21 @@ function PhoneSettingsLink() {
 }
 
 /**
- * Every screen. Its title and actions live in a toolbar at the top of the content column, as in
- * macOS 26 apps: a back button when the screen has a parent, the title (the page's h1), and the
- * actions as capsule toolbar buttons. The toolbar is sticky; at rest it is the page color, and
- * once content scrolls under it the bar material fades in. In the macOS app it is also the title
- * bar: its empty areas move the window.
+ * Every screen (DESIGN.md, Layout). A sticky toolbar runs along the top of the content column: at
+ * rest it is the page color, and once content scrolls under it the bar material fades in. In the
+ * macOS app it is also the title bar: its empty areas move the window.
  *
- * On phones the bar holds the back button (or Settings on a top-level screen) and the screen
- * starts with a large title, its meta line and its actions, as iOS does; once the large title
- * scrolls under the bar, a small title fades in there. Below 1024 px the actions sit under the
- * title instead of in the bar, where they would crowd it. On phones `barActions` (an icon button
- * such as "+" or "…") sits at the trailing end of the bar, as iOS puts them in a navigation bar.
- * `title={null}` shows a loading bar.
+ * From 768 px:
+ * - A top-level screen (no `back`) has its title, the page's h1, in the toolbar.
+ * - A detail screen (`back` is its parent) has a breadcrumb in the toolbar ("Runs / Distill") and
+ *   its h1 as the display title at the top of the content, followed by `meta` (the chips row).
+ * - From 1024 px the actions sit at the end of the toolbar; below that, beside the meta under the
+ *   title.
+ *
+ * On phones the bar holds the back button (or Settings on a top-level screen) and `barActions`
+ * (icon buttons such as "+" or "…") at its trailing end, and the screen starts with a large title,
+ * its meta and its actions, as iOS does; once the large title scrolls under the bar, a small title
+ * fades in there. `title={null}` shows a loading bar.
  */
 export function Page({
   title,
@@ -129,6 +143,8 @@ export function Page({
   const loading = title === null
   const contentActions = actions && !actionsInBar ? actions : null
   const dragsWindow = useToolbarDragRegion()
+  // The title in the content: the display title of a detail screen from 768 px, the large title on phones.
+  const titleInContent = !toolbarLayout || !!back
 
   return (
     <>
@@ -141,7 +157,7 @@ export function Page({
       >
         <div
           aria-hidden="true"
-          className="material-bar pointer-events-none absolute inset-0 border-b border-material-edge opacity-0 transition-opacity duration-200 ease-out group-data-scrolled/toolbar:opacity-100"
+          className="material-bar pointer-events-none absolute inset-0 border-b border-border opacity-0 transition-opacity duration-200 ease-out group-data-scrolled/toolbar:opacity-100"
         />
         <div
           className={cn(
@@ -150,66 +166,79 @@ export function Page({
             "md:flex md:gap-3",
           )}
         >
-          <div className="flex min-w-0 items-center empty:hidden">
-            {back ? <BackControl back={back} compact={toolbarLayout} labelHidden={titleUnder} /> : toolbarLayout ? null : <PhoneSettingsLink />}
-          </div>
           {toolbarLayout ? (
-            <h1
-              title={hoverTitle}
-              className="min-w-0 flex-1 truncate text-[15px] leading-5 font-semibold tracking-[-0.01em] pointer-coarse:text-[17px]"
-            >
-              {loading ? (
-                <>
-                  <Bar className="h-4 w-56 max-w-full align-middle" />
-                  <span className="sr-only">Loading…</span>
-                </>
-              ) : (
-                title
-              )}
-            </h1>
+            back ? (
+              <Breadcrumb
+                back={back}
+                hoverTitle={hoverTitle}
+                current={loading ? <Bar className="h-4 w-48 max-w-full align-middle" /> : title}
+              />
+            ) : (
+              <h1 title={hoverTitle} className="min-w-0 flex-1 truncate text-[15px] leading-5 font-semibold tracking-[-0.011em]">
+                {loading ? (
+                  <>
+                    <Bar className="h-4 w-56 max-w-full align-middle" />
+                    <span className="sr-only">Loading…</span>
+                  </>
+                ) : (
+                  title
+                )}
+              </h1>
+            )
           ) : (
-            <p
-              aria-hidden="true"
-              data-shown={titleUnder || undefined}
-              className="max-w-0 min-w-0 truncate text-center text-[17px] font-semibold opacity-0 transition-opacity duration-200 ease-out data-shown:max-w-[50vw] data-shown:opacity-100"
-            >
-              {loading ? null : title}
-            </p>
+            <>
+              <div className="flex min-w-0 items-center empty:hidden">
+                {back ? <BackControl back={back} labelHidden={titleUnder} /> : <PhoneSettingsLink />}
+              </div>
+              <p
+                aria-hidden="true"
+                data-shown={titleUnder || undefined}
+                className="max-w-0 min-w-0 truncate text-center text-[17px] font-semibold opacity-0 transition-opacity duration-200 ease-out data-shown:max-w-[50vw] data-shown:opacity-100"
+              >
+                {loading ? null : title}
+              </p>
+            </>
           )}
-          <div className="flex items-center justify-end gap-2 empty:hidden">
+          <div className="flex items-center justify-end gap-2 empty:hidden max-md:[&_[data-slot=button]]:rounded-full">
             {actionsInBar ? actions : toolbarLayout ? null : barActions}
           </div>
         </div>
       </header>
 
-      <div className={cn(column, "pt-1 pb-6 md:pt-4 lg:pb-8", className)}>
-        {toolbarLayout ? null : (
-          <h1 ref={largeTitle} className="text-[28px] leading-tight font-semibold tracking-[-0.02em] break-words">
+      <div className={cn(column, "pt-1 pb-6 md:pt-4 lg:pb-8", back && toolbarLayout && "md:pt-6", className)}>
+        {titleInContent ? (
+          <h1
+            ref={largeTitle}
+            className="text-[28px] leading-[1.1] font-semibold tracking-[-0.03em] text-balance break-words md:text-[32px]"
+          >
             {loading ? (
               <>
-                <Bar className="h-7 w-64 max-w-full align-middle" />
+                <Bar className="h-7 w-72 max-w-full align-middle md:h-8" />
                 <span className="sr-only">Loading…</span>
               </>
             ) : (
               title
             )}
           </h1>
-        )}
+        ) : null}
         {meta || contentActions ? (
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 max-md:mt-1.5">
+          <div className={cn("mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3", titleInContent && "mt-3")}>
             {meta ? <div className="min-w-0 text-sm text-muted-foreground">{meta}</div> : null}
             {contentActions ? <div className="flex flex-wrap items-center gap-2">{contentActions}</div> : null}
           </div>
-        ) : toolbarLayout ? null : (
-          <div className="mb-5" />
-        )}
+        ) : titleInContent ? (
+          <div className="mb-6" />
+        ) : null}
         {children}
       </div>
     </>
   )
 }
 
-/** A bordered panel with a section heading (15 px on pointer-fine, 16 px on touch). No shadow. */
+/**
+ * A card (DESIGN.md, Components): --muted, 16 px corners, no border, no shadow, with an optional
+ * header row (a 15 px title, a description, actions). Never put a card inside a card.
+ */
 export function Panel({
   title,
   description,
@@ -228,9 +257,9 @@ export function Panel({
   id?: string
 }) {
   return (
-    <section id={id} className={cn("rounded-xl border bg-card", className)}>
+    <section id={id} className={cn("rounded-xl bg-muted", className)}>
       {title || actions ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-3.5 pb-1">
           <div className="min-w-0">
             {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
             {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}

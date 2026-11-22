@@ -6,8 +6,8 @@ import { sampleLabel } from "./run-data"
 
 /** Answering gets the ink and a gray dot; thinking and waiting stay gray. Copper is for the data. */
 function Phase({ phase }: { phase: LiveSequence["phase"] }) {
-  if (phase === "answering") return <Pill tone="neutral">Answering</Pill>
-  if (phase === "thinking") return <Pill>Thinking</Pill>
+  if (phase === "answering") return <Pill tone="positive">Answering</Pill>
+  if (phase === "thinking") return <Pill tone="accent">Thinking</Pill>
   return <Pill>Waiting</Pill>
 }
 
@@ -42,7 +42,7 @@ export function InFlightList({
             <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular">
               <span>{count(s.tokens, "token", "tokens")}</span>
               <span>{duration(s.elapsed_ms)}</span>
-              {s.attempt > 1 ? <span className="text-warning-ink">attempt {int(s.attempt)}</span> : null}
+              {s.attempt > 1 ? <span className="text-coral-ink">attempt {int(s.attempt)}</span> : null}
             </div>
             {s.tail ? (
               <div

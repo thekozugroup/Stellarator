@@ -23,8 +23,8 @@ function PromptRow({ n, messages }: { n: number; messages: Message[] }) {
   }, [sig, open])
 
   return (
-    <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 border-b px-4 py-3 last:border-b-0">
-      <span className="pt-0.5 font-mono text-[13px] tabular text-muted-foreground">#{int(n)}</span>
+    <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 rounded-sm bg-background px-3 py-3">
+      <span className="pt-0.5 font-mono tabular text-muted-foreground">{int(n)}</span>
       <div className="min-w-0 space-y-1.5">
         {system ? (
           <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -96,11 +96,11 @@ export function PreviewPanel({
           </span>
         ) : null
       }
-      bodyClassName="p-0"
+      bodyClassName="p-2 pt-1"
       className="min-w-0"
     >
       {preview && preview.warnings.length > 0 ? (
-        <ul className="m-4 mb-0 space-y-1 rounded-lg bg-warning-tint px-4 py-3 text-sm text-warning-ink">
+        <ul className="mb-2 space-y-1 rounded-sm bg-coral-tint px-3 py-2.5 text-sm text-coral-ink">
           {preview.warnings.map((w, i) => (
             <li key={i}>{w}</li>
           ))}
@@ -108,27 +108,39 @@ export function PreviewPanel({
       ) : null}
 
       {showDropped && preview && preview.dropped.length > 0 ? (
-        <p className="px-4 pt-3 text-xs text-muted-foreground">Responses left out: {preview.dropped.join(", ")}.</p>
+        <p className="mb-2 px-2 text-xs text-muted-foreground">Responses left out: {preview.dropped.join(", ")}.</p>
+      ) : null}
+
+      {preview && preview.columns.length > 0 ? (
+        <p className="mb-2 px-2 text-xs text-muted-foreground">
+          Columns:{" "}
+          {preview.columns.map((c, i) => (
+            <span key={c.name}>
+              {i > 0 ? ", " : null}
+              <span className="font-mono">{c.name}</span>
+            </span>
+          ))}
+        </p>
       ) : null}
 
       {error && !preview ? (
-        <div className="p-4">
+        <div>
           <ErrorBlock message={error} onRetry={hasSource ? onRetry : undefined} />
         </div>
       ) : preview ? (
         preview.prompts.length === 0 ? (
-          <EmptyBlock className="px-4">No prompts came out of this source with these settings. Try another split or column.</EmptyBlock>
+          <EmptyBlock className="px-2">No prompts came out of this source with these settings. Try another split or column.</EmptyBlock>
         ) : (
-          <ol className={cn("transition-opacity duration-200", updating && "opacity-70")}>
+          <ol className={cn("grid gap-2 transition-opacity duration-200", updating && "opacity-70")}>
             {preview.prompts.map((m, i) => (
               <PromptRow key={i} n={i + 1} messages={m} />
             ))}
           </ol>
         )
       ) : loading ? (
-        <div aria-busy="true" aria-label="Loading preview" className="divide-y">
+        <div aria-busy="true" aria-label="Loading preview" className="grid gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 px-4 py-3">
+            <div key={i} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 rounded-sm bg-background px-3 py-3">
               <Bar className="h-[1.25rem] w-6" />
               <div className="space-y-2">
                 <Bar className="h-4 w-full" />
@@ -139,7 +151,7 @@ export function PreviewPanel({
           ))}
         </div>
       ) : (
-        <EmptyBlock className="px-4">{emptyHint ?? "No source yet."}</EmptyBlock>
+        <EmptyBlock className="px-2">{emptyHint ?? "No source yet."}</EmptyBlock>
       )}
     </Panel>
   )

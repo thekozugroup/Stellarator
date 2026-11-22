@@ -1,5 +1,5 @@
-import { Field } from "@/components/shared/field"
-import { INFO_ROW, InfoTip } from "@/components/shared/info-tip"
+import { FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
+import { InfoTip } from "@/components/shared/info-tip"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,7 +32,7 @@ function ColumnSelect({
   info: string
 }) {
   return (
-    <Field id={id} label={label} info={info}>
+    <FormRow id={id} label={label} info={info}>
       <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)}>
         <SelectTrigger id={id} className="w-full">
           <SelectValue />
@@ -41,13 +41,13 @@ function ColumnSelect({
           {optional ? <SelectItem value={NONE}>None</SelectItem> : null}
           {[...columns.filter((c) => !c.looks_like_output), ...columns.filter((c) => c.looks_like_output)].map((c) => (
             <SelectItem key={c.name} value={c.name}>
-              <span className="font-mono text-[13px]">{c.name}</span>
+              <span className="font-mono text-xs">{c.name}</span>
               <span className="text-muted-foreground"> · {c.looks_like_output ? "output" : kindLabel(c)}</span>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-    </Field>
+    </FormRow>
   )
 }
 
@@ -91,61 +91,57 @@ export function MappingFields({
   const tabular = preview.columns.length > 0
   const autoHint = splitMode === "auto" && splitHint(preview.split_mode) ? `Automatic: ${splitHint(preview.split_mode)}.` : undefined
   return (
-    <div className="grid gap-4">
-      {tabular ? (
-        <>
-          <ColumnSelect
-            id="map-prompt"
-            label="Prompt column"
-            columns={preview.columns}
-            value={promptField === undefined ? preview.prompt_field : promptField}
-            onChange={onPromptField}
-            info={INFO.promptColumn}
-          />
-          <ColumnSelect
-            id="map-system"
-            label="System prompt column"
-            columns={preview.columns}
-            value={systemField === undefined ? preview.system_field : systemField}
-            onChange={onSystemField}
-            optional
-            info={INFO.systemColumn}
-          />
-          {preview.has_conversations ? (
-            <div className="grid gap-1.5">
-              <div className={INFO_ROW}>
-                <span id="map-turns-label" className="text-sm leading-none font-medium">
-                  Prompt
-                </span>
-                <InfoTip label="Prompt">{INFO.turns}</InfoTip>
-              </div>
-              <Tabs value={turns} onValueChange={(v) => onTurns(v as Turns)}>
-                <TabsList aria-labelledby="map-turns-label" className="w-full">
-                  <TabsTrigger value="first_user">First user turn</TabsTrigger>
-                  <TabsTrigger value="up_to_last_user">Whole conversation</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          ) : null}
-        </>
-      ) : (
-        <Field id="map-split" label="Split into prompts" hint={autoHint} info={INFO.splitText}>
-          <Select value={splitMode} onValueChange={(v) => onSplitMode(v as SplitMode)}>
-            <SelectTrigger id="map-split" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SPLIT_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      )}
-      <div className="grid grid-cols-2 items-start gap-4">
-        <Field
+    <>
+      <FormGroup title={tabular ? "Mapping" : undefined}>
+        {tabular ? (
+          <>
+            <ColumnSelect
+              id="map-prompt"
+              label="Prompt column"
+              columns={preview.columns}
+              value={promptField === undefined ? preview.prompt_field : promptField}
+              onChange={onPromptField}
+              info={INFO.promptColumn}
+            />
+            <ColumnSelect
+              id="map-system"
+              label="System prompt column"
+              columns={preview.columns}
+              value={systemField === undefined ? preview.system_field : systemField}
+              onChange={onSystemField}
+              optional
+              info={INFO.systemColumn}
+            />
+            {preview.has_conversations ? (
+              <FormRow group label="Prompt" info={INFO.turns} align="end">
+                <Tabs value={turns} onValueChange={(v) => onTurns(v as Turns)}>
+                  <TabsList aria-label="Prompt" className="w-full">
+                    <TabsTrigger value="first_user">First user turn</TabsTrigger>
+                    <TabsTrigger value="up_to_last_user">Whole conversation</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </FormRow>
+            ) : null}
+          </>
+        ) : (
+          <FormRow id="map-split" label="Split into prompts" hint={autoHint} info={INFO.splitText}>
+            <Select value={splitMode} onValueChange={(v) => onSplitMode(v as SplitMode)}>
+              <SelectTrigger id="map-split" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SPLIT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+        )}
+      </FormGroup>
+      <FormGroup>
+        <FormRow
           id="map-offset"
           label={tabular ? "Skip rows" : "Skip prompts"}
           error={offsetError}
@@ -160,8 +156,8 @@ export function MappingFields({
             aria-invalid={offsetError ? true : undefined}
             aria-describedby={offsetError ? "map-offset-error" : undefined}
           />
-        </Field>
-        <Field id="map-limit" label="Import at most" error={limitError} info={tabular ? INFO.limitRows : INFO.limitPrompts}>
+        </FormRow>
+        <FormRow id="map-limit" label="Import at most" error={limitError} info={tabular ? INFO.limitRows : INFO.limitPrompts}>
           <Input
             id="map-limit"
             inputMode="numeric"
@@ -172,15 +168,15 @@ export function MappingFields({
             aria-invalid={limitError ? true : undefined}
             aria-describedby={limitError ? "map-limit-error" : undefined}
           />
-        </Field>
-      </div>
-      <div className="flex items-center gap-1">
-        <Label htmlFor="map-dedupe" className="flex min-h-9 items-center gap-2.5 text-sm font-medium pointer-coarse:min-h-11">
-          <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
-          Remove duplicate prompts
-        </Label>
-        <InfoTip label="Remove duplicate prompts">{INFO.dedupe}</InfoTip>
-      </div>
-    </div>
+        </FormRow>
+        <FormItem className="flex items-center gap-1">
+          <Label htmlFor="map-dedupe" className="flex min-h-7 items-center gap-2.5 text-sm font-normal pointer-coarse:min-h-11">
+            <Checkbox id="map-dedupe" checked={dedupe} onCheckedChange={(v) => onDedupe(v === true)} />
+            Remove duplicate prompts
+          </Label>
+          <InfoTip label="Remove duplicate prompts">{INFO.dedupe}</InfoTip>
+        </FormItem>
+      </FormGroup>
+    </>
   )
 }

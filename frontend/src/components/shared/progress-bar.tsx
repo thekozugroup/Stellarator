@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils"
 import { int } from "@/lib/format"
 
 /**
- * Progress at its true ratio. Done is copper, failed is red, both labelled in text beside it.
- * Updates in place; the width transition is short and has no travel under reduced motion.
+ * Progress at its true ratio (DESIGN.md, Components): a 6 px capsule, periwinkle for done and red
+ * for failed on a --secondary track, always labelled in text beside it. Updates in place; the
+ * width transition is short and has no travel under reduced motion.
  */
 export function ProgressBar({
   done,
@@ -27,9 +28,9 @@ export function ProgressBar({
       aria-valuemax={total}
       aria-valuenow={done + failed}
       aria-label={label ?? `${int(done)} of ${int(total)} done${failed ? `, ${int(failed)} failed` : ""}`}
-      className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-muted", className)}
+      className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-secondary", className)}
     >
-      <div className="h-full bg-copper transition-[width] duration-300 ease-out" style={{ width: `${d}%` }} />
+      <div className="h-full bg-periwinkle transition-[width] duration-300 ease-out" style={{ width: `${d}%` }} />
       <div className="h-full bg-destructive transition-[width] duration-300 ease-out" style={{ width: `${f}%` }} />
     </div>
   )

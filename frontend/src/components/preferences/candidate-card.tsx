@@ -51,7 +51,7 @@ export function CandidateCard({
       data-mark={mark ?? undefined}
       className={cn(
         "min-w-0 rounded-lg border bg-card",
-        mark === "chosen" && "border-copper ring-1 ring-copper",
+        mark === "chosen" && "border-periwinkle ring-1 ring-periwinkle",
         mark === "rejected" && "border-foreground/40",
       )}
     >
@@ -94,7 +94,7 @@ export function CandidateCard({
       <div className="grid min-w-0 gap-4 px-4 py-4 [&>*]:min-w-0">
         {truncated ? (
           <div>
-            <Pill tone="warning">Truncated</Pill>
+            <Pill tone="attention">Truncated</Pill>
           </div>
         ) : null}
 
@@ -164,7 +164,7 @@ function MarkButton({
         "transition-[background-color,border-color,color] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         // Pressed reads as selected by its border and icon, never as the heaviest fill on screen.
-        // The card's own border carries the copper; the button just reads as pressed.
+        // The card's own border carries the accent; the button just reads as pressed.
         pressed
           ? "border-foreground bg-muted text-foreground ring-1 ring-foreground"
           : "border-input bg-background text-foreground hover:bg-muted",

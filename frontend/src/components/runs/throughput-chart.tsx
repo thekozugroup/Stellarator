@@ -103,7 +103,7 @@ function AxisNames() {
   const right = plot.x + plot.width + SEQS_AXIS_W
   return (
     <g aria-hidden="true" fontSize={12} fill="var(--muted-foreground)">
-      <line x1={0} x2={10} y1={y - 4} y2={y - 4} stroke="var(--copper)" strokeWidth={2} />
+      <line x1={0} x2={10} y1={y - 4} y2={y - 4} stroke="var(--periwinkle)" strokeWidth={2} />
       <text x={14} y={y}>
         tok/s
       </text>
@@ -116,7 +116,7 @@ function AxisNames() {
 }
 
 /**
- * The run's signature: output tokens per second as a copper line over a flat tint, with the seqs
+ * The run's signature: output tokens per second as a periwinkle line over a flat tint, with the seqs
  * setting as a gray step line on its own scale, so the effect of changing seqs shows. Updates in
  * place; nothing animates.
  */
@@ -216,12 +216,12 @@ export function ThroughputChart({
             yAxisId="tps"
             dataKey="tps"
             type="linear"
-            stroke="var(--copper)"
+            stroke="var(--periwinkle)"
             strokeWidth={2}
-            fill="var(--copper)"
+            fill="var(--periwinkle)"
             fillOpacity={0.14}
             dot={false}
-            activeDot={{ r: 3, fill: "var(--copper)", stroke: "var(--background)", strokeWidth: 2 }}
+            activeDot={{ r: 3, fill: "var(--periwinkle)", stroke: "var(--background)", strokeWidth: 2 }}
             isAnimationActive={false}
           />
           <Line

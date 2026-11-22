@@ -8,17 +8,15 @@ export function ImportModeToggle({ value, onChange }: { value: ImportMode; onCha
     <div className="flex items-center gap-1.5">
       <ToggleGroup
         type="single"
-        size="sm"
-        variant="outline"
         spacing={0}
         value={value}
         onValueChange={(v) => v && onChange(v as ImportMode)}
         aria-label="Import settings"
       >
-        <ToggleGroupItem value="simple" className="px-2.5 text-xs">
+        <ToggleGroupItem value="simple">
           Simple
         </ToggleGroupItem>
-        <ToggleGroupItem value="advanced" className="px-2.5 text-xs">
+        <ToggleGroupItem value="advanced">
           Advanced
         </ToggleGroupItem>
       </ToggleGroup>

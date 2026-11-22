@@ -66,7 +66,7 @@ function RunNotice({ run, endpointError }: { run: Run; endpointError: string | n
     <div
       className={cn(
         "mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm",
-        problem ? "rounded-lg bg-warning-tint px-3 py-2 text-warning-ink" : "text-muted-foreground",
+        problem ? "rounded-lg bg-coral-tint px-3 py-2 text-coral-ink" : "text-muted-foreground",
       )}
     >
       <p className="min-w-0 flex-1 basis-64">{text}</p>
@@ -211,7 +211,7 @@ export function RunDetailPage() {
       actions={<RunActions run={r} onExport={() => setExportOpen(true)} primaryElsewhere={problem.pending || !!problem.error} />}
     >
       {lostContact ? (
-        <p role="status" className="mb-4 flex flex-wrap items-center gap-x-3 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning-ink">
+        <p role="status" className="mb-4 flex flex-wrap items-center gap-x-3 rounded-lg bg-coral-tint px-3 py-2 text-sm text-coral-ink">
           Lost contact with the Stellarator server. Showing figures from {time(new Date(live.dataUpdatedAt).toISOString())}.
           <Button variant="outline" size="sm" className="bg-background" onClick={() => void live.refetch()}>
             Retry

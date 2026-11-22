@@ -47,6 +47,13 @@ tauri-plugin-window-state = "2"
 tokio = { version = "1", features = ["time"] }
 tracing = "0.1"
 
+# AppKit calls for the main window's toolbar shape and the macOS version (titlebar.rs). The same
+# versions Tauri uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSToolbar", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString"] }
+
 [dev-dependencies]
 tempfile = "3"
 # Mock runtime: tests check the capability files against the app's real ACL.

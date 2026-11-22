@@ -48,7 +48,7 @@ function StepButton({ step, direction }: { step: Step; direction: "prev" | "next
  */
 export function StepPair({ prev, next, className }: { prev: Step; next: Step; className?: string }) {
   return (
-    <div className={cn("inline-flex items-center gap-px rounded-full border border-control-edge bg-control p-px shadow-xs", className)}>
+    <div className={cn("inline-flex items-center gap-0.5 rounded-full bg-secondary p-0.5", className)}>
       <StepButton step={prev} direction="prev" />
       <StepButton step={next} direction="next" />
     </div>

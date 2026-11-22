@@ -65,7 +65,7 @@ function Facts({ sample }: { sample: Sample }) {
   ].filter(Boolean)
   const failed = sample.status === "failed"
   const all: [string, ReactNode, boolean][] = [
-    ["Finish reason", finish ? <span className={finish.warn ? "text-warning-ink" : undefined}>{finish.text}</span> : DASH, !!finish],
+    ["Finish reason", finish ? <span className={finish.warn ? "text-coral-ink" : undefined}>{finish.text}</span> : DASH, !!finish],
     ["Tokens", tokenParts.length ? tokenParts.join(" · ") : DASH, tokenParts.length > 0],
     ["Latency", duration(sample.latency_ms), sample.latency_ms !== null],
     ["Time to first token", duration(sample.ttft_ms), sample.ttft_ms !== null],
@@ -110,7 +110,7 @@ function Body({ sample }: { sample: Sample }) {
         ) : sample.status === "failed" ? (
           <p className="text-sm text-destructive [overflow-wrap:anywhere]">{sample.error ?? "The request failed."}</p>
         ) : sample.status === "done" && sample.finish_reason === "length" ? (
-          <p className="text-sm text-warning-ink">No answer: max tokens hit while thinking.</p>
+          <p className="text-sm text-coral-ink">No answer: max tokens hit while thinking.</p>
         ) : sample.status === "done" ? (
           <p className="text-sm text-muted-foreground">The model returned an empty response.</p>
         ) : (

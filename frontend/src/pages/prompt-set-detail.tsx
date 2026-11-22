@@ -7,16 +7,20 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ProgressBar } from "@/components/shared/progress-bar"
+import { Chip, ChipRow } from "@/components/shared/chip"
+import { Plasma } from "@/components/shared/plasma"
+import { StatusBadge } from "@/components/shared/status-pill"
+import { Tile, Tiles } from "@/components/shared/tiles"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
 import { DeletePromptSetDialog } from "@/components/prompts/delete-prompt-set-dialog"
 import { PromptRow, PromptRowsSkeleton } from "@/components/prompts/prompt-row"
-import { importingInterval } from "@/components/prompts/set-status"
+import { importingInterval, statusLabel } from "@/components/prompts/set-status"
 import { StopImportDialog } from "@/components/prompts/stop-import-dialog"
 import { RenamePromptSetDialog } from "@/components/prompts/rename-prompt-set-dialog"
-import { describeSource } from "@/components/prompts/source"
+import { sourceParts } from "@/components/prompts/source"
 import { api, qs } from "@/lib/api"
-import { count, int } from "@/lib/format"
+import { int, relative } from "@/lib/format"
 import type { Page as PageOf, Prompt, PromptSet } from "@/lib/types"
 
 const PAGE_SIZE = 50
@@ -89,6 +93,7 @@ export function PromptSetDetailPage() {
   }
 
   const set = setQuery.data
+  const parts = set ? sourceParts(set) : null
   const data = prompts.data
   const total = data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -109,15 +114,17 @@ export function PromptSetDetailPage() {
       title={set ? set.name : null}
       meta={
         set ? (
-          <span>
-            {describeSource(set)} · <span className="tabular">{count(set.prompt_count, "prompt", "prompts")}</span>
-            {set.status === "ready" ? (
-              <>
-                {" "}
-                · <span className="tabular">{count(set.run_count, "run", "runs")}</span>
-              </>
+          <ChipRow>
+            {set.status !== "ready" ? (
+              <StatusBadge tone={set.status === "importing" ? "positive" : "negative"}>{statusLabel[set.status]}</StatusBadge>
             ) : null}
-          </span>
+            <Chip mono={!!parts?.id} leading={<Plasma seed={`prompt-set-${set.id}`} className="size-5 rounded-xs" cells={5} />}>
+              {parts?.id ?? parts?.kind}
+            </Chip>
+            {parts?.id ? <Chip>{parts.kind}</Chip> : null}
+            {parts?.where ? <Chip mono>{parts.where}</Chip> : null}
+            <Chip title={set.created_at}>Created {relative(set.created_at)}</Chip>
+          </ChipRow>
         ) : (
           <Bar className="w-72 max-w-full" />
         )
@@ -133,7 +140,7 @@ export function PromptSetDetailPage() {
             {set.status === "importing" ? null : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="More actions">
+                <Button variant="secondary" size="icon" aria-label="More actions">
                   <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
@@ -150,15 +157,25 @@ export function PromptSetDetailPage() {
         ) : null
       }
     >
+      {set ? (
+        <Tiles className="mb-6">
+          <Tile label="Prompts" value={int(set.prompt_count)} />
+          {set.status === "ready" ? <Tile label="Runs" value={int(set.run_count)} /> : null}
+          {set.status === "ready" && set.rows_read > 0 && set.rows_read !== set.prompt_count ? (
+            <Tile label="Rows read" value={int(set.rows_read)} />
+          ) : null}
+        </Tiles>
+      ) : null}
+
       {set?.status === "importing" ? (
-        <div className="mb-6 grid gap-2.5 rounded-xl border bg-card p-4">
+        <div className="mb-6 grid gap-3 rounded-xl bg-muted p-4">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <p role="status" className="text-sm tabular">
               Importing… {int(set.rows_read)}
               {set.rows_total !== null ? ` of ${int(set.rows_total)}` : ""} rows
               {set.status_detail ? <span className="text-muted-foreground"> · {set.status_detail}</span> : null}
             </p>
-            <Button variant="outline" onClick={() => setStopping(true)}>
+            <Button variant="secondary" onClick={() => setStopping(true)} className="bg-background dark:bg-secondary">
               Stop import
             </Button>
           </div>
@@ -167,9 +184,9 @@ export function PromptSetDetailPage() {
           ) : null}
         </div>
       ) : set?.status === "failed" ? (
-        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg bg-warning-tint px-4 py-3 text-sm text-warning-ink">
+        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl bg-coral-tint p-4 text-sm text-coral-ink">
           <p className="min-w-0">{set.status_detail ?? "The import failed."}</p>
-          <Button variant="outline" size="sm" className="bg-background" onClick={() => setDeleting(true)}>
+          <Button variant="secondary" className="bg-background dark:bg-secondary" onClick={() => setDeleting(true)}>
             Delete set
           </Button>
         </div>
@@ -203,13 +220,13 @@ export function PromptSetDetailPage() {
       ) : !data ? (
         <PromptRowsSkeleton />
       ) : data.items.length === 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-6 text-sm text-muted-foreground">
+        <div className="rounded-xl bg-muted p-6 text-sm text-muted-foreground">
           {q ? (
             <p>
               No prompt contains “{q}”.{" "}
               <button
                 type="button"
-                className="rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+                className="rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 onClick={() => setDraft("")}
               >
                 Clear search
@@ -220,7 +237,7 @@ export function PromptSetDetailPage() {
               There is no page {int(page)}.{" "}
               <button
                 type="button"
-                className="rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+                className="rounded-sm text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 onClick={() => goToPage(1)}
               >
                 Go to page 1
@@ -231,23 +248,29 @@ export function PromptSetDetailPage() {
           )}
         </div>
       ) : (
-        <ul className={`divide-y overflow-hidden rounded-xl border bg-card transition-opacity duration-150 ${prompts.isFetching ? "opacity-60" : ""}`}>
-          {data.items.map((p) => (
-            <PromptRow key={p.id} prompt={p} />
-          ))}
-        </ul>
+        <div className={`transition-opacity duration-150 ${prompts.isFetching ? "opacity-60" : ""}`}>
+          <div aria-hidden="true" className="grid grid-cols-[3rem_1fr] gap-x-2 rounded-md bg-muted px-4 py-2 text-xs text-muted-foreground pointer-coarse:py-3">
+            <span>#</span>
+            <span>Prompt</span>
+          </div>
+          <ul>
+            {data.items.map((p) => (
+              <PromptRow key={p.id} prompt={p} />
+            ))}
+          </ul>
+        </div>
       )}
 
       {data && total > PAGE_SIZE ? (
         <nav aria-label="Pages" className="mt-4 flex items-center justify-between gap-3">
-          <Button variant="outline" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+          <Button variant="secondary" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
             <ChevronLeft aria-hidden="true" />
             Previous
           </Button>
           <span className="text-sm text-muted-foreground tabular">
             Page {int(Math.min(page, pages))} of {int(pages)}
           </span>
-          <Button variant="outline" disabled={page >= pages} onClick={() => goToPage(page + 1)}>
+          <Button variant="secondary" disabled={page >= pages} onClick={() => goToPage(page + 1)}>
             Next
             <ChevronRight aria-hidden="true" />
           </Button>

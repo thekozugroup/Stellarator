@@ -80,7 +80,7 @@ export function InfoTip({ label, children, className }: { label: string; childre
           }}
           className={cn(
             "relative -my-[3px] inline-flex size-5 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors outline-none", // taste-ignore: outline-check -- the next line draws the focus-visible ring
-            "hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring data-[state=open]:text-foreground",
+            "hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:text-foreground",
             "after:absolute after:-inset-0.5 after:content-[''] pointer-coarse:after:-inset-x-3 pointer-coarse:after:-top-[13px] pointer-coarse:after:-bottom-[11px]",
             className,
           )}

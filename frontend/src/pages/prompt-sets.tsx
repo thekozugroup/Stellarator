@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Plus, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { PromptSetTable, PromptSetTableSkeleton } from "@/components/prompts/prompt-set-table"
 import { importingInterval } from "@/components/prompts/set-status"
@@ -44,11 +45,10 @@ export function PromptSetsPage() {
       ) : query.isError ? (
         <ErrorBlock message={`Couldn’t load prompt sets. ${query.error.message}`} onRetry={() => query.refetch()} />
       ) : sets.length === 0 ? (
-        <div className="border-y">
-          <EmptyBlock action={importLink}>
-            No prompt sets yet. Import from Hugging Face, a file or pasted text.
-          </EmptyBlock>
-        </div>
+        <EmptyBlock action={importLink} className="gap-4 rounded-xl bg-muted p-6">
+          <Plasma seed="prompt-set-empty" cells={8} className="size-14 rounded-md" />
+          <p>No prompt sets yet. Import from Hugging Face, a file or pasted text.</p>
+        </EmptyBlock>
       ) : (
         <PromptSetTable sets={sets} />
       )}

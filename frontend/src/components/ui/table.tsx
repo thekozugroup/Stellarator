@@ -2,10 +2,11 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /*
- * A macOS list (DESIGN.md, Components): no box around it, hairline separators between rows, a
- * column header in 12 px secondary text that stays under the toolbar while the page scrolls.
- * - Rows are 32 px on pointer-fine and 44 pt on touch. Hover is a neutral tint; the selected row
- *   (aria-selected or data-state="selected") is --accent, never copper.
+ * A data list (DESIGN.md, Components): no box around it. The column header is a --muted band with
+ * 10 px corners and 12 px muted labels that stays under the toolbar while the page scrolls; rows
+ * are divided by hairlines.
+ * - Rows are 44 px (52 px on touch). The row under the pointer, and the selected row (aria-selected
+ *   or data-state="selected"), is --accent with 10 px corners; its own hairline hides.
  * - Header cells stick at --top-chrome (the toolbar) plus --sticky-below, which a page sets on an
  *   ancestor when it keeps its own sticky bar above the table.
  * - Numbers: give the cell `numeric` and the header above it too; they right-align in tabular
@@ -57,7 +58,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "transition-colors duration-150 hover:bg-foreground/4 has-[a:focus-visible]:bg-foreground/4 has-aria-expanded:bg-foreground/4 aria-selected:bg-accent data-[state=selected]:bg-accent",
+        "group/row [&>td]:transition-colors [&>td]:duration-150 [&>td:first-child]:rounded-l-md [&>td:last-child]:rounded-r-md hover:[&>td]:border-transparent hover:[&>td]:bg-accent has-[a:focus-visible]:[&>td]:bg-accent has-aria-expanded:[&>td]:bg-accent aria-selected:[&>td]:bg-accent data-[state=selected]:[&>td]:bg-accent",
         className
       )}
       {...props}
@@ -74,7 +75,7 @@ function TableHead({
     <th
       data-slot="table-head"
       className={cn(
-        "sticky top-[calc(var(--top-chrome)+var(--sticky-below,0px))] z-10 h-7 border-b bg-background px-3 text-left align-middle text-xs font-normal whitespace-nowrap text-muted-foreground pointer-coarse:h-11 [&:has([role=checkbox])]:pr-0",
+        "sticky top-[calc(var(--top-chrome)+var(--sticky-below,0px))] z-10 h-8 bg-background px-3 text-left align-middle text-xs font-normal whitespace-nowrap text-muted-foreground before:absolute before:inset-0 before:-z-10 before:bg-muted first:before:rounded-l-md last:before:rounded-r-md pointer-coarse:h-11 [&:has([role=checkbox])]:pr-0",
         numeric && "text-right tabular",
         className
       )}
@@ -92,7 +93,7 @@ function TableCell({
     <td
       data-slot="table-cell"
       className={cn(
-        "h-8 border-b px-3 py-1 align-middle whitespace-nowrap pointer-coarse:h-11 [&:has([role=checkbox])]:pr-0",
+        "h-11 border-b px-3 py-1 align-middle whitespace-nowrap pointer-coarse:h-13 [&:has([role=checkbox])]:pr-0",
         numeric && "text-right tabular",
         className
       )}

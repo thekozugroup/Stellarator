@@ -24,17 +24,20 @@ function Tabs({
 }
 
 /*
- * The default list is a macOS 26 segmented control: a capsule track (--segment-track) holding
- * capsule segments; the chosen one is raised (control fill, hairline, small shadow) with ink text
- * at weight 500, the others gray. 28 px tall on pointer-fine, 32 px elsewhere (44 pt on touch).
+ * Two looks (DESIGN.md, Components):
+ * - default: a segmented control. A --secondary track (10 px corners, 2 px padding) holding
+ *   8 px segments; the chosen one is raised (the ground in light, --accent in dark, 1 px shadow)
+ *   with ink text at 500, the others muted. 32 px tall (44 pt segments on touch).
+ * - line: tabs for switching views of one list. Labels on a full-width hairline; the current one
+ *   ink at 500 with a 2 px ink underline, the others muted.
  */
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit items-center justify-center text-muted-foreground group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  "group/tabs-list inline-flex w-fit items-center text-muted-foreground group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col",
   {
     variants: {
       variant: {
-        default: "gap-0 rounded-2xl bg-segment-track p-0.5 pointer-coarse:rounded-4xl",
-        line: "gap-1 bg-transparent group-data-horizontal/tabs:h-8 pointer-fine:group-data-horizontal/tabs:h-7",
+        default: "justify-center gap-0 rounded-md bg-secondary p-0.5",
+        line: "w-full justify-start gap-5 rounded-none border-b border-border bg-transparent group-data-horizontal/tabs:h-10",
       },
     },
     defaultVariants: {
@@ -67,10 +70,10 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-transparent px-3 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=default]/tabs-list:h-7 pointer-fine:group-data-[variant=default]/tabs-list:h-6 group-data-[variant=default]/tabs-list:data-active:border-control-edge group-data-[variant=default]/tabs-list:data-active:bg-control group-data-[variant=default]/tabs-list:data-active:font-medium group-data-[variant=default]/tabs-list:data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-xs",
-        "group-data-[variant=line]/tabs-list:h-full group-data-[variant=line]/tabs-list:rounded-md group-data-[variant=line]/tabs-list:data-active:text-foreground",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        "relative inline-flex items-center justify-center gap-1.5 border border-transparent text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group-data-[variant=default]/tabs-list:h-7 group-data-[variant=default]/tabs-list:flex-1 group-data-[variant=default]/tabs-list:rounded-sm group-data-[variant=default]/tabs-list:px-3 group-data-[variant=default]/tabs-list:data-active:bg-background group-data-[variant=default]/tabs-list:data-active:font-medium group-data-[variant=default]/tabs-list:data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-xs dark:group-data-[variant=default]/tabs-list:data-active:bg-accent",
+        "group-data-[variant=line]/tabs-list:h-full group-data-[variant=line]/tabs-list:rounded-xs group-data-[variant=line]/tabs-list:px-0 group-data-[variant=line]/tabs-list:data-active:font-medium group-data-[variant=line]/tabs-list:data-active:text-foreground",
+        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:-bottom-px group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
         className
       )}
       {...props}

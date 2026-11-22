@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { RotateCw } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { FormDisclosure, FormGroup, FormRow } from "@/components/shared/form-group"
+import { actionBarClass } from "@/components/shared/action-bar"
 import { Page } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
 import { ModelCombobox } from "@/components/runs/model-combobox"
 import { NumberStepper } from "@/components/runs/number-stepper"
 import { SeqsChoices } from "@/components/runs/seqs-choices"
@@ -202,7 +204,7 @@ function check(id: FieldId, f: Form): string | undefined {
       if (!v) return undefined
       try {
         const parsed: unknown = JSON.parse(v)
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "Enter a JSON object, like {\"key\": \"value\"}."
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return 'Enter a JSON object, like {"key": "value"}.'
         return undefined
       } catch (e) {
         return `This is not valid JSON: ${(e as Error).message}`
@@ -258,11 +260,14 @@ function describe(id: string, error?: string, hint?: boolean) {
 
 function FormSkeleton() {
   return (
-    <div className="max-w-[40rem] rounded-xl border" aria-busy="true" aria-label="Loading endpoints and prompt sets">
+    <div className="max-w-[40rem] rounded-xl bg-muted" aria-busy="true" aria-label="Loading endpoints and prompt sets">
       {["Endpoint", "Model", "Prompt set"].map((l) => (
-        <div key={l} className="flex h-11 items-center justify-between gap-4 border-b px-3 last:border-b-0">
+        <div
+          key={l}
+          className="relative flex h-11 items-center justify-between gap-4 px-3 not-first:before:absolute not-first:before:inset-x-3 not-first:before:top-0 not-first:before:h-px not-first:before:bg-border"
+        >
           <span className="text-sm">{l}</span>
-          <Bar className="h-7 w-48 max-w-[55%] rounded-lg" />
+          <Bar className="h-8 w-48 max-w-[55%] rounded-md" />
         </div>
       ))}
     </div>
@@ -278,7 +283,13 @@ interface Initial {
 }
 
 /** The form's first values: a previous run's settings (Run again), or URL prefills and sensible picks. */
-function initialState(eps: Endpoint[], ss: PromptSet[], runs: Run[] | undefined, source: Run | undefined, params: URLSearchParams): Initial {
+function initialState(
+  eps: Endpoint[],
+  ss: PromptSet[],
+  runs: Run[] | undefined,
+  source: Run | undefined,
+  params: URLSearchParams,
+): Initial {
   let form: Form = { ...DEFAULTS }
   let promptOpen = false
   let advancedOpen = false
@@ -339,7 +350,11 @@ export function NewRunPage() {
       {ready ? (
         <NewRunForm
           initial={initialState(endpoints.data, sets.data, runs.data, source.data, params)}
-          sourceError={fromId && source.isError ? `Couldn't copy the settings of run ${fromId}. ${source.error.message} Defaults are filled in instead.` : null}
+          sourceError={
+            fromId && source.isError
+              ? `Couldn't copy the settings of run ${fromId}. ${source.error.message} Defaults are filled in instead.`
+              : null
+          }
         />
       ) : endpoints.isError || sets.isError ? (
         <ErrorBlock
@@ -372,7 +387,10 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
   const [advancedOpen, setAdvancedOpen] = useState(initial.advancedOpen)
   const [focusRequest, setFocusRequest] = useState(0)
   const focusTarget = useRef<FieldId | null>(null)
-  const [modelsNote, setModelsNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [modelsNote, setModelsNote] = useState<{
+    ok: boolean
+    text: string
+  } | null>(null)
 
   // Focus the first field with an error once its section is open.
   useEffect(() => {
@@ -408,7 +426,12 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
       // Keep a model the new endpoint also lists, or a typed one when it lists none.
       model: !ep || (f.model && (ep.models.includes(f.model) || ep.models.length === 0)) ? f.model : suggestedModel(ep, runs.data),
     }))
-    setErrors((e) => ({ ...e, endpoint: undefined, model: undefined, concurrency: undefined }))
+    setErrors((e) => ({
+      ...e,
+      endpoint: undefined,
+      model: undefined,
+      concurrency: undefined,
+    }))
   }
 
   const refreshModels = useMutation({
@@ -416,9 +439,15 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
     onSuccess: (ep) => {
       queryClient.setQueryData<Endpoint[]>(["endpoints"], (list) => list?.map((e) => (e.id === ep.id ? ep : e)))
       if (ep.last_ok === false) {
-        setModelsNote({ ok: false, text: `Couldn't list models. ${ep.last_error ?? "The endpoint did not answer."}` })
+        setModelsNote({
+          ok: false,
+          text: `Couldn't list models. ${ep.last_error ?? "The endpoint did not answer."}`,
+        })
       } else {
-        setModelsNote({ ok: true, text: `Found ${count(ep.models.length, "model", "models")}.` })
+        setModelsNote({
+          ok: true,
+          text: `Found ${count(ep.models.length, "model", "models")}.`,
+        })
         if (ep.models.length === 1) setForm((f) => (f.model ? f : { ...f, model: ep.models[0] }))
       }
     },
@@ -478,14 +507,12 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
   }
 
   const samples = Number.parseInt(form.samples, 10)
-  const total = useMemo(() => {
+  const seqs = Number.parseInt(form.concurrency, 10)
+  const summary = useMemo(() => {
     if (!promptSet || !Number.isFinite(samples) || samples < 1) return null
-    return `${count(promptSet.prompt_count, "prompt", "prompts")} × ${count(samples, "sample", "samples")} = ${count(
-      promptSet.prompt_count * samples,
-      "request",
-      "requests",
-    )}`
-  }, [promptSet, samples])
+    const requests = count(promptSet.prompt_count * samples, "request", "requests")
+    return Number.isFinite(seqs) && seqs >= 1 ? `${requests} · ${int(seqs)} seqs` : requests
+  }, [promptSet, samples, seqs])
 
   const defaultName = form.model && promptSet ? `${form.model} on ${promptSet.name}` : ""
   const modelHint = modelsNote ? modelsNote.text : endpoint && !endpoint.models.length ? "No models listed. Type a model id." : null
@@ -515,387 +542,423 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           .join(", ")
       : "None"
 
-  const numberInput = "w-28 tabular"
+  const numberInput = "w-28 font-mono tabular md:text-xs pointer-coarse:text-[13px]"
 
   return (
-    <form onSubmit={submit} noValidate className="grid max-w-[40rem] gap-6">
-      {sourceError ? <ErrorBlock message={sourceError} /> : null}
+    <form onSubmit={submit} noValidate>
+      <div className="grid max-w-[40rem] gap-6">
+        {sourceError ? <ErrorBlock message={sourceError} /> : null}
 
-      <FormGroup>
-        <FormRow
-          id="endpoint"
-          label="Endpoint"
-          error={errors.endpoint}
-          hint={
-            endpoint && trouble ? (
-              <span className="text-sm">
-                <span className="text-destructive">{trouble === "Key rejected" ? "Key rejected at last check." : "Unreachable at last check."}</span>{" "}
-                <Link
-                  data-touch="inline"
-                  to={editEndpointHref(endpoint.id, `/runs/new?endpoint=${endpoint.id}${form.prompt_set ? `&prompt_set=${form.prompt_set}` : ""}`, troubleField(trouble))}
-                  className="inline-flex items-center text-foreground underline underline-offset-4"
+        <FormGroup title="Source">
+          <FormRow
+            id="endpoint"
+            label="Endpoint"
+            error={errors.endpoint}
+            hint={
+              endpoint && trouble ? (
+                <span className="text-sm">
+                  <span className="text-destructive">
+                    {trouble === "Key rejected" ? "Key rejected at last check." : "Unreachable at last check."}
+                  </span>{" "}
+                  <Link
+                    data-touch="inline"
+                    to={editEndpointHref(
+                      endpoint.id,
+                      `/runs/new?endpoint=${endpoint.id}${form.prompt_set ? `&prompt_set=${form.prompt_set}` : ""}`,
+                      troubleField(trouble),
+                    )}
+                    className="inline-flex items-center text-foreground underline underline-offset-4"
+                  >
+                    Edit endpoint
+                  </Link>
+                </span>
+              ) : endpoint ? (
+                <span className="font-mono [overflow-wrap:anywhere]">{endpoint.base_url}</span>
+              ) : undefined
+            }
+          >
+            {endpoints.data?.length ? (
+              <Select value={form.endpoint} onValueChange={chooseEndpoint}>
+                <SelectTrigger
+                  id="endpoint"
+                  className="w-full min-w-0"
+                  aria-invalid={!!errors.endpoint || undefined}
+                  aria-describedby={describe("endpoint", errors.endpoint, !!endpoint)}
                 >
-                  Edit endpoint
+                  {/* The field shows the name alone; a failed check is said once, in the line below. */}
+                  <SelectValue placeholder="Choose an endpoint">
+                    {endpoint ? (
+                      <>
+                        <Plasma seed={`endpoint-${endpoint.id}`} cells={5} className="size-5 rounded-xs" />
+                        <span className="truncate">{endpoint.name}</span>
+                      </>
+                    ) : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
+                  {endpoints.data.map((e) => {
+                    const t = endpointTrouble(e)
+                    return (
+                      <SelectItem key={e.id} value={String(e.id)}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Plasma seed={`endpoint-${e.id}`} cells={5} className="size-5 rounded-xs" />
+                          <span className="min-w-0 break-words">
+                            {e.name}{" "}
+                            <span className={t ? "text-destructive" : "text-muted-foreground"}>
+                              · {t ?? (e.location === "cloud" ? "Cloud" : "Local")}
+                            </span>
+                          </span>
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p id="endpoint" tabIndex={-1} className="text-sm text-muted-foreground">
+                No endpoints yet.{" "}
+                <Link data-touch="inline" to="/endpoints" className="text-foreground underline underline-offset-4">
+                  Add an endpoint
                 </Link>
-              </span>
-            ) : endpoint ? (
-              <span className="font-mono [overflow-wrap:anywhere]">{endpoint.base_url}</span>
-            ) : undefined
-          }
-        >
-          {endpoints.data?.length ? (
-            <Select value={form.endpoint} onValueChange={chooseEndpoint}>
-              <SelectTrigger
-                id="endpoint"
-                className="w-full min-w-0"
-                aria-invalid={!!errors.endpoint || undefined}
-                aria-describedby={describe("endpoint", errors.endpoint, !!endpoint)}
-              >
-                {/* The field shows the name alone; a failed check is said once, in the line below. */}
-                <SelectValue placeholder="Choose an endpoint">{endpoint ? <span className="truncate">{endpoint.name}</span> : undefined}</SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
-                {endpoints.data.map((e) => {
-                  const t = endpointTrouble(e)
-                  return (
-                    <SelectItem key={e.id} value={String(e.id)}>
-                      <span className="min-w-0 break-words">
-                        {e.name} <span className={t ? "text-destructive" : "text-muted-foreground"}>· {t ?? (e.location === "cloud" ? "Cloud" : "Local")}</span>
+              </p>
+            )}
+          </FormRow>
+
+          <FormRow id="model" label="Model" error={errors.model} hint={errors.model ? undefined : modelHint} hintLive>
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <ModelCombobox
+                  id="model"
+                  value={form.model}
+                  onChange={(m) => set("model", m)}
+                  models={endpoint?.models ?? []}
+                  invalid={!!errors.model}
+                  describedBy={errors.model ? "model-error" : modelHint ? "model-hint" : undefined}
+                  disabled={!endpoint}
+                />
+              </div>
+              {endpoint ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Refresh models"
+                  title="Refresh models"
+                  aria-busy={refreshModels.isPending || undefined}
+                  disabled={refreshModels.isPending}
+                  onClick={() => refreshModels.mutate(endpoint.id)}
+                >
+                  {/* taste-ignore: no-reduced-motion -- index.css disables animation under prefers-reduced-motion */}
+                  <RotateCw className={refreshModels.isPending ? "animate-spin" : undefined} aria-hidden="true" />
+                </Button>
+              ) : null}
+            </div>
+          </FormRow>
+
+          <FormRow id="prompt_set" label="Prompt set" error={errors.prompt_set}>
+            {sets.data?.length ? (
+              <Select value={form.prompt_set} onValueChange={(v) => set("prompt_set", v)}>
+                <SelectTrigger
+                  id="prompt_set"
+                  className="w-full min-w-0"
+                  aria-invalid={!!errors.prompt_set || undefined}
+                  aria-describedby={describe("prompt_set", errors.prompt_set)}
+                >
+                  {/* The field shows the name and size; the import date only helps tell same-named sets apart in the list. */}
+                  <SelectValue placeholder="Choose a prompt set">
+                    {promptSet ? (
+                      <>
+                        <Plasma seed={`prompt-set-${promptSet.id}`} cells={5} className="size-5 rounded-xs" />
+                        <span className="truncate">{promptSet.name}</span>
+                        <span className="text-muted-foreground tabular">· {count(promptSet.prompt_count, "prompt", "prompts")}</span>
+                      </>
+                    ) : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
+                  {sets.data.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)} disabled={s.status !== "ready"}>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Plasma seed={`prompt-set-${s.id}`} cells={5} className="size-5 rounded-xs" />
+                        <span className="min-w-0 break-words">
+                          {s.name}{" "}
+                          <span className="text-muted-foreground tabular">
+                            ·{" "}
+                            {s.status === "importing"
+                              ? "Importing"
+                              : s.status === "failed"
+                                ? "Failed"
+                                : count(s.prompt_count, "prompt", "prompts")}
+                            {s.status === "ready" && (sharedNames.get(s.name) ?? 0) > 1 ? ` · ${dateTime(s.created_at)}` : null}
+                          </span>
+                        </span>
                       </span>
                     </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p id="endpoint" tabIndex={-1} className="text-sm text-muted-foreground">
-              No endpoints yet.{" "}
-              <Link data-touch="inline" to="/endpoints" className="text-foreground underline underline-offset-4">
-                Add an endpoint
-              </Link>
-            </p>
-          )}
-        </FormRow>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p id="prompt_set" tabIndex={-1} className="text-sm text-muted-foreground">
+                No prompt sets yet.{" "}
+                <Link data-touch="inline" to="/prompts/import" className="text-foreground underline underline-offset-4">
+                  Import prompts
+                </Link>
+              </p>
+            )}
+          </FormRow>
+        </FormGroup>
 
-        <FormRow id="model" label="Model" error={errors.model} hint={errors.model ? undefined : modelHint} hintLive>
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <ModelCombobox
-                id="model"
-                value={form.model}
-                onChange={(m) => set("model", m)}
-                models={endpoint?.models ?? []}
-                invalid={!!errors.model}
-                describedBy={errors.model ? "model-error" : modelHint ? "model-hint" : undefined}
-                disabled={!endpoint}
-              />
-            </div>
-            {endpoint ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Refresh models"
-                title="Refresh models"
-                aria-busy={refreshModels.isPending || undefined}
-                disabled={refreshModels.isPending}
-                onClick={() => refreshModels.mutate(endpoint.id)}
-              >
-                <RotateCw className={refreshModels.isPending ? "animate-spin" : undefined} aria-hidden="true" />
-              </Button>
-            ) : null}
-          </div>
-        </FormRow>
-
-        <FormRow id="prompt_set" label="Prompt set" error={errors.prompt_set}>
-          {sets.data?.length ? (
-            <Select value={form.prompt_set} onValueChange={(v) => set("prompt_set", v)}>
-              <SelectTrigger
-                id="prompt_set"
-                className="w-full min-w-0"
-                aria-invalid={!!errors.prompt_set || undefined}
-                aria-describedby={describe("prompt_set", errors.prompt_set)}
-              >
-                {/* The field shows the name and size; the import date only helps tell same-named sets apart in the list. */}
-                <SelectValue placeholder="Choose a prompt set">
-                  {promptSet ? (
-                    <>
-                      <span className="truncate">{promptSet.name}</span>
-                      <span className="text-muted-foreground tabular">· {count(promptSet.prompt_count, "prompt", "prompts")}</span>
-                    </>
-                  ) : undefined}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper" className="max-w-(--radix-select-content-available-width)">
-                {sets.data.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)} disabled={s.status !== "ready"}>
-                    <span className="min-w-0 break-words">
-                      {s.name}{" "}
-                      <span className="text-muted-foreground tabular">
-                        · {s.status === "importing" ? "Importing" : s.status === "failed" ? "Failed" : count(s.prompt_count, "prompt", "prompts")}
-                        {s.status === "ready" && (sharedNames.get(s.name) ?? 0) > 1 ? ` · ${dateTime(s.created_at)}` : null}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p id="prompt_set" tabIndex={-1} className="text-sm text-muted-foreground">
-              No prompt sets yet.{" "}
-              <Link data-touch="inline" to="/prompts/import" className="text-foreground underline underline-offset-4">
-                Import prompts
-              </Link>
-            </p>
-          )}
-        </FormRow>
-      </FormGroup>
-
-      <FormGroup title="Requests">
-        <FormRow
-          id="concurrency"
-          label="Seqs"
-          align="end"
-          error={errors.concurrency}
-          hint={`${cloud ? "Stay under your provider's rate limit." : "Match your server's --max-num-seqs."} Changeable while running.`}
-        >
-          <NumberStepper
+        <FormGroup title="Requests">
+          <FormRow
             id="concurrency"
-            name="seqs"
-            value={form.concurrency}
-            onChange={(v) => set("concurrency", v)}
-            onBlur={blur("concurrency")}
-            min={1}
-            max={4096}
-            invalid={!!errors.concurrency}
-            describedBy={errors.concurrency ? "concurrency-error" : "concurrency-hint"}
-          />
-          <SeqsChoices value={Number(form.concurrency)} onChange={(n) => set("concurrency", String(n))} />
-        </FormRow>
-
-        <FormRow id="samples" label="Samples per prompt" align="end" error={errors.samples} hint="2 or more for preference pairs.">
-          <NumberStepper
-            id="samples"
-            name="samples per prompt"
-            value={form.samples}
-            onChange={(v) => set("samples", v)}
-            onBlur={blur("samples")}
-            min={1}
-            max={64}
-            invalid={!!errors.samples}
-            describedBy={errors.samples ? "samples-error" : "samples-hint"}
-          />
-        </FormRow>
-      </FormGroup>
-
-      <FormGroup title="Sampling">
-        <FormRow id="temperature" align="end" label="Temperature" optional hint="0–2. Empty: server default." error={errors.temperature}>
-          <Input
-            id="temperature"
-            inputMode="decimal"
-            value={form.temperature}
-            onChange={(e) => set("temperature", e.target.value)}
-            onBlur={blur("temperature")}
-            aria-invalid={!!errors.temperature || undefined}
-            aria-describedby={describe("temperature", errors.temperature, true)}
-            className={numberInput}
-          />
-        </FormRow>
-        <FormRow id="top_p" align="end" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
-          <Input
-            id="top_p"
-            inputMode="decimal"
-            value={form.top_p}
-            onChange={(e) => set("top_p", e.target.value)}
-            onBlur={blur("top_p")}
-            aria-invalid={!!errors.top_p || undefined}
-            aria-describedby={describe("top_p", errors.top_p, true)}
-            className={numberInput}
-          />
-        </FormRow>
-        <FormRow id="max_tokens" align="end" label="Max tokens" hint="Includes the thinking trace." error={errors.max_tokens}>
-          <Input
-            id="max_tokens"
-            inputMode="numeric"
-            value={form.max_tokens}
-            onChange={(e) => set("max_tokens", e.target.value)}
-            onBlur={blur("max_tokens")}
-            aria-invalid={!!errors.max_tokens || undefined}
-            aria-describedby={describe("max_tokens", errors.max_tokens, true)}
-            className={numberInput}
-          />
-        </FormRow>
-        <FormRow group label="Sent as" align="end">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={form.max_tokens_field}
-            onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
-            aria-label="Token limit field name"
-            className="max-w-full flex-wrap"
+            label="Seqs"
+            align="end"
+            error={errors.concurrency}
+            hint={`${cloud ? "Stay under your provider's rate limit." : "Match your server's --max-num-seqs."} Changeable while running.`}
           >
-            <ToggleGroupItem value="max_tokens" className="font-mono text-xs">
-              max_tokens
-            </ToggleGroupItem>
-            <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs">
-              max_completion_tokens
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </FormRow>
-        <FormRow id="seed" align="end" label="Seed" optional error={errors.seed}>
-          <Input
-            id="seed"
-            inputMode="numeric"
-            value={form.seed}
-            onChange={(e) => set("seed", e.target.value)}
-            onBlur={blur("seed")}
-            aria-invalid={!!errors.seed || undefined}
-            aria-describedby={describe("seed", errors.seed)}
-            className={numberInput}
-          />
-        </FormRow>
-      </FormGroup>
+            <NumberStepper
+              id="concurrency"
+              name="seqs"
+              value={form.concurrency}
+              onChange={(v) => set("concurrency", v)}
+              onBlur={blur("concurrency")}
+              min={1}
+              max={4096}
+              invalid={!!errors.concurrency}
+              describedBy={errors.concurrency ? "concurrency-error" : "concurrency-hint"}
+            />
+            <SeqsChoices value={Number(form.concurrency)} onChange={(n) => set("concurrency", String(n))} />
+          </FormRow>
 
-      <FormDisclosure title="Prompt options" summary={promptSummary} open={promptOpen} onOpenChange={setPromptOpen}>
-        <FormRow
-          stacked
-          id="system_prompt"
-          label="System prompt"
-          optional
-          hint="Replaces the set's system message."
-          error={errors.system_prompt}
-        >
-          <Textarea
+          <FormRow id="samples" label="Samples per prompt" align="end" error={errors.samples} hint="2 or more for preference pairs.">
+            <NumberStepper
+              id="samples"
+              name="samples per prompt"
+              value={form.samples}
+              onChange={(v) => set("samples", v)}
+              onBlur={blur("samples")}
+              min={1}
+              max={64}
+              invalid={!!errors.samples}
+              describedBy={errors.samples ? "samples-error" : "samples-hint"}
+            />
+          </FormRow>
+        </FormGroup>
+
+        <FormGroup title="Sampling">
+          <FormRow id="temperature" align="end" label="Temperature" optional hint="0–2. Empty: server default." error={errors.temperature}>
+            <Input
+              id="temperature"
+              inputMode="decimal"
+              value={form.temperature}
+              onChange={(e) => set("temperature", e.target.value)}
+              onBlur={blur("temperature")}
+              aria-invalid={!!errors.temperature || undefined}
+              aria-describedby={describe("temperature", errors.temperature, true)}
+              className={numberInput}
+            />
+          </FormRow>
+          <FormRow id="top_p" align="end" label="Top p" optional hint="0–1. Empty: server default." error={errors.top_p}>
+            <Input
+              id="top_p"
+              inputMode="decimal"
+              value={form.top_p}
+              onChange={(e) => set("top_p", e.target.value)}
+              onBlur={blur("top_p")}
+              aria-invalid={!!errors.top_p || undefined}
+              aria-describedby={describe("top_p", errors.top_p, true)}
+              className={numberInput}
+            />
+          </FormRow>
+          <FormRow id="max_tokens" align="end" label="Max tokens" hint="Includes the thinking trace." error={errors.max_tokens}>
+            <Input
+              id="max_tokens"
+              inputMode="numeric"
+              value={form.max_tokens}
+              onChange={(e) => set("max_tokens", e.target.value)}
+              onBlur={blur("max_tokens")}
+              aria-invalid={!!errors.max_tokens || undefined}
+              aria-describedby={describe("max_tokens", errors.max_tokens, true)}
+              className={numberInput}
+            />
+          </FormRow>
+          <FormRow group label="Sent as" align="end">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={form.max_tokens_field}
+              onValueChange={(v) => v && set("max_tokens_field", v as Form["max_tokens_field"])}
+              aria-label="Token limit field name"
+              className="max-w-full flex-wrap"
+            >
+              <ToggleGroupItem value="max_tokens" className="font-mono text-xs">
+                max_tokens
+              </ToggleGroupItem>
+              <ToggleGroupItem value="max_completion_tokens" className="font-mono text-xs">
+                max_completion_tokens
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </FormRow>
+          <FormRow id="seed" align="end" label="Seed" optional error={errors.seed}>
+            <Input
+              id="seed"
+              inputMode="numeric"
+              value={form.seed}
+              onChange={(e) => set("seed", e.target.value)}
+              onBlur={blur("seed")}
+              aria-invalid={!!errors.seed || undefined}
+              aria-describedby={describe("seed", errors.seed)}
+              className={numberInput}
+            />
+          </FormRow>
+        </FormGroup>
+
+        <FormDisclosure title="Prompt options" summary={promptSummary} open={promptOpen} onOpenChange={setPromptOpen}>
+          <FormRow
+            stacked
             id="system_prompt"
-            rows={3}
-            value={form.system_prompt}
-            onChange={(e) => set("system_prompt", e.target.value)}
-            placeholder="You are a careful assistant. Think step by step."
-            aria-describedby={describe("system_prompt", errors.system_prompt, true)}
-            className="min-h-20"
-          />
-        </FormRow>
-        <FormRow stacked id="user_template" label="Prompt template" optional hint="Must contain {prompt}." error={errors.user_template}>
-          <Textarea
-            id="user_template"
-            rows={3}
-            value={form.user_template}
-            onChange={(e) => set("user_template", e.target.value)}
-            onBlur={blur("user_template")}
-            placeholder={"Solve this problem. Put the final answer on its own line.\n\n{prompt}"}
-            aria-invalid={!!errors.user_template || undefined}
-            aria-describedby={describe("user_template", errors.user_template, true)}
-            className="min-h-20"
-          />
-        </FormRow>
-      </FormDisclosure>
+            label="System prompt"
+            optional
+            hint="Replaces the set's system message."
+            error={errors.system_prompt}
+          >
+            <Textarea
+              id="system_prompt"
+              rows={3}
+              value={form.system_prompt}
+              onChange={(e) => set("system_prompt", e.target.value)}
+              placeholder="You are a careful assistant. Think step by step."
+              aria-describedby={describe("system_prompt", errors.system_prompt, true)}
+              className="min-h-20"
+            />
+          </FormRow>
+          <FormRow stacked id="user_template" label="Prompt template" optional hint="Must contain {prompt}." error={errors.user_template}>
+            <Textarea
+              id="user_template"
+              rows={3}
+              value={form.user_template}
+              onChange={(e) => set("user_template", e.target.value)}
+              onBlur={blur("user_template")}
+              placeholder={"Solve this problem. Put the final answer on its own line.\n\n{prompt}"}
+              aria-invalid={!!errors.user_template || undefined}
+              aria-describedby={describe("user_template", errors.user_template, true)}
+              className="min-h-20"
+            />
+          </FormRow>
+        </FormDisclosure>
 
-      <FormDisclosure title="Advanced" summary={advancedSummary} open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <FormRow stacked id="extra_body" label="Extra request body" optional hint="Merged into every request." error={errors.extra_body}>
-          <Textarea
-            id="extra_body"
-            rows={3}
-            value={form.extra_body}
-            onChange={(e) => set("extra_body", e.target.value)}
-            onBlur={blur("extra_body")}
-            placeholder={'{"chat_template_kwargs": {"enable_thinking": true}}'}
-            spellCheck={false}
-            autoCapitalize="none"
-            autoCorrect="off"
-            aria-invalid={!!errors.extra_body || undefined}
-            aria-describedby={describe("extra_body", errors.extra_body, true)}
-            className="min-h-20 font-mono md:text-[13px]"
-          />
-        </FormRow>
-        <FormRow id="stream" label="Stream responses" align="end" hint="Needed for live progress and time to first token.">
-          <Checkbox id="stream" checked={form.stream} onCheckedChange={(c) => set("stream", c === true)} aria-describedby="stream-hint" />
-        </FormRow>
-        <FormRow id="think_open" label="Thinking opens with" error={errors.think_open}>
-          <Input
-            id="think_open"
-            value={form.think_open}
-            onChange={(e) => set("think_open", e.target.value)}
-            onBlur={blur("think_open")}
-            spellCheck={false}
-            autoCapitalize="none"
-            aria-invalid={!!errors.think_open || undefined}
-            aria-describedby={describe("think_open", errors.think_open)}
-            className="font-mono"
-          />
-        </FormRow>
-        <FormRow id="think_close" label="Thinking closes with" hint="Only for inline <think> traces." error={errors.think_close}>
-          <Input
-            id="think_close"
-            value={form.think_close}
-            onChange={(e) => set("think_close", e.target.value)}
-            onBlur={blur("think_close")}
-            spellCheck={false}
-            autoCapitalize="none"
-            aria-invalid={!!errors.think_close || undefined}
-            aria-describedby={describe("think_close", errors.think_close, true)}
-            className="font-mono"
-          />
-        </FormRow>
-        <FormRow id="max_attempts" align="end" label="Attempts per sample" error={errors.max_attempts}>
-          <Input
-            id="max_attempts"
-            inputMode="numeric"
-            value={form.max_attempts}
-            onChange={(e) => set("max_attempts", e.target.value)}
-            onBlur={blur("max_attempts")}
-            aria-invalid={!!errors.max_attempts || undefined}
-            aria-describedby={describe("max_attempts", errors.max_attempts)}
-            className={numberInput}
-          />
-        </FormRow>
-        <FormRow id="timeout" align="end" label="Request timeout (s)" error={errors.timeout}>
-          <Input
-            id="timeout"
-            inputMode="numeric"
-            value={form.timeout}
-            onChange={(e) => set("timeout", e.target.value)}
-            onBlur={blur("timeout")}
-            aria-invalid={!!errors.timeout || undefined}
-            aria-describedby={describe("timeout", errors.timeout)}
-            className={numberInput}
-          />
-        </FormRow>
-        <FormRow id="pause_after" align="end" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
-          <Input
-            id="pause_after"
-            inputMode="numeric"
-            value={form.pause_after}
-            onChange={(e) => set("pause_after", e.target.value)}
-            onBlur={blur("pause_after")}
-            aria-invalid={!!errors.pause_after || undefined}
-            aria-describedby={describe("pause_after", errors.pause_after, true)}
-            className={numberInput}
-          />
-        </FormRow>
-      </FormDisclosure>
+        <FormDisclosure title="Advanced" summary={advancedSummary} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <FormRow stacked id="extra_body" label="Extra request body" optional hint="Merged into every request." error={errors.extra_body}>
+            <Textarea
+              id="extra_body"
+              rows={3}
+              value={form.extra_body}
+              onChange={(e) => set("extra_body", e.target.value)}
+              onBlur={blur("extra_body")}
+              placeholder={'{"chat_template_kwargs": {"enable_thinking": true}}'}
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
+              aria-invalid={!!errors.extra_body || undefined}
+              aria-describedby={describe("extra_body", errors.extra_body, true)}
+              className="min-h-20 font-mono md:text-[13px]"
+            />
+          </FormRow>
+          <FormRow id="stream" label="Stream responses" align="end" hint="Needed for live progress and time to first token.">
+            <Checkbox id="stream" checked={form.stream} onCheckedChange={(c) => set("stream", c === true)} aria-describedby="stream-hint" />
+          </FormRow>
+          <FormRow id="think_open" label="Thinking opens with" error={errors.think_open}>
+            <Input
+              id="think_open"
+              value={form.think_open}
+              onChange={(e) => set("think_open", e.target.value)}
+              onBlur={blur("think_open")}
+              spellCheck={false}
+              autoCapitalize="none"
+              aria-invalid={!!errors.think_open || undefined}
+              aria-describedby={describe("think_open", errors.think_open)}
+              className="font-mono"
+            />
+          </FormRow>
+          <FormRow id="think_close" label="Thinking closes with" hint="Only for inline <think> traces." error={errors.think_close}>
+            <Input
+              id="think_close"
+              value={form.think_close}
+              onChange={(e) => set("think_close", e.target.value)}
+              onBlur={blur("think_close")}
+              spellCheck={false}
+              autoCapitalize="none"
+              aria-invalid={!!errors.think_close || undefined}
+              aria-describedby={describe("think_close", errors.think_close, true)}
+              className="font-mono"
+            />
+          </FormRow>
+          <FormRow id="max_attempts" align="end" label="Attempts per sample" error={errors.max_attempts}>
+            <Input
+              id="max_attempts"
+              inputMode="numeric"
+              value={form.max_attempts}
+              onChange={(e) => set("max_attempts", e.target.value)}
+              onBlur={blur("max_attempts")}
+              aria-invalid={!!errors.max_attempts || undefined}
+              aria-describedby={describe("max_attempts", errors.max_attempts)}
+              className={numberInput}
+            />
+          </FormRow>
+          <FormRow id="timeout" align="end" label="Request timeout (s)" error={errors.timeout}>
+            <Input
+              id="timeout"
+              inputMode="numeric"
+              value={form.timeout}
+              onChange={(e) => set("timeout", e.target.value)}
+              onBlur={blur("timeout")}
+              aria-invalid={!!errors.timeout || undefined}
+              aria-describedby={describe("timeout", errors.timeout)}
+              className={numberInput}
+            />
+          </FormRow>
+          <FormRow id="pause_after" align="end" label="Pause after failures in a row" hint="0 never pauses." error={errors.pause_after}>
+            <Input
+              id="pause_after"
+              inputMode="numeric"
+              value={form.pause_after}
+              onChange={(e) => set("pause_after", e.target.value)}
+              onBlur={blur("pause_after")}
+              aria-invalid={!!errors.pause_after || undefined}
+              aria-describedby={describe("pause_after", errors.pause_after, true)}
+              className={numberInput}
+            />
+          </FormRow>
+        </FormDisclosure>
 
-      <FormGroup>
-        <FormRow id="name" label="Run name" optional error={errors.name}>
-          <Input
-            id="name"
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            placeholder={defaultName || "Qwen3 distill, round 2"}
-            maxLength={300}
-            aria-describedby={describe("name", errors.name)}
-          />
-        </FormRow>
-      </FormGroup>
+        <FormGroup title="Output">
+          <FormRow id="name" label="Run name" optional error={errors.name}>
+            <Input
+              id="name"
+              value={form.name}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder={defaultName || "Qwen3 distill, round 2"}
+              maxLength={300}
+              aria-describedby={describe("name", errors.name)}
+            />
+          </FormRow>
+        </FormGroup>
 
-      <div className="grid gap-3">
         {formError ? <ErrorBlock message={formError} /> : null}
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-3">
-          <span className="basis-full text-sm text-muted-foreground tabular empty:hidden sm:mr-auto sm:basis-auto" aria-live="polite">
-            {total}
+      </div>
+
+      {/* Sticky frosted bar: the run's size and the actions stay in reach on a long form. */}
+      <div className={actionBarClass(null, "mt-6")}>
+        <div className="flex max-w-[40rem] flex-wrap items-center justify-end gap-x-3 gap-y-2">
+          <span
+            className="min-w-0 basis-full text-sm text-muted-foreground tabular empty:hidden sm:mr-auto sm:basis-auto"
+            aria-live="polite"
+          >
+            {summary}
           </span>
-          <Button asChild variant="outline">
+          <Button asChild variant="secondary">
             <Link to="/runs">Cancel</Link>
           </Button>
           <Button type="submit" aria-disabled={start.isPending || undefined}>

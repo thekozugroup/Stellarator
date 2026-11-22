@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { Page } from "@/components/shared/page"
-import { Field } from "@/components/shared/field"
+import { FormGroup, FormRow } from "@/components/shared/form-group"
 import { actionBarClass } from "@/components/shared/action-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,15 +45,6 @@ function useDebounced<T>(value: T, ms: number): T {
     return () => window.clearTimeout(t)
   }, [value, ms])
   return v
-}
-
-function Section({ title, children }: { title?: string; children: React.ReactNode }) {
-  return (
-    <section className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
-      {children}
-    </section>
-  )
 }
 
 export function ImportPromptsPage() {
@@ -381,27 +372,27 @@ export function ImportPromptsPage() {
 
         {data && !simple ? (
           <fieldset disabled={importing} className="m-0 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-0 p-0 lg:col-start-1 lg:row-start-2">
-            <Section title={data.columns.length > 0 ? "Mapping" : undefined}>
-              <MappingFields
-                preview={data}
-                promptField={promptField}
-                systemField={systemField}
-                onPromptField={setPromptField}
-                onSystemField={setSystemField}
-                splitMode={splitMode}
-                onSplitMode={setSplitMode}
-                offset={offset}
-                limit={limit}
-                onOffset={setOffset}
-                onLimit={setLimit}
-                offsetError={offsetError ?? commitErr?.fields["mapping.offset"]}
-                limitError={limitError ?? commitErr?.fields["mapping.limit"]}
-                dedupe={dedupe}
-                onDedupe={setDedupe}
-                turns={turns}
-                onTurns={setTurns}
-              />
-              <Field id="import-name" label="Name" error={commitErr?.fields["name"]} info={INFO.name}>
+            <MappingFields
+              preview={data}
+              promptField={promptField}
+              systemField={systemField}
+              onPromptField={setPromptField}
+              onSystemField={setSystemField}
+              splitMode={splitMode}
+              onSplitMode={setSplitMode}
+              offset={offset}
+              limit={limit}
+              onOffset={setOffset}
+              onLimit={setLimit}
+              offsetError={offsetError ?? commitErr?.fields["mapping.offset"]}
+              limitError={limitError ?? commitErr?.fields["mapping.limit"]}
+              dedupe={dedupe}
+              onDedupe={setDedupe}
+              turns={turns}
+              onTurns={setTurns}
+            />
+            <FormGroup>
+              <FormRow id="import-name" label="Name" error={commitErr?.fields["name"]} info={INFO.name}>
                 <Input
                   id="import-name"
                   value={shownName}
@@ -410,10 +401,11 @@ export function ImportPromptsPage() {
                     setNameTouched(true)
                   }}
                   aria-invalid={commitErr?.fields["name"] ? true : undefined}
+                  aria-describedby={commitErr?.fields["name"] ? "import-name-error" : undefined}
                   maxLength={300}
                 />
-              </Field>
-            </Section>
+              </FormRow>
+            </FormGroup>
           </fieldset>
         ) : null}
 
@@ -430,7 +422,7 @@ export function ImportPromptsPage() {
               ref={alertRef}
               tabIndex={-1}
               role="alert"
-              className="rounded-lg bg-negative-tint px-3 py-2 text-sm text-negative-ink outline-none focus-visible:ring-3 focus-visible:ring-ring"
+              className="rounded-xl bg-negative-tint px-3 py-2 text-sm text-negative-ink outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {commit.error.message}
             </div>

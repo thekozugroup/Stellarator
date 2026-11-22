@@ -16,11 +16,11 @@ export function ErrorBlock({
   return (
     <div
       role="alert"
-      className={cn("flex flex-wrap items-center justify-between gap-3 rounded-lg bg-negative-tint px-4 py-3 text-sm text-negative-ink", className)}
+      className={cn("flex flex-wrap items-center justify-between gap-3 rounded-xl bg-negative-tint px-4 py-3 text-sm text-negative-ink", className)}
     >
       <p className="min-w-0">{message}</p>
       {onRetry ? (
-        <Button variant="outline" size="sm" onClick={onRetry} className="bg-background">
+        <Button variant="secondary" size="sm" onClick={onRetry} className="bg-background">
           <RotateCw aria-hidden="true" />
           Retry
         </Button>
@@ -41,5 +41,5 @@ export function EmptyBlock({ children, action, className }: { children: ReactNod
 
 /** Flat gray bar at the real size of the value it stands in for. No shimmer. */
 export function Bar({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={cn("inline-block h-4 w-16 rounded bg-muted", className)} />
+  return <span aria-hidden="true" className={cn("inline-block h-4 w-16 rounded-xs bg-secondary", className)} />
 }

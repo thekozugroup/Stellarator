@@ -6,8 +6,8 @@ import { INFO_ROW, InfoTip } from "@/components/shared/info-tip"
 import { cn } from "@/lib/utils"
 
 /*
- * The System Settings grouped form (DESIGN.md, Shape and elevation). A group is an inset 12 px box
- * with a hairline border; its rows are separated by hairlines inset 12 px from the box edge. A row
+ * The System Settings grouped form (DESIGN.md, Components). A group is a --muted card with 16 px
+ * corners and no border; its rows are separated by hairlines inset 12 px from the card edge. A row
  * puts its label on the left and its control on the right once the group is 28rem wide (a
  * container query, so a narrow window or a phone stacks them whatever the input). An optional
  * title sits above the box and an optional footnote below it, both in secondary text.
@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils"
  * GroupBox is the same box without the row layout, for panels that hold a chart or a list.
  */
 
-const BOX = "@container/fg rounded-xl border bg-card"
+const BOX = "@container/fg rounded-xl bg-muted"
 
 /** The box with its title above and footnote below. Rows and content go inside. */
 export function GroupBox({
@@ -191,7 +191,7 @@ export function FormDisclosure({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} className={cn(BOX)}>
       <h2 className="text-sm font-normal">
-        <CollapsibleTrigger className="group flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring rounded-xl">
+        <CollapsibleTrigger className="group flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring rounded-xl">
           <ChevronRight
             className="size-4 flex-none text-muted-foreground transition-transform duration-200 ease-out group-data-[state=open]:rotate-90"
             aria-hidden="true"

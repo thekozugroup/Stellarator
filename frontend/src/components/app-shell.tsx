@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { Cable, FileText, GitCompareArrows, Play, Settings, type LucideIcon } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { Plasma } from "@/components/shared/plasma"
 import { overlayTitleBar } from "@/lib/desktop-shell"
 import { cn } from "@/lib/utils"
 
@@ -13,8 +14,9 @@ const NAV = [
 ]
 
 /**
- * A macOS sidebar row: icon and label, 28 px on pointer-fine (44 pt on touch), a neutral rounded
- * selection. Labels are ink; icons are gray until their row is selected.
+ * A sidebar row: icon and label, 32 px (44 pt on touch), 10 px corners (the panel's 18 minus its
+ * 8 px padding), a neutral selection. Labels are ink at 500; icons are muted until their row is
+ * selected.
  */
 function SidebarRow({ to, label, icon: Icon }: { to: string; label: string; icon: LucideIcon }) {
   return (
@@ -22,7 +24,7 @@ function SidebarRow({ to, label, icon: Icon }: { to: string; label: string; icon
       to={to}
       className={({ isActive }) =>
         cn(
-          "group/row flex h-8 items-center gap-2 rounded-[10px] px-2 text-sm text-foreground transition-colors duration-150 pointer-fine:h-7",
+          "group/row flex h-8 items-center gap-2 rounded-md px-2 text-sm font-medium text-foreground transition-colors duration-150",
           "hover:bg-foreground/5",
           isActive && "bg-sidebar-accent hover:bg-sidebar-accent",
         )
@@ -39,18 +41,24 @@ function SidebarRow({ to, label, icon: Icon }: { to: string; label: string; icon
 }
 
 /**
- * Pointer-fine and tablets: the sidebar, a panel floating 8 px inside the window with 18 px corners
- * (concentric with the macOS 26 window) in the bar material. The mark and name at the top,
- * centered on the toolbar's band; Settings at the bottom. In the macOS app the traffic lights take
- * that band and the mark moves below it.
+ * From 768 px: the sidebar (DESIGN.md, Layout and Shape). A panel floating --shell-gap (8 px)
+ * inside the window with --panel-radius corners (the window's minus that gap), so it is concentric
+ * with the window's corners; 8 px padding, so its 10 px rows are concentric with it. On windows
+ * with tight corners (data-window="flush") it fills the window's left edge instead, divided from
+ * the content by a hairline. At the top: the app tile (the mark on a pixel field) and the name;
+ * Settings at the bottom. In the macOS app the traffic lights take the top band and the tile moves
+ * below it.
  */
 function Sidebar() {
   return (
-    <aside className="sticky top-0 hidden h-dvh p-2 md:block">
-      <div className="material-float flex h-full flex-col justify-between rounded-3xl bg-sidebar px-2 pt-[calc(max(0px,var(--titlebar-height)-0.5rem)+0.25rem)] pb-2">
+    <aside className="sticky top-0 hidden h-dvh p-(--shell-gap) md:block">
+      <div className="material-float flex h-full flex-col justify-between rounded-(--panel-radius) bg-sidebar px-2 pt-[calc(max(0px,var(--titlebar-height)-var(--shell-gap))+0.5rem)] pb-2 [[data-window=flush]_&]:rounded-none [[data-window=flush]_&]:border-r [[data-window=flush]_&]:shadow-none">
         <div className="grid gap-4">
-          <p className="flex h-8 items-center gap-2 self-start justify-self-start px-2 text-sm font-semibold tracking-[-0.01em] pointer-fine:h-7">
-            <Logo className="size-5" />
+          <p className="flex h-8 items-center gap-2 self-start justify-self-start px-1.5 text-sm font-semibold tracking-[-0.011em]">
+            <span className="relative inline-flex size-6 flex-none items-center justify-center overflow-hidden rounded-[6px]">
+              <Plasma seed="stellarator" cells={6} className="absolute inset-0 size-full rounded-none" />
+              <Logo className="relative size-4 text-white" />
+            </span>
             Stellarator
           </p>
           <nav aria-label="Main">
@@ -86,8 +94,8 @@ function TabBar() {
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex h-full flex-col items-center justify-center gap-0.5 rounded-full text-xs text-muted-foreground",
-                  isActive && "bg-foreground/8 font-medium text-foreground",
+                  "flex h-full flex-col items-center justify-center gap-0.5 rounded-full text-xs font-medium text-muted-foreground",
+                  isActive && "bg-accent text-foreground",
                 )
               }
             >

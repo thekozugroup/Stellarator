@@ -283,7 +283,7 @@ export function SamplesSection({ run }: { run: Run }) {
       {/* Search and the status filter stay under the toolbar while the rows scroll. */}
       <div className="sticky top-(--top-chrome) z-20 flex h-11 items-center gap-2 bg-background pointer-coarse:h-[3.75rem]">
         <nav aria-label="Filter samples by status" className="hidden xl:block">
-          <ul className="inline-flex rounded-2xl bg-segment-track p-0.5">
+          <ul className="inline-flex rounded-md bg-secondary p-0.5">
             {SAMPLE_FILTERS.map((f) => {
               const active = f === status
               const n = filterCount(run, f)
@@ -294,7 +294,7 @@ export function SamplesSection({ run }: { run: Run }) {
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-fine:h-6",
-                      active ? "border-control-edge bg-control font-medium text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                      active ? "bg-background font-medium text-foreground shadow-xs dark:bg-accent" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {FILTER_LABEL[f]}

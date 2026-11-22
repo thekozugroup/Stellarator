@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { FileText, Loader2 } from "lucide-react"
-import { Field } from "@/components/shared/field"
+import { FormGroup, FormRow } from "@/components/shared/form-group"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -44,8 +44,8 @@ export function HuggingFaceFields({
   const configs = Array.from(new Set(splits.map((s) => s.config)))
   const inConfig = splits.filter((s) => s.config === config)
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <Field id="hf-dataset" label="Dataset" error={error} info={INFO.dataset}>
+    <FormGroup>
+      <FormRow id="hf-dataset" label="Dataset" error={error} info={INFO.dataset} stacked>
         <div className="flex gap-2">
           <Input
             id="hf-dataset"
@@ -65,16 +65,16 @@ export function HuggingFaceFields({
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "hf-dataset-error" : undefined}
           />
-          <Button type="button" variant="outline" onClick={onLoad} disabled={!input.trim() || loading}>
+          <Button type="button" variant="secondary" onClick={onLoad} disabled={!input.trim() || loading}>
             {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
             {loading ? "Loading…" : "Load"}
           </Button>
         </div>
-      </Field>
+      </FormRow>
       {showSplits && splits.length > 0 ? (
-        <div className={cn("grid gap-4", configs.length > 1 && "sm:grid-cols-2")}>
+        <>
           {configs.length > 1 ? (
-            <Field id="hf-config" label="Config" info={INFO.config}>
+            <FormRow id="hf-config" label="Config" info={INFO.config}>
               <Select value={config ?? undefined} onValueChange={onConfig}>
                 <SelectTrigger id="hf-config" className="w-full font-mono">
                   <SelectValue />
@@ -87,9 +87,9 @@ export function HuggingFaceFields({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
+            </FormRow>
           ) : null}
-          <Field id="hf-split" label="Split" info={INFO.split}>
+          <FormRow id="hf-split" label="Split" info={INFO.split}>
             <Select value={allSplits ? ALL : (split ?? undefined)} onValueChange={(v) => onSplit(v === ALL ? null : v)}>
               <SelectTrigger id="hf-split" className="w-full">
                 <SelectValue />
@@ -103,10 +103,10 @@ export function HuggingFaceFields({
                 {inConfig.length > 1 ? <SelectItem value={ALL}>All splits</SelectItem> : null}
               </SelectContent>
             </Select>
-          </Field>
-        </div>
+          </FormRow>
+        </>
       ) : null}
-    </div>
+    </FormGroup>
   )
 }
 
@@ -149,8 +149,8 @@ export function FileFields({
           if (f && !uploading) onFile(f)
         }}
         className={cn(
-          "relative rounded-lg border border-dashed border-input px-4 py-5 text-sm transition-colors has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring",
-          over && "border-foreground bg-muted",
+          "relative rounded-xl bg-muted p-4 text-sm transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+          over && "bg-accent",
         )}
       >
         <input
@@ -170,14 +170,14 @@ export function FileFields({
           <div className="flex items-center gap-3">
             <FileText className="size-5 flex-none text-muted-foreground" aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-mono text-[13px]" title={upload?.filename ?? uploadName ?? undefined}>
+              <p className="truncate font-mono" title={upload?.filename ?? uploadName ?? undefined}>
                 {upload?.filename ?? uploadName}
               </p>
               <p className="text-xs text-muted-foreground" role="status">
                 {uploading ? "Uploading…" : `${bytes(upload!.size)} · detected ${formatLabel(upload!.detected_format)}`}
               </p>
             </div>
-            <Button type="button" variant="outline" size="sm" disabled={uploading} asChild>
+            <Button type="button" variant="secondary" size="sm" disabled={uploading} asChild>
               <label htmlFor="import-file" className="cursor-pointer pointer-coarse:min-h-11">
                 Replace file
               </label>
@@ -200,7 +200,8 @@ export function FileFields({
         </p>
       ) : null}
       {showFormat && upload ? (
-        <Field id="import-format" label="Format" info={INFO.format}>
+        <FormGroup>
+        <FormRow id="import-format" label="Format" info={INFO.format}>
           <Select value={format} onValueChange={(v) => onFormat(v as ImportFormat)}>
             <SelectTrigger id="import-format" className="w-full">
               <SelectValue />
@@ -213,7 +214,8 @@ export function FileFields({
               ))}
             </SelectContent>
           </Select>
-        </Field>
+        </FormRow>
+        </FormGroup>
       ) : null}
     </div>
   )
@@ -221,7 +223,8 @@ export function FileFields({
 
 export function PasteFields({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Field id="paste-text" label="Prompts" hint="Separate prompts with ---, a blank line or headings." info={INFO.paste}>
+    <FormGroup>
+    <FormRow id="paste-text" label="Prompts" hint="Separate prompts with ---, a blank line or headings." info={INFO.paste} stacked>
       <Textarea
         id="paste-text"
         value={value}
@@ -229,9 +232,10 @@ export function PasteFields({ value, onChange }: { value: string; onChange: (v: 
         placeholder={"Explain how a stellarator confines plasma.\n---\nWrite a haiku about copper coils."}
         rows={10}
         spellCheck={false}
-        className="min-h-48 font-mono pointer-fine:text-[13px]"
+        className="min-h-48 font-mono"
         aria-describedby="paste-text-hint"
       />
-    </Field>
+    </FormRow>
+    </FormGroup>
   )
 }

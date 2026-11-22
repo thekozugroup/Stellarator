@@ -15,7 +15,7 @@ const MIN = 1
 const MAX = 4096
 
 /**
- * The run's one copper control, for a run that is going or paused. Each change is applied to the
+ * The run's one accent control, for a run that is going or paused. Each change is applied to the
  * screen at once and sent to the server after 400 ms of quiet; a failure puts the old value back
  * and says why. Common values sit below as the same segmented row as on New run.
  */
@@ -117,7 +117,7 @@ export function SeqsControl({ run, inFlight }: { run: Run; inFlight: number }) {
             if (invalid || draft.trim() === "") setDraft(String(run.concurrency))
           }}
           className={cn(
-            "w-20 border-copper text-center text-base font-medium text-copper-ink tabular md:text-base dark:border-copper",
+            "w-20 border-periwinkle text-center text-base font-medium text-periwinkle-ink tabular md:text-base dark:border-periwinkle",
             "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           )}
         />

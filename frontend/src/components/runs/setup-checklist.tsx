@@ -56,16 +56,21 @@ export function SetupChecklist() {
   const next = steps.findIndex((s) => !s.done)
 
   return (
-    <div className="max-w-[40rem] py-2">
-      <h2 className="text-base font-semibold">Set up your first run</h2>
-      <ol className="mt-3 grid gap-0 divide-y">
+    <section aria-labelledby="setup-title" className="max-w-[40rem] rounded-xl bg-muted p-4">
+      <h2 id="setup-title" className="text-base font-semibold">
+        Set up your first run
+      </h2>
+      <ol className="mt-2 grid">
         {steps.map((s, i) => (
-          <li key={s.title} className="flex gap-3 py-4">
+          <li
+            key={s.title}
+            className="relative flex gap-3 py-3 not-first:before:pointer-events-none not-first:before:absolute not-first:before:inset-x-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-border"
+          >
             <span
               aria-hidden="true"
               className={cn(
-                "mt-0.5 flex size-6 flex-none items-center justify-center rounded-full border text-xs font-medium tabular",
-                s.done ? "border-transparent bg-positive-tint text-positive-ink" : "text-muted-foreground",
+                "mt-px flex size-6 flex-none items-center justify-center rounded-full text-xs font-medium tabular",
+                s.done ? "bg-positive-tint text-positive-ink" : i === next ? "bg-periwinkle-tint text-periwinkle-ink" : "bg-secondary text-muted-foreground",
               )}
             >
               {s.done ? <Check className="size-3.5" /> : i + 1}
@@ -82,11 +87,15 @@ export function SetupChecklist() {
               ) : null}
               {!loading && !s.done ? (
                 i === next ? (
-                  <Button asChild variant="outline" size="sm" className="mt-3">
+                  <Button asChild variant="secondary" className="mt-3 bg-background hover:bg-background/70">
                     <Link to={s.to}>{s.action}</Link>
                   </Button>
                 ) : (
-                  <Link to={s.to} className="mt-2 inline-block text-sm underline underline-offset-4 hover:text-foreground">
+                  <Link
+                    to={s.to}
+                    data-touch="inline"
+                    className="mt-1.5 inline-flex items-center rounded-xs text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                  >
                     {s.action}
                   </Link>
                 )
@@ -95,6 +104,6 @@ export function SetupChecklist() {
           </li>
         ))}
       </ol>
-    </div>
+    </section>
   )
 }

@@ -20,10 +20,11 @@ const ToggleGroupContext = React.createContext<
 })
 
 /**
- * With spacing={0} a toggle group is a macOS 26 segmented control: a capsule track
- * (--segment-track) holding capsule segments, the chosen one raised (control fill, hairline, small
- * shadow) with ink text at weight 500. Segments are 24 px tall on pointer-fine (a 28 px control),
- * 28 px elsewhere (44 pt on touch). With spacing > 0 the items are separate toggles.
+ * With spacing={0} a toggle group is a segmented control (DESIGN.md, Components): a --secondary
+ * track with 10 px corners and 2 px padding holding 8 px segments, the chosen one raised (the
+ * ground in light, --accent in dark, 1 px shadow) with ink text at weight 500. A 32 px control
+ * (44 pt segments on touch). A track that wraps to two rows keeps its corners. With spacing > 0
+ * the items are separate toggles.
  */
 function ToggleGroup({
   className,
@@ -47,8 +48,8 @@ function ToggleGroup({
       data-orientation={orientation}
       style={{ "--gap": spacing } as React.CSSProperties}
       className={cn(
-        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-md data-vertical:flex-col data-vertical:items-stretch",
-        spacing === 0 && "gap-0 rounded-2xl bg-segment-track p-0.5 data-[size=sm]:rounded-2xl pointer-coarse:rounded-4xl pointer-coarse:data-[size=sm]:rounded-4xl",
+        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-md data-[size=sm]:rounded-sm data-vertical:flex-col data-vertical:items-stretch",
+        spacing === 0 && "gap-0 rounded-md bg-secondary p-0.5 data-[size=sm]:rounded-md",
         className
       )}
       {...props}
@@ -63,7 +64,7 @@ function ToggleGroup({
 }
 
 const SEGMENT =
-  "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-full border border-transparent px-2 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:z-10 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:border-control-edge data-[state=on]:bg-control data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs pointer-fine:h-6 pointer-fine:min-w-6 pointer-fine:px-2.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+  "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-sm border border-transparent px-2.5 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs dark:data-[state=on]:bg-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
 
 function ToggleGroupItem({
   className,

@@ -59,10 +59,10 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 /// Show the window this long after creating it even if the page has not reported that it loaded.
 const SHOW_FALLBACK: Duration = Duration::from_secs(3);
 
-/// The page ground, `--background` in frontend/src/index.css: oklch(0.99 0 0) and
-/// oklch(0.165 0 0) in sRGB. The window shows it before the page paints and while resizing.
-const GROUND_LIGHT: Color = Color(252, 252, 252, 255);
-const GROUND_DARK: Color = Color(14, 14, 14, 255);
+/// The page ground, `--background` in frontend/src/index.css (#ffffff and #0b0b0b). The window
+/// shows it before the page paints and while resizing.
+const GROUND_LIGHT: Color = Color(255, 255, 255, 255);
+const GROUND_DARK: Color = Color(11, 11, 11, 255);
 
 /// The in-process server, from start to stop.
 enum Server {
@@ -245,16 +245,19 @@ fn open_main_window(app: &AppHandle, port: u16, token: &str) -> anyhow::Result<(
         .center()
         // Shown once the page has loaded, so the first frame is the UI, not an empty window.
         .visible(false)
-        .background_color(GROUND_LIGHT);
+        .background_color(GROUND_LIGHT)
+        .initialization_script(titlebar::init_script(
+            &origin.ascii_serialization(),
+            cfg!(target_os = "macos"),
+            titlebar::window_radius(),
+        ));
     // The title bar is an overlay on the page: the sidebar runs to the top of the window with the
-    // traffic lights on it (titlebar.rs). The title stays set for the Window menu and Mission
-    // Control.
+    // traffic lights on it, and an empty toolbar gives the window macOS 26's toolbar-window shape
+    // (titlebar.rs). The title stays set for the Window menu and Mission Control.
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(titlebar::TRAFFIC_LIGHTS)
-        .initialization_script(titlebar::init_script(&origin.ascii_serialization()));
+        .hidden_title(true);
 
     let window = builder
         // Only the local server loads in the window; every other link opens in the browser.
@@ -286,6 +289,8 @@ fn open_main_window(app: &AppHandle, port: u16, token: &str) -> anyhow::Result<(
         .build()?;
 
     let _ = window.set_background_color(Some(ground(window.theme().unwrap_or(Theme::Light))));
+    #[cfg(target_os = "macos")]
+    titlebar::use_toolbar_window(&window);
     let late = window.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(SHOW_FALLBACK).await;
