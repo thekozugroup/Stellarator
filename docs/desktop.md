@@ -182,15 +182,20 @@ toolbar (title and actions) runs across the top of the content column, and the w
 (close, minimize, zoom) sit at the top left of the sidebar panel, in the same band. Windows and
 Linux keep their system title bars.
 
-- The window uses Tauri's overlay title bar style with the title hidden; the controls are moved to
-  20 x 24 points from the top-left corner (`TRAFFIC_LIGHTS` in `desktop/src-tauri/src/titlebar.rs`),
-  which centers them in the 52 px band.
-- A script the app adds to the page before it loads sets `window.__STELLARATOR_DESKTOP__`. The web
-  UI (`frontend/src/lib/desktop-shell.ts`) then sets `data-titlebar="overlay"` on `<html>`, and the
-  CSS (`--titlebar-height`, 52 px, equal to the toolbar's height, in `frontend/src/index.css`) keeps
-  the top of the sidebar free for the controls. The Docker and browser UI never get the global; they
-  have the same toolbar and a sidebar that starts with the app's name. `TRAFFIC_LIGHTS` and
-  `--titlebar-height` go together: change both.
+- The window uses Tauri's overlay title bar style with the title hidden, and the app gives it an
+  empty unified toolbar (`use_toolbar_window` in `desktop/src-tauri/src/titlebar.rs`). That is
+  what macOS 26 apps with a sidebar have, and it does two things, measured on macOS 26.6: the
+  window gets 26 pt corners instead of 16 pt, and macOS centers the controls at (26, 26) pt, in the
+  middle of the 52 px band. Clicks anywhere in the band still reach the page.
+- A script the app adds to the page before it loads sets `window.__STELLARATOR_DESKTOP__` with the
+  title bar style and the window's corner radius (26 on macOS 26, 10 on macOS 11 to 15; 8 on
+  Windows and 0 on Linux, which get only the radius). The web UI (`frontend/src/lib/desktop-shell.ts`)
+  then sets `data-titlebar="overlay"` and `--window-radius` on `<html>`. The CSS keeps the top
+  `--titlebar-height` (52 px, equal to the toolbar's height, in `frontend/src/index.css`) of the
+  sidebar free for the controls, and draws the sidebar panel 8 px inside the window with corners of
+  the window's radius minus 8, so the two are concentric (DESIGN.md, "Shape"). Below a 20 px
+  radius the sidebar runs flush with the window's edge instead. The Docker and browser UI never get
+  the global; they use the macOS 26 values.
 - The band moves the window when dragged, and a double click zooms it (always Zoom: it does not
   follow System Settings > Desktop & Dock > "Double-click a window's title bar to"): over the
   sidebar, and over the content wherever the toolbar has no button, link or field. The toolbar is
