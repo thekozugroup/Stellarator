@@ -44,7 +44,7 @@ export function Field({
       )}
       {children}
       {error ? (
-        <p id={`${id}-error`} className="text-sm text-destructive">
+        <p id={`${id}-error`} className="text-sm text-negative-ink">
           {error}
         </p>
       ) : hint ? (

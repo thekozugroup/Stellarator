@@ -70,7 +70,11 @@ export function SetupChecklist() {
               aria-hidden="true"
               className={cn(
                 "mt-px flex size-6 flex-none items-center justify-center rounded-full text-xs font-medium tabular",
-                s.done ? "bg-positive-tint text-positive-ink" : i === next ? "bg-periwinkle-tint text-periwinkle-ink" : "bg-secondary text-muted-foreground",
+                s.done
+                  ? "bg-positive-tint text-positive-ink"
+                  : i === next
+                    ? "bg-periwinkle-tint text-periwinkle-ink"
+                    : "bg-secondary text-muted-foreground",
               )}
             >
               {s.done ? <Check className="size-3.5" /> : i + 1}

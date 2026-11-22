@@ -49,12 +49,11 @@ export function ModelCombobox({
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           disabled={disabled}
-          className={cn(
-            "w-full justify-between pr-2 pl-3 font-normal",
-            !value && "text-muted-foreground",
-          )}
+          className={cn("w-full justify-between pr-2 pl-3 font-normal", !value && "text-muted-foreground")}
         >
-          <span className={cn("min-w-0 truncate", value && "font-mono text-xs pointer-coarse:text-[13px]")}>{value || "Choose or type a model id"}</span>
+          <span className={cn("min-w-0 truncate", value && "font-mono text-xs pointer-coarse:text-[13px]")}>
+            {value || "Choose or type a model id"}
+          </span>
           <ChevronsUpDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
         </Button>
       </PopoverTrigger>

@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils"
  * A data list (DESIGN.md, Components): no box around it. The column header is a --muted band with
  * 10 px corners and 12 px muted labels that stays under the toolbar while the page scrolls; rows
  * are divided by hairlines.
- * - Rows are 44 px (52 px on touch). The row under the pointer, and the selected row (aria-selected
- *   or data-state="selected"), is --accent with 10 px corners; its own hairline hides.
+ * - Rows are 44 px (52 px on touch), divided by straight hairlines. The row under the pointer,
+ *   and the selected row (aria-selected or data-state="selected"), gets an --accent layer behind
+ *   its cells with 10 px corners at the row's ends.
  * - Header cells stick at --top-chrome (the toolbar) plus --sticky-below, which a page sets on an
  *   ancestor when it keeps its own sticky bar above the table.
  * - Numbers: give the cell `numeric` and the header above it too; they right-align in tabular
@@ -58,7 +59,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "group/row [&>td]:transition-colors [&>td]:duration-150 [&>td:first-child]:rounded-l-md [&>td:last-child]:rounded-r-md hover:[&>td]:border-transparent hover:[&>td]:bg-accent has-[a:focus-visible]:[&>td]:bg-accent has-aria-expanded:[&>td]:bg-accent aria-selected:[&>td]:bg-accent data-[state=selected]:[&>td]:bg-accent",
+        "group/row [&>td]:before:transition-colors [&>td]:before:duration-150 [&>td:first-child]:before:rounded-l-md [&>td:last-child]:before:rounded-r-md hover:[&>td]:before:bg-accent has-[a:focus-visible]:[&>td]:before:bg-accent has-aria-expanded:[&>td]:before:bg-accent aria-selected:[&>td]:before:bg-accent data-[state=selected]:[&>td]:before:bg-accent",
         className
       )}
       {...props}
@@ -93,7 +94,7 @@ function TableCell({
     <td
       data-slot="table-cell"
       className={cn(
-        "h-11 border-b px-3 py-1 align-middle whitespace-nowrap pointer-coarse:h-13 [&:has([role=checkbox])]:pr-0",
+        "relative isolate h-11 border-b px-3 py-1 align-middle whitespace-nowrap before:absolute before:inset-0 before:-z-10 before:content-[''] pointer-coarse:h-13 [&:has([role=checkbox])]:pr-0",
         numeric && "text-right tabular",
         className
       )}

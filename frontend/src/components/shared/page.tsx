@@ -105,8 +105,8 @@ function PhoneSettingsLink() {
  * - A top-level screen (no `back`) has its title, the page's h1, in the toolbar.
  * - A detail screen (`back` is its parent) has a breadcrumb in the toolbar ("Runs / Distill") and
  *   its h1 as the display title at the top of the content, followed by `meta` (the chips row).
- * - From 1024 px the actions sit at the end of the toolbar; below that, beside the meta under the
- *   title.
+ * - The actions sit at the end of the toolbar: from 768 px on a top-level screen, from 1024 px on
+ *   a detail screen (below that, beside the meta under the title).
  *
  * On phones the bar holds the back button (or Settings on a top-level screen) and `barActions`
  * (icon buttons such as "+" or "…") at its trailing end, and the screen starts with a large title,
@@ -134,7 +134,9 @@ export function Page({
   wide?: boolean
 }) {
   const toolbarLayout = useMediaQuery(TOOLBAR_QUERY)
-  const actionsInBar = useMediaQuery(TOOLBAR_ACTIONS_QUERY)
+  // Detail screens move their actions into the bar from 1024 px; a top-level screen, whose bar holds
+  // only its title, from 768 px.
+  const actionsInBar = useMediaQuery(TOOLBAR_ACTIONS_QUERY) || (toolbarLayout && !back)
   const bar = useRef<HTMLElement>(null)
   const largeTitle = useRef<HTMLHeadingElement>(null)
   const { scrolled, titleUnder } = useToolbarScroll(bar, largeTitle, toolbarLayout)

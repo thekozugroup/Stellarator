@@ -207,7 +207,7 @@ function EndpointForm({
         <DialogTitle>{editing ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
       </DialogHeader>
       {/* The scroll area runs to the dialog's edges so focus rings are not clipped. */}
-      <div className="-mx-5 grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-5 py-1">
+      <div className="-mx-4 grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-4 py-1">
         {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
 
         <FormGroup>
@@ -447,7 +447,7 @@ function EndpointForm({
         </div>
 
         {formError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-negative-ink">
             {formError}
           </p>
         ) : null}

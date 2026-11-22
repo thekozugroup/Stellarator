@@ -24,7 +24,7 @@ function PromptRow({ n, messages }: { n: number; messages: Message[] }) {
 
   return (
     <li className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 rounded-sm bg-background px-3 py-3">
-      <span className="pt-0.5 font-mono tabular text-muted-foreground">{int(n)}</span>
+      <span className="pt-0.5 font-mono tabular text-muted-foreground">#{int(n)}</span>
       <div className="min-w-0 space-y-1.5">
         {system ? (
           <p className="line-clamp-2 text-xs text-muted-foreground">

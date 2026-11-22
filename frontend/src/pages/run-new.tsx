@@ -542,7 +542,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
           .join(", ")
       : "None"
 
-  const numberInput = "w-28 font-mono tabular md:text-xs pointer-coarse:text-[13px]"
+  const numberInput = "w-28 tabular"
 
   return (
     <form onSubmit={submit} noValidate>
@@ -557,7 +557,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
             hint={
               endpoint && trouble ? (
                 <span className="text-sm">
-                  <span className="text-destructive">
+                  <span className="text-negative-ink">
                     {trouble === "Key rejected" ? "Key rejected at last check." : "Unreachable at last check."}
                   </span>{" "}
                   <Link
@@ -604,7 +604,7 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
                           <Plasma seed={`endpoint-${e.id}`} cells={5} className="size-5 rounded-xs" />
                           <span className="min-w-0 break-words">
                             {e.name}{" "}
-                            <span className={t ? "text-destructive" : "text-muted-foreground"}>
+                            <span className={t ? "text-negative-ink" : "text-muted-foreground"}>
                               · {t ?? (e.location === "cloud" ? "Cloud" : "Local")}
                             </span>
                           </span>
@@ -950,8 +950,8 @@ function NewRunForm({ initial, sourceError }: { initial: Initial; sourceError: s
       </div>
 
       {/* Sticky frosted bar: the run's size and the actions stay in reach on a long form. */}
-      <div className={actionBarClass(null, "mt-6")}>
-        <div className="flex max-w-[40rem] flex-wrap items-center justify-end gap-x-3 gap-y-2">
+      <div className={actionBarClass(null, "mt-6 max-w-[40rem]")}>
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
           <span
             className="min-w-0 basis-full text-sm text-muted-foreground tabular empty:hidden sm:mr-auto sm:basis-auto"
             aria-live="polite"

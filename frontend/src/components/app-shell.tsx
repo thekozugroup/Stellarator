@@ -2,7 +2,6 @@ import { Suspense } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { Cable, FileText, GitCompareArrows, Play, Settings, type LucideIcon } from "lucide-react"
 import { Logo } from "@/components/logo"
-import { Plasma } from "@/components/shared/plasma"
 import { overlayTitleBar } from "@/lib/desktop-shell"
 import { cn } from "@/lib/utils"
 
@@ -45,7 +44,7 @@ function SidebarRow({ to, label, icon: Icon }: { to: string; label: string; icon
  * inside the window with --panel-radius corners (the window's minus that gap), so it is concentric
  * with the window's corners; 8 px padding, so its 10 px rows are concentric with it. On windows
  * with tight corners (data-window="flush") it fills the window's left edge instead, divided from
- * the content by a hairline. At the top: the app tile (the mark on a pixel field) and the name;
+ * the content by a hairline. At the top: the mark, monochrome in ink, and the name;
  * Settings at the bottom. In the macOS app the traffic lights take the top band and the tile moves
  * below it.
  */
@@ -55,10 +54,7 @@ function Sidebar() {
       <div className="material-float flex h-full flex-col justify-between rounded-(--panel-radius) bg-sidebar px-2 pt-[calc(max(0px,var(--titlebar-height)-var(--shell-gap))+0.5rem)] pb-2 [[data-window=flush]_&]:rounded-none [[data-window=flush]_&]:border-r [[data-window=flush]_&]:shadow-none">
         <div className="grid gap-4">
           <p className="flex h-8 items-center gap-2 self-start justify-self-start px-1.5 text-sm font-semibold tracking-[-0.011em]">
-            <span className="relative inline-flex size-6 flex-none items-center justify-center overflow-hidden rounded-[6px]">
-              <Plasma seed="stellarator" cells={6} className="absolute inset-0 size-full rounded-none" />
-              <Logo className="relative size-4 text-white" />
-            </span>
+            <Logo className="size-5 text-foreground" />
             Stellarator
           </p>
           <nav aria-label="Main">

@@ -46,7 +46,7 @@ export function StopImportDialog({ set, open, onOpenChange }: { set: PromptSet; 
           <AlertDialogDescription>The prompts read so far are deleted with it.</AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-negative-ink">
             {error}
           </p>
         ) : null}

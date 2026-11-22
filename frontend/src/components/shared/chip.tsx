@@ -25,7 +25,7 @@ export function Chip({
 }) {
   const classes = cn(
     "inline-flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm text-foreground",
-    leading && "pl-1.5",
+    leading && "pl-1",
     mono && "font-mono text-xs",
     // A linked chip keeps the row's 28 px on touch screens (data-touch="inline" opts out of the
     // 44 pt minimum in index.css) and gets an invisible hit area that reaches 44 pt instead.
@@ -35,8 +35,9 @@ export function Chip({
   )
   const body = (
     <>
-      {leading}
-      <span className="truncate">{children}</span>
+      {/* A capsule holds a circle concentrically: the tile is clipped round whatever its own corners. */}
+      {leading ? <span className="flex size-5 shrink-0 overflow-hidden rounded-full [&>*]:size-full [&>*]:rounded-none">{leading}</span> : null}
+      <span className={cn("truncate", mono && "leading-none")}>{children}</span>
     </>
   )
   return to ? (

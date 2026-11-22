@@ -404,7 +404,7 @@ export function SamplesSection({ run }: { run: Run }) {
                   setText("")
                 }
               }}
-              placeholder="Search prompts and responses…"
+              placeholder="Search samples"
               aria-label="Search samples"
               enterKeyHint="search"
               autoComplete="off"

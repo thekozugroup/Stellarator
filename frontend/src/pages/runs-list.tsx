@@ -1,6 +1,6 @@
 import { Fragment, useEffect, type ReactNode } from "react"
 import { Link } from "react-router"
-import { Plus } from "lucide-react"
+import { ChevronRight, Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
 import { Plasma } from "@/components/shared/plasma"
@@ -118,26 +118,30 @@ function RunsTable({ runs }: { runs: Run[] }) {
       {/* Phone and tablet: one row per run, its name and status, then its facts and progress. */}
       <ul className="divide-y lg:hidden">
         {runs.map((run) => (
-          <li key={run.id} className={STACKED_ROW}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Link
-                  data-touch="inline"
-                  to={`/runs/${run.id}`}
-                  className={cn("block truncate font-medium", STACKED_LINK)}
-                >
-                  {run.name}
-                </Link>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  <RunFacts run={run} />
-                  <span className="hidden sm:inline"> · {relative(run.created_at)}</span>
-                </p>
+          <li key={run.id} className={cn(STACKED_ROW, "flex items-center gap-3")}>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link
+                    data-touch="inline"
+                    to={`/runs/${run.id}`}
+                    className={cn("block truncate font-medium", STACKED_LINK)}
+                  >
+                    {run.name}
+                  </Link>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    <RunFacts run={run} />
+                    <span className="hidden sm:inline"> · {relative(run.created_at)}</span>
+                  </p>
+                </div>
+                <RunStatusPill status={run.status} failed={run.failed} />
               </div>
-              <RunStatusPill status={run.status} failed={run.failed} />
+              <div className="mt-2.5">
+                <RunProgress run={run} stacked />
+              </div>
             </div>
-            <div className="mt-2.5">
-              <RunProgress run={run} stacked />
-            </div>
+            {/* A row that opens a screen ends in a chevron, as Prompt sets and Preferences. */}
+            <ChevronRight className="size-4 flex-none text-muted-foreground" aria-hidden="true" />
           </li>
         ))}
       </ul>

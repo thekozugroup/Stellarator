@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, Ellipsis, Keyboard, Trash2 } from "lucide-react"
 import { AutoPairDialog } from "@/components/preferences/auto-pair-dialog"
-import { CandidateCard, type Mark } from "@/components/preferences/candidate-card"
+import { CandidateCard, traceUnitFor, type Mark } from "@/components/preferences/candidate-card"
 import { DeleteSetDialog } from "@/components/preferences/delete-set-dialog"
 import { ExportPairsDialog } from "@/components/preferences/export-dialog"
 import { PromptView } from "@/components/preferences/prompt-view"
@@ -28,14 +28,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api, ApiError } from "@/lib/api"
 import { int } from "@/lib/format"
 import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
@@ -134,7 +131,11 @@ export function PreferenceReviewPage() {
         back={{ to: "/preferences", label: "Preferences" }}
       >
         <div aria-busy="true" aria-label="Loading preference set…">
-          <Bar className="mb-6 h-8 w-64 rounded-md max-sm:hidden" />
+          <div className="mb-6 flex h-10 items-center gap-5 border-b">
+            <Bar className="w-24" />
+            <Bar className="w-20" />
+            <Bar className="w-12" />
+          </div>
           <ReviewSkeleton />
         </div>
       </Page>
@@ -147,7 +148,6 @@ export function PreferenceReviewPage() {
 
 function Review({ set }: { set: PreferenceSet }) {
   const wide = useMediaQuery(TOOLBAR_QUERY)
-  const sm = useMediaQuery("(min-width: 40rem)")
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
   const filter = parseFilter(params.get("filter"))
@@ -441,6 +441,7 @@ function Review({ set }: { set: PreferenceSet }) {
   const counts: Record<ItemFilter, number> = { undecided, decided: set.decided, all: set.prompt_count }
   const nextDisabled = !left && i + 1 >= total
   const multiModel = new Set(set.runs.map((r) => r.model)).size > 1
+  const traceUnit = traceUnitFor(item?.candidates ?? [])
   const showSampleFor = new Set(
     (item?.candidates ?? [])
       .map((c) => c.run_id)
@@ -494,6 +495,7 @@ function Review({ set }: { set: PreferenceSet }) {
               mark={sel.chosen === c.sample_id ? "chosen" : sel.rejected === c.sample_id ? "rejected" : null}
               showModel={multiModel}
               showSample={showSampleFor.has(c.run_id)}
+              traceUnit={traceUnit}
               disabled={isPlaceholder}
               onMark={(m) => pick(n, m)}
             />
@@ -515,19 +517,6 @@ function Review({ set }: { set: PreferenceSet }) {
       <DropdownMenuContent align="end" className="min-w-56">
         {!wide ? (
           <>
-            {!sm ? (
-              <>
-                <DropdownMenuLabel>Show prompts</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as ItemFilter)}>
-                  {(["undecided", "decided", "all"] as const).map((f) => (
-                    <DropdownMenuRadioItem key={f} value={f}>
-                      {FILTER_LABEL[f]} <span className="tabular text-muted-foreground">{int(counts[f])}</span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-              </>
-            ) : null}
             <DropdownMenuItem onSelect={() => setExportOpen(true)}>Export pairs…</DropdownMenuItem>
             {set.runs.length >= 2 ? <DropdownMenuItem onSelect={() => setAutoOpen(true)}>Auto-pair by run…</DropdownMenuItem> : null}
             <DropdownMenuSeparator />
@@ -545,7 +534,7 @@ function Review({ set }: { set: PreferenceSet }) {
     <Page
       title={set.name}
       back={{ to: "/preferences", label: "Preferences" }}
-      meta={sm ? <SetMeta set={set} /> : undefined}
+      meta={<SetMeta set={set} />}
       actions={
         wide ? (
           <>
@@ -561,32 +550,24 @@ function Review({ set }: { set: PreferenceSet }) {
       }
       barActions={menu}
     >
-      <div className="mb-6 max-sm:hidden">
-        <ToggleGroup
-          type="single"
-          spacing={0}
-          value={filter}
-          onValueChange={(v) => v && setFilter(v as ItemFilter)}
-          aria-label="Show prompts"
-          className="max-w-full"
-        >
+      {/* Filters with counts are line tabs (DESIGN.md, Tabs). Arrow keys move between them and
+          Enter or Space picks one, so moving does not load a new queue on every key. */}
+      <Tabs value={filter} onValueChange={(v) => setFilter(v as ItemFilter)} activationMode="manual" className="gap-0">
+        <TabsList variant="line" aria-label="Show prompts" className="mb-6">
           {(["undecided", "decided", "all"] as const).map((f) => (
-            <ToggleGroupItem
-              key={f}
-              value={f}
-              aria-label={`${FILTER_LABEL[f]}, ${int(counts[f])}`}
-              className="gap-1.5 px-3"
-            >
+            <TabsTrigger key={f} value={f} aria-label={`${FILTER_LABEL[f]}, ${int(counts[f])}`}>
               {FILTER_LABEL[f]}
               <span className="font-normal text-muted-foreground tabular">{int(counts[f])}</span>
-            </ToggleGroupItem>
+            </TabsTrigger>
           ))}
-        </ToggleGroup>
-      </div>
-
-      <section ref={regionRef} aria-labelledby={item ? "review-question" : undefined} aria-label={item ? undefined : "Review"} className="scroll-mt-4">
-        {body}
-      </section>
+        </TabsList>
+        {/* The panel is not a tab stop of its own; its controls are. */}
+        <TabsContent value={filter} tabIndex={-1}>
+          <section ref={regionRef} aria-labelledby={item ? "review-question" : undefined} aria-label={item ? undefined : "Review"} className="scroll-mt-4">
+            {body}
+          </section>
+        </TabsContent>
+      </Tabs>
 
       {item ? (
         <div className={actionBarClass(null, "mt-6")} style={REVIEW_BAR_TINT}>

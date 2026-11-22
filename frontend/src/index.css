@@ -98,7 +98,7 @@
     --accent: oklch(0.944 0 0);
     --accent-foreground: oklch(0.186 0.015 196);
     --border: oklch(0.929 0 0);
-    --input: oklch(0.655 0 0);
+    --input: oklch(0.62 0 0);
     --ring: var(--periwinkle);
 
     --periwinkle: oklch(0.561 0.18 273);
@@ -148,7 +148,7 @@
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.967 0 0);
     --border: oklch(0.26 0 0);
-    --input: oklch(0.485 0 0);
+    --input: oklch(0.53 0 0);
 
     --periwinkle: oklch(0.783 0.099 271);
     --periwinkle-tint: oklch(0.286 0.05 275);
@@ -419,21 +419,23 @@
 
 /*
   Materials (DESIGN.md, Materials): frosted and tinted, in the manner of Android 17's blurred
-  surfaces. A strong blur behind a mostly opaque fill with a faint periwinkle cast
-  (--material-tint), so what sits on it stays readable over any content.
+  surfaces. A strong blur behind a mostly opaque fill with a periwinkle tint (--material-tint: 8%
+  periwinkle in the ground in light, 10% in the shell in dark), so what sits on it stays readable
+  over any content.
   - material-bar: the scrolled toolbar, the phone tab bar, sticky section and action bars. The
-    tint at 86%, 30 px blur, 180% saturation. A bar that belongs to a state sets --material-tint
+    tint at 89% (93% in dark), 30 px blur, 180% saturation. A bar that belongs to a state sets --material-tint
     to that state's color mixed into the ground.
   - material-thick: menus, pop-up lists, popovers, info tips, tooltips, the chart readout,
-    dialogs, alerts, sheets and toasts. --popover with a quarter of the tint, at 90%, 40 px blur.
+    dialogs, alerts, sheets and toasts. --popover with a quarter of the tint, at 90% (93% in
+    dark), 40 px blur.
   - material-float: the hairline edge and the soft shadow of a floating panel.
   The fills are the lowest that keep muted text (--muted-foreground) at 4.5:1 with pure black
-  under the material in the light theme and pure white under it in the dark theme (measured in
-  Chrome: 4.6:1 for the bar; the thick material more).
+  under the material in the light theme and pure white under it in the dark theme: 89% (bar) and
+  90% (thick) in light give 4.6:1 and 5.1:1; dark needs 93% for both (4.7:1 and 4.8:1).
 */
 :root {
-  --material-tint: color-mix(in oklab, var(--periwinkle) 4%, var(--background));
-  --material-bar-alpha: 86%;
+  --material-tint: color-mix(in oklab, var(--periwinkle) 8%, var(--background));
+  --material-bar-alpha: 89%;
   --material-thick-alpha: 90%;
   --material-bar-filter: blur(30px) saturate(180%);
   --material-thick-filter: blur(40px) saturate(180%);
@@ -442,7 +444,9 @@
   --scrim: oklch(0 0 0 / 0.32);
 }
 .dark {
-  --material-tint: color-mix(in oklab, var(--periwinkle) 6%, var(--sidebar));
+  --material-tint: color-mix(in oklab, var(--periwinkle) 10%, var(--sidebar));
+  --material-bar-alpha: 93%;
+  --material-thick-alpha: 93%;
   --material-edge: oklch(1 0 0 / 0.1);
   --material-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 12px 32px -8px oklch(0 0 0 / 0.6);
   --scrim: oklch(0 0 0 / 0.56);
@@ -464,20 +468,56 @@
   backdrop-filter: var(--material-thick-filter);
 }
 
+/*
+  Surfaces inside floating panels (DESIGN.md, Components). Dialogs and alerts have the window's
+  26 px corners and 16 px padding, so a card in them has 10 px corners (26 - 16); side sheets
+  (18 px) hold cards the same way. Their --muted becomes the ground (light) or the raised tone
+  (dark), set on the components, so cards stand out from the material.
+*/
+:where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]) .rounded-xl {
+  border-radius: var(--radius-md);
+}
+
+/*
+  A secondary button or pop-up button on a card: the ground color in light (the raised tone is too
+  close to the card), the raised tone in dark; on a card inside a dialog or sheet, whose --muted is
+  the ground, the raised tone again.
+*/
+:root {
+  --on-card-control: var(--background);
+}
+.dark {
+  --on-card-control: var(--secondary);
+}
+:where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]) {
+  --on-card-control: var(--secondary);
+}
+.dark :where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]) {
+  --on-card-control: oklch(0.32 0 0);
+}
+@layer utilities {
+  .bg-muted :is([data-slot="button"][data-variant="secondary"], [data-slot="select-trigger"]) {
+    background-color: var(--on-card-control);
+  }
+  .bg-muted :is([data-slot="button"][data-variant="secondary"], [data-slot="select-trigger"]):is(:hover, [aria-expanded="true"], [data-state="open"]) {
+    background-color: var(--accent);
+  }
+}
+
 @utility material-float {
   box-shadow: 0 0 0 1px var(--material-edge), var(--material-shadow);
 }
 
 /* Fallbacks, all opaque. No backdrop-filter support: the fill alone, at full strength. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root {
+  :root, .dark {
     --material-bar-alpha: 100%;
     --material-thick-alpha: 100%;
   }
 }
 /* Reduce Transparency (macOS, iOS, Windows): opaque surfaces, no blur. */
 @media (prefers-reduced-transparency: reduce) {
-  :root {
+  :root, .dark {
     --material-bar-alpha: 100%;
     --material-thick-alpha: 100%;
     --material-bar-filter: none;

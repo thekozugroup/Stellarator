@@ -18,6 +18,9 @@ const RAMPS = [
   ["#0b1515", "#3a46b4", "#a1b5f8", "#9ed49c", "#e5f2c4"], // aurora: periwinkle into green
 ] as const
 
+/** Navy to periwinkle only: white on every cell is at least 4.8:1, for tiles that carry the mark. */
+const DEEP = ["#141a40", "#232c78", "#3a46b4", "#4a58cc", "#5566dc"] as const
+
 /** 4 x 4 Bayer matrix, as thresholds in [-0.5, 0.5). */
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => v / 16 - 0.5)
 
@@ -32,9 +35,9 @@ function hash(seed: string): number {
 }
 
 /** The cells of a field, row by row: `cells * cells` colors. Exported for tests. */
-export function plasmaCells(seed: string, cells: number): string[] {
+export function plasmaCells(seed: string, cells: number, deep = false): string[] {
   const h = hash(seed)
-  const ramp = RAMPS[h % RAMPS.length]
+  const ramp: readonly string[] = deep ? DEEP : RAMPS[h % RAMPS.length]
   const angle = ((h >>> 8) % 8) * (Math.PI / 4)
   const bend = (((h >>> 16) % 7) - 3) / 6 // curves the bands a little, -0.5 to 0.5
   const dx = Math.cos(angle)
@@ -59,10 +62,10 @@ export function plasmaCells(seed: string, cells: number): string[] {
 /**
  * A square pixel-field tile. `cells` is how many cells run along each side (6 for small tiles, 8
  * or more for larger ones). Corners follow the size: 5 px at 20 px, 8 px at 28 px (pass a
- * rounded-* class).
+ * rounded-* class). `deep` keeps to navy and periwinkle, for a tile with the white mark on it.
  */
-export function Plasma({ seed, cells = 6, className }: { seed: string; cells?: number; className?: string }) {
-  const colors = useMemo(() => plasmaCells(seed, cells), [seed, cells])
+export function Plasma({ seed, cells = 6, deep = false, className }: { seed: string; cells?: number; deep?: boolean; className?: string }) {
+  const colors = useMemo(() => plasmaCells(seed, cells, deep), [seed, cells, deep])
   return (
     <span aria-hidden="true" className={cn("inline-block size-7 shrink-0 overflow-hidden rounded-sm", className)}>
       <svg viewBox={`0 0 ${cells} ${cells}`} shapeRendering="crispEdges" className="block size-full">

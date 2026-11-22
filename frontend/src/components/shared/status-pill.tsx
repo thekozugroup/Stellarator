@@ -1,3 +1,4 @@
+import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { RunStatus, SampleStatus } from "@/lib/types"
 
@@ -5,7 +6,7 @@ import type { RunStatus, SampleStatus } from "@/lib/types"
  * Status (DESIGN.md, Components). Two forms of the same thing:
  * - `Pill`, in lists and tables: a 6 px dot in the state's color and the word. Normal states
  *   ("Done", "Completed", "Pending") are a plain muted word with no dot.
- * - `StatusBadge`, in a detail screen's header: a 24 px capsule in the state's tint with the dot
+ * - `StatusBadge`, in a detail screen's header: a 28 px capsule in the state's tint with the dot
  *   and the word in the state's ink.
  * Color never carries meaning alone; the word is always there.
  *
@@ -50,16 +51,27 @@ export function Pill({ tone = "plain", children, className }: { tone?: Tone; chi
   )
 }
 
-export function StatusBadge({ tone = "plain", children, className }: { tone?: Tone; children: React.ReactNode; className?: string }) {
+export function StatusBadge({
+  tone = "plain",
+  icon,
+  children,
+  className,
+}: {
+  tone?: Tone
+  /** Replaces the dot: a check for a finished state. */
+  icon?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}) {
   return (
     <span
       className={cn(
-        "inline-flex h-7 flex-none items-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap",
+        "inline-flex h-7 flex-none items-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap [&_svg]:size-3.5",
         badgeClass[tone],
         className,
       )}
     >
-      {tone !== "plain" ? <Dot tone={tone} /> : null}
+      {icon ?? (tone !== "plain" ? <Dot tone={tone} /> : null)}
       {children}
     </span>
   )
@@ -83,9 +95,16 @@ export function RunStatusPill({ status }: { status: RunStatus; failed?: number }
   return <Pill tone={runTone[status]}>{runLabel[status]}</Pill>
 }
 
-/** A run's status in its header: Completed reads as done (green), the rest as in the lists. */
+/** A run's status in its header. Completed is a neutral badge with a check, so a finished run never
+ * reads as a live one; the rest use their list tones. */
 export function RunStatusBadge({ status }: { status: RunStatus }) {
-  return <StatusBadge tone={status === "completed" ? "positive" : runTone[status]}>{runLabel[status]}</StatusBadge>
+  if (status === "completed")
+    return (
+      <StatusBadge tone="neutral" icon={<Check aria-hidden="true" strokeWidth={2.25} />}>
+        {runLabel[status]}
+      </StatusBadge>
+    )
+  return <StatusBadge tone={runTone[status]}>{runLabel[status]}</StatusBadge>
 }
 
 const sampleTone: Record<SampleStatus, Tone> = {

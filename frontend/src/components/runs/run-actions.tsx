@@ -141,7 +141,7 @@ function DeleteDialog({ run, open, onOpenChange, returnFocus }: { run: Run; open
           <AlertDialogDescription>Responses and thinking traces are deleted for good. Exported files are not affected.</AlertDialogDescription>
         </AlertDialogHeader>
         {del.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-negative-ink">
             Couldn't delete the run. {del.error.message}
           </p>
         ) : null}

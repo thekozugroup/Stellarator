@@ -38,7 +38,7 @@ export function PromptRow({ prompt }: { prompt: Prompt }) {
 
   return (
     <li className="grid grid-cols-[3rem_1fr] gap-x-2 border-b px-4 py-3 last:border-b-0">
-      <span className="pt-0.5 font-mono text-muted-foreground tabular">{int(prompt.idx + 1)}</span>
+      <span className="pt-0.5 font-mono text-muted-foreground tabular">#{int(prompt.idx + 1)}</span>
       <div className="min-w-0">
         {open && system ? (
           <div className="mb-2">

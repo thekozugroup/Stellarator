@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronRight, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import { NewPreferenceSetDialog } from "@/components/preferences/new-set-dialog"
+import { STACKED_LINK, STACKED_ROW } from "@/components/runs/run-data"
 import { prefKeys } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
@@ -16,23 +17,35 @@ import { int, middle, relative } from "@/lib/format"
 import type { PreferenceSet, Run } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-function Progress({ set, className }: { set: PreferenceSet; className?: string }) {
+/**
+ * Decided prompts at their true ratio, laid out as on Runs: in the table the bar and then
+ * "2 of 6" on one line; in a stacked row "2 of 6 decided" over a full-width bar.
+ */
+function Progress({ set, stacked = false }: { set: PreferenceSet; stacked?: boolean }) {
   if (set.prompt_count === 0)
     return (
-      <p className={cn("text-sm text-muted-foreground", className)} title="No prompt has two finished responses yet">
+      <p className="text-sm text-muted-foreground" title="No prompt has two finished responses yet">
         Nothing to compare yet
       </p>
     )
+  const label = `${int(set.decided)} of ${int(set.prompt_count)} prompts decided`
+  const figures = (
+    <span className="text-sm whitespace-nowrap tabular">
+      {int(set.decided)} <span className="text-muted-foreground">of {int(set.prompt_count)}{stacked ? " decided" : ""}</span>
+    </span>
+  )
+  if (stacked) {
+    return (
+      <div className="grid gap-1.5">
+        {figures}
+        <ProgressBar done={set.decided} total={set.prompt_count} label={label} />
+      </div>
+    )
+  }
   return (
-    <div className={cn("grid gap-1.5", className)}>
-      <p className="text-sm whitespace-nowrap tabular">
-        {int(set.decided)} <span className="text-muted-foreground">of {int(set.prompt_count)} decided</span>
-      </p>
-      <ProgressBar
-        done={set.decided}
-        total={set.prompt_count}
-        label={`${int(set.decided)} of ${int(set.prompt_count)} prompts decided`}
-      />
+    <div className="flex items-center gap-3">
+      <ProgressBar done={set.decided} total={set.prompt_count} label={label} className="w-20 flex-none" />
+      {figures}
     </div>
   )
 }
@@ -72,7 +85,7 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
               <TableHead className="w-[28%]">Name</TableHead>
               <TableHead className="w-[22%]">Prompt set</TableHead>
               <TableHead className="w-[22%]">Runs</TableHead>
-              <TableHead className="w-[16%]">Progress</TableHead>
+              <TableHead className="w-[16%]">Decided</TableHead>
               <TableHead className="w-[12%] text-right">Created</TableHead>
             </TableRow>
           </TableHeader>
@@ -101,7 +114,7 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
                   <RunModels set={set} />
                 </TableCell>
                 <TableCell className="py-2">
-                  <Progress set={set} className="max-w-44" />
+                  <Progress set={set} />
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground" title={new Date(set.created_at).toLocaleString()}>
                   {relative(set.created_at)}
@@ -112,31 +125,27 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
         </Table>
       </div>
 
-      {/* Phone and tablet: one stacked row per set with the name, the progress and the context. */}
-      <ul className="lg:hidden">
+      {/* Phone and tablet (as Runs): one row per set, its name, then the prompt set and the runs it
+          compares, then the progress at full width. The whole row is the link. */}
+      <ul className="divide-y lg:hidden">
         {sets.map((set) => (
-          <li key={set.id} className="border-b last:border-b-0">
-            <Link
-              to={`/preferences/${set.id}`}
-              className="-mx-2 flex items-center gap-3 rounded-md px-2 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent"
-            >
-              <span className="grid min-w-0 flex-1 gap-2">
-                <span className="grid gap-0.5">
-                  <span className="font-medium break-words">{set.name}</span>
-                  <PromptSetName set={set} className="text-xs text-muted-foreground" />
-                </span>
-                <Progress set={set} />
-                <span className="grid gap-0.5 text-xs text-muted-foreground">
-                  {set.runs.map((r) => (
-                    <span key={r.id} className="truncate font-mono">
-                      {r.model}
-                    </span>
-                  ))}
-                  <span>Created {relative(set.created_at)}</span>
-                </span>
-              </span>
-              <ChevronRight className="size-4 flex-none text-muted-foreground" aria-hidden="true" />
+          <li key={set.id} className={STACKED_ROW}>
+            <Link data-touch="inline" to={`/preferences/${set.id}`} className={cn("block font-medium break-words", STACKED_LINK)}>
+              {set.name}
             </Link>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <PromptSetName set={set} className="max-w-[60%]" />
+              {set.runs.length ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="min-w-0 truncate font-mono">{set.runs.map((r) => r.model).join(" vs ")}</span>
+                </>
+              ) : null}
+              <span className="hidden flex-none sm:inline">· {relative(set.created_at)}</span>
+            </p>
+            <div className="mt-2.5">
+              <Progress set={set} stacked />
+            </div>
           </li>
         ))}
       </ul>

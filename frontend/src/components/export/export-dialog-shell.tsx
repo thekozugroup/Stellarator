@@ -412,7 +412,7 @@ export function ExportDialogShell({
         </DialogHeader>
 
         {/* The scroll area runs to the dialog's edges so its scrollbar and focus rings are not clipped. */}
-        <div className="-mx-5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-1">
+        <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-1">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <section
               aria-label="Preview"

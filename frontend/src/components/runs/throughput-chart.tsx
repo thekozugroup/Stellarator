@@ -9,6 +9,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  ZIndexLayer,
   usePlotArea,
   useXAxisScale,
   type TooltipContentProps,
@@ -81,6 +82,8 @@ interface Tick {
   t: number
   /** The first tick of a session. */
   first?: boolean
+  /** Labelled as time before now ("−5M"), not as a clock time. */
+  ago?: boolean
 }
 
 /** Round clock ticks in each session, landing on whole steps. */
@@ -93,12 +96,12 @@ function clockTicks(sessions: Session[], step: number): Tick[] {
 }
 
 /**
- * While the run is going, and has not been paused, the newest reading is now, so the time axis
- * counts back from it: "−10M", "−5M", "NOW", at the same step sizes as the clock ticks.
+ * While the run is going, the newest reading is now, so the current session's ticks count back
+ * from it: "−10M", "−5M", "NOW", at the same step sizes as the clock ticks.
  */
-function agoTicks(min: number, max: number, step: number): Tick[] {
+function agoTicks(s: Session, step: number): Tick[] {
   const ticks: Tick[] = []
-  for (let t = max; t >= min; t -= step) ticks.unshift({ x: t, t })
+  for (let t = s.to; t >= s.from; t -= step) ticks.unshift({ x: t - s.shift, t, ago: true })
   return ticks
 }
 
@@ -364,10 +367,12 @@ export function ThroughputChart({
   const step = tickStep(xMax - xMin)
   const multiDay = new Date(tMin).toDateString() !== new Date(tMax).toDateString()
   const span = multiDay ? mdhm : hm
-  // Counting back from now only reads true when no pause has been cut out of the axis.
-  const ago = !!live && breaks.length === 0
-  const xTicks = ago ? agoTicks(xMin, xMax, step) : clockTicks(sessions, step)
-  const labelAt = new Map(xTicks.map((k) => [k.x, ago ? agoLabel(tMax - k.t) : clockLabel(k, step, multiDay)]))
+  // Live: the current session counts back from now; earlier sessions keep clock times (with the
+  // date once they are on another day).
+  const xTicks = live
+    ? [...clockTicks(sessions.slice(0, -1), step), ...agoTicks(sessions[sessions.length - 1], step)]
+    : clockTicks(sessions, step)
+  const labelAt = new Map(xTicks.map((k) => [k.x, k.ago ? agoLabel(tMax - k.t) : clockLabel(k, step, multiDay)]))
   const tpsTicks = valueTicks(Math.max(...data.map((d) => d.tps ?? 0)), false)
   const seqsTicks = valueTicks(Math.max(...data.map((d) => d.seqs ?? 0)), true)
   const seqsAxisWidth = Math.max(36, axisWidth(seqsTicks))
@@ -448,10 +453,16 @@ export function ThroughputChart({
             isAnimationActive={false}
           />
           {breaks.map((x) => (
-            <ReferenceLine key={x} yAxisId="tps" x={x} stroke="var(--input)" strokeDasharray="3 3" ifOverflow="hidden" />
+            // Under the lines and the flag, over the grid.
+            <ReferenceLine key={x} yAxisId="tps" x={x} stroke="var(--input)" strokeDasharray="3 3" ifOverflow="hidden" zIndex={-50} />
           ))}
           <AxisNames seqsAxisWidth={seqsAxisWidth} />
-          {effect ? <EffectFlag effect={effect} /> : null}
+          {/* Over the lines (400), under the hover cursor (1100). */}
+          {effect ? (
+            <ZIndexLayer zIndex={1050}>
+              <EffectFlag effect={effect} />
+            </ZIndexLayer>
+          ) : null}
         </ComposedChart>
       </ResponsiveContainer>
     </div>

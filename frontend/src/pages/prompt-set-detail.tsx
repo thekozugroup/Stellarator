@@ -20,7 +20,7 @@ import { StopImportDialog } from "@/components/prompts/stop-import-dialog"
 import { RenamePromptSetDialog } from "@/components/prompts/rename-prompt-set-dialog"
 import { sourceParts } from "@/components/prompts/source"
 import { api, qs } from "@/lib/api"
-import { int, relative } from "@/lib/format"
+import { dateTime, int, relative } from "@/lib/format"
 import type { Page as PageOf, Prompt, PromptSet } from "@/lib/types"
 
 const PAGE_SIZE = 50
@@ -123,7 +123,9 @@ export function PromptSetDetailPage() {
             </Chip>
             {parts?.id ? <Chip>{parts.kind}</Chip> : null}
             {parts?.where ? <Chip mono>{parts.where}</Chip> : null}
-            <Chip title={set.created_at}>Created {relative(set.created_at)}</Chip>
+            <span title={dateTime(set.created_at)} className="px-1 text-sm text-muted-foreground">
+              Created {relative(set.created_at)}
+            </span>
           </ChipRow>
         ) : (
           <Bar className="w-72 max-w-full" />
@@ -208,7 +210,7 @@ export function PromptSetDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           {total > PAGE_SIZE || (q && total > 0) ? (
             <p className="text-sm text-muted-foreground tabular" aria-live="polite">
-              Showing {int(first)}–{int(last)} of {int(total)}
+              {q ? `${int(first)}–${int(last)} of ${int(total)} matches` : `${int(first)}–${int(last)}`}
             </p>
           ) : null}
           <TextModeToggle />

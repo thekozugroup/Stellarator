@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 
 /**
  * Facts as tiles (DESIGN.md, Layout): --muted tiles with 16 px corners and 16 px padding, each a
- * figure (28 px, tabular) over its label (12 px muted). At most four in a row; a tile with `span`
+ * figure (28 px, tabular) over its label (12 px muted). At most four, sharing the row equally; a tile with `span`
  * takes two columns and can hold a progress bar under its figure (`children`). Never repeat a
  * count that is shown elsewhere on the screen.
  *
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
  *   </Tiles>
  */
 export function Tiles({ children, className }: { children: ReactNode; className?: string }) {
-  return <dl className={cn("grid grid-cols-2 gap-2 lg:grid-cols-4", className)}>{children}</dl>
+  return <dl className={cn("grid grid-cols-2 gap-2 lg:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]", className)}>{children}</dl>
 }
 
 export function Tile({

@@ -135,7 +135,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
       </DialogHeader>
 
       {/* The scroll area runs to the dialog's edges so focus rings are not clipped. */}
-      <div className="-mx-5 grid min-h-0 content-start gap-5 overflow-y-auto px-5 py-1">
+      <div className="-mx-4 grid min-h-0 content-start gap-5 overflow-y-auto px-4 py-1">
         <FormGroup>
           <FormRow id="pref-name" label="Name" error={errors.name}>
             <Input
@@ -242,7 +242,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
             </div>
           )}
           {errors.runs ? (
-            <p id="pref-runs-error" role="alert" className="px-3 text-sm text-destructive">
+            <p id="pref-runs-error" role="alert" className="px-3 text-sm text-negative-ink">
               {errors.runs}
             </p>
           ) : (

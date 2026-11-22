@@ -19,8 +19,6 @@ import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
 import { FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
 import { Page } from "@/components/shared/page"
-import { Plasma } from "@/components/shared/plasma"
-import { Logo } from "@/components/logo"
 import { ApiError, api } from "@/lib/api"
 import type { Settings } from "@/lib/types"
 
@@ -141,7 +139,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
             ) : null}
           </div>
           {!showForm && error ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-negative-ink">
               {error}
             </p>
           ) : null}
@@ -276,15 +274,12 @@ function AppearanceSection() {
 
 const MODE: Record<Settings["mode"], string> = { desktop: "Desktop app", docker: "Docker", native: "Server" }
 
-/** The app tile (the mark on the pixel field, as in the sidebar), the name and the version, then how it runs. */
+/** The app icon, the name and the version, then how it runs. */
 function AboutSection({ settings }: { settings?: Settings }) {
   return (
     <FormGroup title="About">
       <FormItem className="flex items-center gap-3 py-3">
-        <span className="relative inline-flex size-10 flex-none items-center justify-center overflow-hidden rounded-md">
-          <Plasma seed="stellarator" cells={6} className="absolute inset-0 size-full rounded-none" />
-          <Logo className="relative size-6 text-white" />
-        </span>
+        <img src="/icon-192.png" alt="" width={40} height={40} className="size-10 flex-none" />
         <span className="grid min-w-0 gap-0.5">
           <span className="text-base leading-5 font-semibold">Stellarator</span>
           <span className="flex min-h-4 items-center text-sm text-muted-foreground">

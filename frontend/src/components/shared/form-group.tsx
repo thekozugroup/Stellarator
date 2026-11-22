@@ -139,7 +139,7 @@ export function FormRow({
   const hintId = id ? `${id}-hint` : undefined
   const errorId = id ? `${id}-error` : undefined
   const note = error ? (
-    <p id={errorId} className="text-sm text-destructive">
+    <p id={errorId} className="text-sm text-negative-ink">
       {error}
     </p>
   ) : hint || hintLive ? (

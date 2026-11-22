@@ -10,8 +10,19 @@ export type Mark = "chosen" | "rejected"
 
 const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0)
 
-function traceSize(c: Candidate): string {
-  if (c.reasoning_tokens != null) return count(c.reasoning_tokens, "token", "tokens")
+/**
+ * How a thinking trace's length is counted. The page picks one unit for all the cards it shows:
+ * tokens when the server reported them for every trace, otherwise words for all of them, so the
+ * cards can be compared at a glance.
+ */
+export type TraceUnit = "tokens" | "words"
+
+export function traceUnitFor(candidates: Candidate[]): TraceUnit {
+  return candidates.every((c) => !c.reasoning || c.reasoning_tokens != null) ? "tokens" : "words"
+}
+
+function traceSize(c: Candidate, unit: TraceUnit): string {
+  if (unit === "tokens" && c.reasoning_tokens != null) return count(c.reasoning_tokens, "token", "tokens")
   return count(wordCount(c.reasoning ?? ""), "word", "words")
 }
 
@@ -32,6 +43,7 @@ export function CandidateCard({
   mark,
   showModel,
   showSample,
+  traceUnit,
   disabled,
   onMark,
 }: {
@@ -41,6 +53,7 @@ export function CandidateCard({
   mark: Mark | null
   showModel: boolean
   showSample: boolean
+  traceUnit: TraceUnit
   disabled?: boolean
   onMark: (mark: Mark) => void
 }) {
@@ -62,9 +75,10 @@ export function CandidateCard({
       )}
     >
       {/* Sticky under the toolbar; the same fill as the card so text scrolls under it, and the
-          card's top corners. */}
-      <header className="sticky top-(--top-chrome) z-10 flex items-center gap-x-3 gap-y-2 rounded-t-xl bg-muted py-2 pr-2 pl-5 sm:flex-wrap sm:py-3 sm:pr-3">
-        <div className="flex min-w-0 flex-[1_1_0] items-center gap-3 sm:flex-[1_1_12rem]">
+          card's top corners. The mark control sits 6 px from the card's top and trailing edges with
+          10 px corners, concentric with the card's 16 px corner. */}
+      <header className="sticky top-(--top-chrome) z-10 flex items-start gap-x-3 gap-y-1 rounded-t-xl bg-muted pt-1.5 pr-1.5 pb-2 pl-5 sm:flex-wrap">
+        <div className="flex min-h-8 min-w-0 flex-[1_1_0] items-center gap-3 pointer-coarse:min-h-12 sm:flex-[1_1_12rem]">
           <h3
             id={headingId}
             className={cn(
@@ -98,7 +112,7 @@ export function CandidateCard({
         <div
           role="group"
           aria-label={`Mark response ${label}`}
-          className="flex h-8 flex-none items-center rounded-md bg-secondary p-0.5 pointer-coarse:h-auto"
+          className="flex h-8 flex-none items-center rounded-md bg-secondary p-0.5 pointer-coarse:h-auto max-sm:ml-auto"
         >
           <MarkButton
             kind="chosen"
@@ -128,7 +142,7 @@ export function CandidateCard({
                 className="size-4 flex-none transition-transform duration-150 ease-out group-data-[state=open]/trace:rotate-90"
               />
               <span>
-                Thinking trace · <span className="tabular">{traceSize(candidate)}</span>
+                Thinking trace · <span className="tabular">{traceSize(candidate, traceUnit)}</span>
               </span>
             </CollapsibleTrigger>
             <CollapsibleContent>

@@ -48,6 +48,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
       type="button"
       variant="ghost"
       size="icon-sm"
+      className="text-muted-foreground hover:text-foreground"
       aria-label={copied ? "Copied" : label}
       title={copied ? "Copied" : label}
       onClick={async () => {

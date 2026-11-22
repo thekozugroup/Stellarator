@@ -115,7 +115,7 @@ export function SeqsControl({ run }: { run: Run }) {
               if (invalid || draft.trim() === "") setDraft(String(run.concurrency))
             }}
             className={cn(
-              "w-16 border-periwinkle bg-background text-center font-mono text-sm font-medium text-periwinkle-ink tabular dark:border-periwinkle dark:bg-background",
+              "w-16 border-periwinkle bg-background text-center text-sm font-medium text-periwinkle-ink tabular dark:border-periwinkle dark:bg-background",
               "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
             )}
           />
@@ -133,7 +133,7 @@ export function SeqsControl({ run }: { run: Run }) {
         <SeqsChoices value={current} onChange={apply} />
       </div>
       {hint ? (
-        <p id="seqs-hint" className="text-xs text-destructive">
+        <p id="seqs-hint" className="text-xs text-negative-ink">
           {hint}
         </p>
       ) : null}

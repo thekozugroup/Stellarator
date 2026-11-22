@@ -21,8 +21,8 @@ const ToggleGroupContext = React.createContext<
 
 /**
  * With spacing={0} a toggle group is a segmented control (DESIGN.md, Components): a --secondary
- * track with 10 px corners and 2 px padding holding 8 px segments, the chosen one raised (the
- * ground in light, --accent in dark, 1 px shadow) with ink text at weight 500. A 32 px control
+ * track with 10 px corners and 2 px padding holding 8 px segments, the chosen one in the ground
+ * color (white in light, near-black in dark) with a 1 px shadow or hairline with ink text at weight 500. A 32 px control
  * (44 pt segments on touch). A track that wraps to two rows keeps its corners. With spacing > 0
  * the items are separate toggles.
  */
@@ -64,7 +64,7 @@ function ToggleGroup({
 }
 
 const SEGMENT =
-  "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-sm border border-transparent px-2.5 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs dark:data-[state=on]:bg-accent [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+  "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-sm border border-transparent px-2.5 text-sm whitespace-nowrap text-muted-foreground transition-[color,background-color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-xs dark:data-[state=on]:shadow-[0_0_0_1px_var(--border)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
 
 function ToggleGroupItem({
   className,

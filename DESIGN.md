@@ -14,12 +14,14 @@ the window and its sidebar follow macOS 26 and every nested corner is concentric
 
 Identity elements:
 
-- The mark: a five-lobed ring (a stellarator's plasma cross-section), drawn as one bold shape in
-  ink or white. On the app icon it sits in white glass on a pixel field.
+- The mark: a five-lobed ring (a stellarator's plasma cross-section), drawn as one simple, bold,
+  monochrome shape in ink or white, never in a tile or card. The app icon is styled like a stock
+  macOS 26 app: a two-color gradient with the mark in white frosted glass, no texture.
 - The pixel field (Plasma): a coarse grid of square cells stepping through two or three palette
   colors with a little ordered dither, like a low-resolution image of plasma. It is the only
-  gradient in the product. It appears on the app icon, on the tiles that stand for endpoints and
-  prompt sets, and in empty states. Never behind text and never as a page background.
+  texture in the product. It appears on the tiles that stand for endpoints and prompt sets, in empty
+  states and behind the README screenshots. Never behind text, never as a page background and
+  never on the app icon or the mark.
 - The signature element: on a run, throughput (tokens per second) drawn over the seqs setting as a
   step line, so the effect of changing concurrency is visible. Beside it, the sequences in flight
   as a log: mono time, a colored state word, the prompt.
@@ -46,7 +48,7 @@ roles, never raw values.
 | Ink | `--foreground` | `#0b1515` | `#f4f4f4` | text and strong marks; light ink is near-black with a teal cast |
 | Muted ink | `--muted-foreground` | `#5e5e5e` | `#9a9a9a` | secondary text, at least 4.5:1 on ground, surface and raised |
 | Hairline | `--border` | `#e7e7e9` | `#242424` | dividers and the toolbar edge; decorative only |
-| Control border | `--input` | `#8e9194` | `#5f5f5f` | the outline of a text field, at least 3:1 |
+| Control border | `--input` | `#878787` | `#6c6c6c` | the outline of a text field, at least 3:1 on the ground and on cards |
 | Primary | `--primary` | `#0b1515` | `#f4f4f4` | the one primary button per view (ink, inverse ink in dark) |
 | Accent | `--periwinkle` | `#5566dc` | `#a1b5f8` | the main data series, progress, focus ring, one control per screen |
 | Accent tint | `--periwinkle-tint` | `#e3e8fd` | `#232843` | fill behind accent text and the selected chip |
@@ -80,12 +82,13 @@ does not refract. Tokens and utilities live in `frontend/src/index.css`.
 
 | Utility | Fill | Blur | Used on |
 | --- | --- | --- | --- |
-| `material-bar` | `--material-tint` at 86% | 30 px, saturate 180% | the toolbar once content scrolls under it, the phone tab bar, sticky section bars and bottom action bars |
-| `material-thick` | `--popover` with a quarter of `--material-tint`, at 90% | 40 px, saturate 180% | menus, pop-up lists, popovers, info tips, tooltips, the chart readout, dialogs, alerts, sheets, toasts |
+| `material-bar` | `--material-tint` at 89% (93% in dark) | 30 px, saturate 180% | the toolbar once content scrolls under it, the phone tab bar, sticky section bars and bottom action bars |
+| `material-thick` | `--popover` with a quarter of `--material-tint`, at 90% (93% in dark) | 40 px, saturate 180% | menus, pop-up lists, popovers, info tips, tooltips, the chart readout, dialogs, alerts, sheets, toasts |
 | `material-float` | none | none | a floating panel's 1 px edge (`--material-edge`) and shadow (`--material-shadow`) |
 
-- `--material-tint` is the ground with 4% periwinkle (light) or the shell with 6% periwinkle
-  (dark): the faint tonal cast that ties the materials to the accent. A bar that belongs to a
+- `--material-tint` is the ground with 8% periwinkle (light) or the shell with 10% periwinkle
+  (dark): the tonal cast that ties the materials to the accent. Mix colors in oklab (`color-mix(in
+  oklab, …)`): in oklch the achromatic grays pull the hue toward 0 and tints turn pink. A bar that belongs to a
   state sets it to that state's color at the same strength (a toast for a failure: red; the
   preference review bar: periwinkle at 10%).
 - The fills keep `--muted-foreground` at 4.5:1 over pure black (light theme) and pure white (dark
@@ -165,8 +168,8 @@ Nested corners are concentric: inner radius = outer radius - the gap between the
 | Window | `--window-radius` (26) | the system |
 | Sidebar panel, side sheets | `--panel-radius` = window - 8 = 18 | floats 8 px inside the window |
 | Sidebar rows | 10 | panel 18 - 8 px padding |
-| Dialogs and alerts | 18 | same rank as the panel |
-| Cards and tiles | 16 | page-level surfaces |
+| Dialogs and alerts | 26 | free-floating, like a window; 16 px padding |
+| Cards and tiles | 16 | page-level surfaces; 10 inside dialogs (26 - 16) and sheets |
 | Wells inside cards (thinking trace, code) | 8 | card 16 - 8 px inset; a well with a 16 px inset is square-cornered (4) |
 | Menus, pop-up lists, popovers, toasts | 14 | |
 | Menu items | 8 | menu 14 - 6 px padding |
@@ -174,7 +177,7 @@ Nested corners are concentric: inner radius = outer radius - the gap between the
 | Segmented track | 10; segments 8 | track 10 - 2 px padding |
 | Small buttons (28 px) | 8 | |
 | Tooltips | 8 | |
-| Chips, status pills, the phone tab bar and its items | capsule | a capsule in a capsule stays concentric |
+| Chips, status pills, the phone tab bar and its items, a tile inside a chip | capsule or circle | a capsule holds a capsule or circle concentrically |
 | Checkboxes | 5 | |
 
 When the window radius is under 20 px (macOS 15 and earlier, Windows, Linux) the sidebar is not
@@ -193,8 +196,7 @@ raised segment of a segmented control (one 1 px shadow).
 - Spacing scale (Tailwind units): 1, 2, 3, 4, 6, 8, 12, 16 (4 to 64 px).
 - Shell from 768 px up: the sidebar panel floats 8 px inside the window (a 240 px column: 8 px
   gutter, 224 px panel, 8 px gutter), `--sidebar` fill, `material-float`, `--panel-radius`
-  corners, 8 px padding. At its top: the app tile (the mark in white on a 24 px pixel-field tile,
-  6 px corners) and the name, in a 32 px row; then Runs, Prompt sets, Endpoints, Preferences;
+  corners, 8 px padding. At its top: the mark (20 px, ink) and the name, in a 32 px row; then Runs, Prompt sets, Endpoints, Preferences;
   Settings at the bottom.
 - Sidebar rows: 16 px icon, 8 px gap, label, 8 px side padding, 10 px corners, 32 px tall.
   Labels ink at 500; icons muted until their row is selected. The selected row is `--accent`.
@@ -210,13 +212,14 @@ raised segment of a segmented control (one 1 px shadow).
     parents in muted ink as links, `/` separators, the current page in ink
     ("Runs / Distill gsm8k"), truncated. The page's `h1` is the display title in the content.
   - Actions: at most one primary (ink) button; the rest secondary; a "…" menu for the rest.
-    From 1024 px the actions sit in the bar; below, under the title in the content.
+    They sit in the bar from 768 px on a top-level screen and from 1024 px on a detail screen;
+    below that, under the title in the content.
 - Detail screen header, in the content, from the top: the display title (up to two lines), then a
   row of chips (status pill first, then the objects it uses: model, endpoint, prompt set, each a
   link), then the facts as tiles. 24 px between the title block and the content.
 - Facts as tiles: a row of `--muted` tiles, 16 px corners, 16 px padding, each a figure (28 px)
-  over its label (12 px muted). At most four. The first tile may span two columns and hold a
-  progress bar. Never repeat a count shown elsewhere on the screen.
+  over its label (12 px muted). At most four, sharing the row equally (two tiles take half each).
+  The first tile may span two columns and hold a progress bar. Never repeat a count shown elsewhere on the screen.
 - Phones (below 768 px): a 44 px bar under the status-bar inset holds the back button ("‹ Runs")
   or, on the four top-level screens, the Settings gear. The screen starts with the 28 px large
   title. Once it scrolls under the bar, a 17 px title fades in centered in the bar. The four
@@ -238,20 +241,24 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
 - **Text fields**: 32 px, 10 px corners, `--background` fill, 1 px `--input` edge (3:1),
   periwinkle focus ring (2 px, 2 px offset, following the corner).
 - **Segmented controls** (`ToggleGroup` with `spacing={0}`, the default `TabsList`): a
-  `--secondary` track, 2 px padding; the chosen segment raised (`--background` in light,
-  `--accent` in dark, 1 px shadow) with ink text at 500, the others muted at 400.
+  `--secondary` track, 2 px padding; the chosen segment in the ground color (white in light,
+  near-black in dark) with a 1 px shadow (light) or hairline (dark), ink text at 500; the others
+  muted at 400.
 - **Tabs** (`TabsList variant="line"`): for switching views of one list, with counts: 13 px
   labels, the current one ink at 500 with a 2 px ink underline on a full-width hairline; the others
   muted. Counts in muted tabular figures after the label.
 - **Chips**: 28 px capsules, `--secondary` fill, 13 px ink; a chip that links shows a hover fill
-  of `--accent`. Model names inside chips are mono.
-- **Status**: in a header, a status pill: a 24 px capsule in the state's tint, a 6 px dot and the
-  word in the state's ink. In lists and tables, the dot and the word only. Normal states
+  of `--accent` (on touch it keeps 28 px with an invisible 44 pt hit area). Model names inside
+  chips are mono; a plasma tile inside a chip is a 20 px circle. A date is not a chip: it follows
+  the chips as plain muted text.
+- **Status**: in a header, a status badge: a 28 px capsule in the state's tint, a 6 px dot and the
+  word in the state's ink; Completed is a neutral badge with a check instead of the dot, so a
+  finished run never reads as a live one. In lists and tables, the dot and the word only. Normal states
   (Completed, Done, Pending) are plain muted words with no dot. Running and In flight green;
   Paused, Pausing and Truncated coral; Failed red; Thinking periwinkle; Answering green.
 - **Tables** (data lists from 1024 px): a header band of `--muted` with 10 px corners and 12 px
-  muted labels; 44 px rows divided by hairlines; the row under the pointer `--accent` with 10 px
-  corners; the first column ink at 500; numbers right-aligned and tabular; IDs and models mono.
+  muted labels; 44 px rows divided by straight hairlines; the row under the pointer gets an
+  `--accent` layer behind its cells with 10 px corners at its ends; the first column ink at 500; numbers right-aligned and tabular; IDs and models mono.
   Below 1024 px, one stacked row per item with its facts on a second line.
 - **Cards** (`Panel`): `--muted`, 16 px corners, no border, no shadow; a header row with a 15 px
   title and its actions, 16 px padding. A card is never inside a card; content inside a card uses
@@ -259,14 +266,21 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
 - **Menus and lists**: `material-thick` + `material-float`, 14 px corners, 6 px padding, 32 px
   items with 8 px corners; the highlighted item `--accent` with ink text; a checkmark or icon at
   the end; separators full width; destructive items red ink.
-- **Dialogs and alerts**: `material-thick` over the scrim, 18 px corners, 20 px padding, title
-  15 px at 600; buttons at the end (stacked full width below 640 px), Cancel secondary. Inside
+- **Dialogs and alerts**: `material-thick` over the scrim, 26 px corners (the window's), 16 px
+  padding, so a card inside has 10 px corners; title 15 px at 600; buttons at the end (stacked full width below 640 px), Cancel secondary. Inside
   dialogs, alerts and sheets `--muted` becomes the ground (light) or the raised tone (dark), so a
   card or group stands out from the material instead of matching it.
 - **Side sheets**: `material-thick`; edge to edge on phones; from 640 px they float 8 px inside the
   window with `--panel-radius` corners.
 - **Tooltips**: `material-thick`, 8 px corners, 12 px text, shown after a 700 ms hover (keyboard
   focus shows them at once). Info tips (the (i) buttons) are popovers in the same material.
+- **Buttons on cards**: a secondary button or pop-up button on a `--muted` card takes the ground
+  color in light (the raised tone is too close to the card) and the raised tone in dark
+  (`--on-card-control` in `index.css`).
+- **Action bar** (`shared/action-bar.ts`): the actions of a long form or a review, in a floating
+  panel: `material-bar` + `material-float`, `--panel-radius` corners, sticky 8 px above the
+  window's bottom edge, and on phones above the tab bar instead of stacked on it. As wide as the
+  form it belongs to.
 - **Progress bar**: 6 px capsule, `--secondary` track, periwinkle fill, red segment for failures,
   always labeled in text beside it.
 - **Log rows** (sequences in flight, events): mono time or ID in muted, a state word in its signal
