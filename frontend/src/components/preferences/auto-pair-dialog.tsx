@@ -125,7 +125,7 @@ function AutoPairForm({ set, onDone }: { set: PreferenceSet; onDone: () => void 
       <FormGroup footnote="Each prompt pairs the first finished response of each run.">
         <FormRow id="auto-chosen" label="Chosen run">
           <Select value={chosen} onValueChange={(v) => pick("chosen", v)}>
-            <SelectTrigger id="auto-chosen" className="w-full bg-background">
+            <SelectTrigger id="auto-chosen" className="w-full dark:bg-background dark:hover:bg-accent">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
@@ -140,7 +140,7 @@ function AutoPairForm({ set, onDone }: { set: PreferenceSet; onDone: () => void 
 
         <FormRow id="auto-rejected" label="Rejected run">
           <Select value={rejected} onValueChange={(v) => pick("rejected", v)}>
-            <SelectTrigger id="auto-rejected" className="w-full bg-background">
+            <SelectTrigger id="auto-rejected" className="w-full dark:bg-background dark:hover:bg-accent">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">

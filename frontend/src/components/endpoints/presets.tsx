@@ -35,8 +35,8 @@ export function PresetRow({
           type="button"
           aria-pressed={value === o.id}
           className={cn(
-            "inline-flex h-7 items-center rounded-full bg-secondary px-3 text-sm whitespace-nowrap text-foreground transition-colors duration-150 outline-none select-none",
-            "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "inline-flex h-7 items-center rounded-full bg-secondary px-3 text-sm whitespace-nowrap text-foreground transition-colors duration-150 select-none",
+            "outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             "aria-pressed:bg-periwinkle-tint aria-pressed:font-medium aria-pressed:text-periwinkle-ink",
           )}
           onClick={() => onPick(o.preset)}

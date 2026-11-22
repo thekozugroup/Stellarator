@@ -204,7 +204,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
                               className={cn(
                                 "flex min-h-11 items-start gap-3 rounded-sm px-2 py-2 transition-colors duration-150",
                                 off ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent",
-                                checked && "bg-background hover:bg-background dark:bg-accent",
+                                checked && "bg-accent",
                               )}
                             >
                               <Checkbox
