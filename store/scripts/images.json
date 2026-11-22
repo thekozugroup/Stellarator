@@ -1,0 +1,227 @@
+{
+  "_comment": "Every store image: where it goes (under store/images/), its pixel size, which raw screen it frames (capture.mjs), the frame, the background and the words. compose.mjs reads this file; capture.mjs reads it to know which screens to capture. Backgrounds: indigo (#5566dc to #2c3684, from the app icon), light (#eef1fe to #c3cffb), neutral (#f0f0f2). Frames: mac (26 pt corners and traffic lights), windows (8 px corners, Windows 11 title bar), linux (GTK title bar).",
+  "images": [
+    {
+      "file": "mac-app-store/01-live-run.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "indigo",
+      "headline": "Change seqs without stopping the run",
+      "subline": "Throughput is drawn against seqs, so you see what each change does."
+    },
+    {
+      "file": "mac-app-store/02-endpoints.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "endpoints",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light",
+      "headline": "Any OpenAI-compatible server",
+      "subline": "Presets for OpenRouter, LM Studio, Ollama, vLLM, SGLang and llama.cpp."
+    },
+    {
+      "file": "mac-app-store/03-import.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "import",
+      "theme": "light",
+      "frame": "mac",
+      "background": "indigo",
+      "headline": "Import prompts, and only the prompts",
+      "subline": "Paste a Hugging Face link. Answers from other models are left out."
+    },
+    {
+      "file": "mac-app-store/04-new-run.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "run-new",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light",
+      "headline": "Choose the model, prompts and seqs",
+      "subline": "Sampling, system prompt, retries and timeouts on one page."
+    },
+    {
+      "file": "mac-app-store/05-preference-review.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "preferences",
+      "theme": "light",
+      "frame": "mac",
+      "background": "indigo",
+      "headline": "Choose and reject, side by side",
+      "subline": "Number keys mark the chosen and rejected answers. Export DPO or KTO pairs."
+    },
+    {
+      "file": "mac-app-store/06-export.png",
+      "size": [2880, 1800],
+      "copies": [[1440, 900]],
+      "shot": "export",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light",
+      "headline": "See the exact file before exporting",
+      "subline": "Chat messages, ShareGPT, Alpaca and more, as JSONL, JSON, Parquet or CSV."
+    },
+
+    {
+      "file": "microsoft-store/01-live-run.png",
+      "size": [1920, 1080],
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "windows",
+      "background": "indigo",
+      "headline": "Change seqs without stopping the run",
+      "subline": "Throughput is drawn against seqs, so you see what each change does."
+    },
+    {
+      "file": "microsoft-store/02-import.png",
+      "size": [1920, 1080],
+      "shot": "import",
+      "theme": "light",
+      "frame": "windows",
+      "background": "indigo",
+      "headline": "Import prompts, and only the prompts",
+      "subline": "Paste a Hugging Face link. Answers from other models are left out."
+    },
+    {
+      "file": "microsoft-store/03-preference-review.png",
+      "size": [1920, 1080],
+      "shot": "preferences",
+      "theme": "light",
+      "frame": "windows",
+      "background": "indigo",
+      "headline": "Choose and reject, side by side",
+      "subline": "Number keys mark the chosen and rejected answers. Export DPO or KTO pairs."
+    },
+    {
+      "file": "microsoft-store/04-export.png",
+      "size": [1920, 1080],
+      "shot": "export",
+      "theme": "dark",
+      "frame": "windows",
+      "background": "light",
+      "headline": "See the exact file before exporting",
+      "subline": "Chat messages, ShareGPT, Alpaca and more, as JSONL, JSON, Parquet or CSV."
+    },
+
+    {
+      "file": "linux/01-live-run.png",
+      "size": [1920, 1080],
+      "shot": "run-live",
+      "theme": "light",
+      "frame": "linux",
+      "background": "neutral",
+      "caption": "A run in progress: progress, throughput against seqs, and the sequences in flight"
+    },
+    {
+      "file": "linux/02-import.png",
+      "size": [1920, 1080],
+      "shot": "import",
+      "theme": "light",
+      "frame": "linux",
+      "background": "neutral",
+      "caption": "Importing prompts from a Hugging Face dataset, with the answer columns left out"
+    },
+    {
+      "file": "linux/03-preference-review.png",
+      "size": [1920, 1080],
+      "shot": "preferences",
+      "theme": "light",
+      "frame": "linux",
+      "background": "neutral",
+      "caption": "Preference review: candidate answers side by side, with Choose and Reject"
+    },
+    {
+      "file": "linux/04-export.png",
+      "size": [1920, 1080],
+      "shot": "export",
+      "theme": "light",
+      "frame": "linux",
+      "background": "neutral",
+      "caption": "Export: pick a format and see the first record as it will be written"
+    },
+
+    {
+      "file": "website/hero.png",
+      "size": [2400, 1350],
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "indigo"
+    },
+    {
+      "file": "website/og-image.png",
+      "size": [1200, 630],
+      "layout": "social",
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "indigo",
+      "headline": "Stellarator",
+      "subline": "Distillation and preference data from any OpenAI-compatible model.",
+      "note": "Free and open source. macOS, Windows and Linux."
+    },
+    {
+      "file": "website/feature-endpoints.png",
+      "size": [1600, 1000],
+      "shot": "endpoints",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light"
+    },
+    {
+      "file": "website/feature-import.png",
+      "size": [1600, 1000],
+      "shot": "import",
+      "theme": "light",
+      "frame": "mac",
+      "background": "indigo"
+    },
+    {
+      "file": "website/feature-live-run.png",
+      "size": [1600, 1000],
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light"
+    },
+    {
+      "file": "website/feature-thinking-trace.png",
+      "size": [1600, 1000],
+      "shot": "sample",
+      "theme": "light",
+      "frame": "mac",
+      "background": "indigo"
+    },
+    {
+      "file": "website/feature-preference-review.png",
+      "size": [1600, 1000],
+      "shot": "preferences",
+      "theme": "light",
+      "frame": "mac",
+      "background": "indigo"
+    },
+    {
+      "file": "website/feature-export.png",
+      "size": [1600, 1000],
+      "shot": "export",
+      "theme": "dark",
+      "frame": "mac",
+      "background": "light"
+    }
+  ],
+  "icons": [
+    { "file": "icon/stellarator-macos-1024.png", "source": "desktop/icon-src/icon-macos.svg", "size": 1024 },
+    { "file": "icon/stellarator-macos-512.png", "source": "desktop/icon-src/icon-macos.svg", "size": 512 },
+    { "file": "icon/stellarator-macos-256.png", "source": "desktop/icon-src/icon-macos.svg", "size": 256 },
+    { "file": "icon/stellarator-1024.png", "source": "desktop/icon-src/icon.svg", "size": 1024 },
+    { "file": "icon/stellarator-512.png", "source": "desktop/icon-src/icon.svg", "size": 512 },
+    { "file": "icon/stellarator-256.png", "source": "desktop/icon-src/icon.svg", "size": 256 },
+    { "file": "icon/stellarator-square-1024.png", "source": "desktop/icon-src/icon-square.svg", "size": 1024, "opaque": true }
+  ]
+}

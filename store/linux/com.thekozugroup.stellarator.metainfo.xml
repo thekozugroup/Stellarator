@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 The Kozu Group -->
+<component type="desktop-application">
+  <id>com.thekozugroup.stellarator</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Stellarator</name>
+  <summary>Distill datasets from LLMs</summary>
+  <developer id="com.thekozugroup">
+    <name>The Kozu Group</name>
+  </developer>
+
+  <description>
+    <p>
+      Stellarator collects training data from language models. Point it at a model server, give it
+      a set of prompts, and it sends every prompt to the model, keeps the prompt with the model's
+      thinking trace and its answer, and exports the result as a dataset for fine-tuning or
+      preference training.
+    </p>
+    <p>
+      It works with any server that offers the OpenAI chat completions API: vLLM, SGLang,
+      llama.cpp, Ollama or LM Studio on your own hardware, or a hosted API such as OpenRouter. It
+      does not train or serve models; it talks to the server you already have.
+    </p>
+    <ul>
+      <li>Presets for OpenRouter, LM Studio, Ollama, vLLM, SGLang and llama.cpp</li>
+      <li>Prompts from Hugging Face datasets, Markdown, text, CSV, TSV, JSON, JSONL or Parquet files, or pasted text</li>
+      <li>Only the prompts are imported: answer columns and assistant turns are left out</li>
+      <li>Change the number of sequences in flight while a run is going, and see the effect on throughput</li>
+      <li>Retries with backoff, and a run that pauses itself after repeated failures</li>
+      <li>Thinking traces from reasoning_content, reasoning or inline think tags</li>
+      <li>Side-by-side review to mark chosen and rejected answers</li>
+      <li>Exports as chat messages, ShareGPT, Alpaca, prompt-completion, raw, DPO or KTO records, in JSONL, JSON, Parquet or CSV, or pushed to the Hugging Face Hub</li>
+    </ul>
+    <p>
+      Data stays on your computer. There is no account and no sign-in.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">com.thekozugroup.stellarator.desktop</launchable>
+  <provides>
+    <binary>stellarator</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/thekozugroup/Stellarator</url>
+  <url type="bugtracker">https://github.com/thekozugroup/Stellarator/issues</url>
+  <url type="vcs-browser">https://github.com/thekozugroup/Stellarator</url>
+
+  <categories>
+    <category>Development</category>
+  </categories>
+  <keywords>
+    <keyword>LLM</keyword>
+    <keyword>distillation</keyword>
+    <keyword>dataset</keyword>
+    <keyword>fine-tuning</keyword>
+    <keyword>SFT</keyword>
+    <keyword>DPO</keyword>
+    <keyword>preference data</keyword>
+    <keyword>OpenAI-compatible</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1" />
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#c3cffb</color>
+    <color type="primary" scheme_preference="dark">#2c3684</color>
+  </branding>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>A run in progress: progress, throughput against seqs, and the sequences in flight</caption>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/thekozugroup/Stellarator/main/store/images/linux/01-live-run.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Importing prompts from a Hugging Face dataset, with the answer columns left out</caption>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/thekozugroup/Stellarator/main/store/images/linux/02-import.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Preference review: candidate answers side by side, with Choose and Reject</caption>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/thekozugroup/Stellarator/main/store/images/linux/03-preference-review.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Export: pick a format and see the first record as it will be written</caption>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/thekozugroup/Stellarator/main/store/images/linux/04-export.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.3.0" date="2026-11-22">
+      <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.3.0</url>
+      <description>
+        <p>A new look.</p>
+        <ul>
+          <li>A new design: Inter for text, Roboto Mono for data, neutral grays with a periwinkle accent, and cards set apart by tone</li>
+          <li>Detail screens open with a large title, chips for status, model, endpoint and prompt set, and the key facts as tiles</li>
+          <li>Frosted materials on the toolbar, menus, dialogs, sheets and the floating action bars</li>
+          <li>The run chart counts back from now, leaves out paused time, and shows the change in tokens per second after seqs change</li>
+          <li>A simpler mark and a new app icon</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.2.1" date="2026-11-18">
+      <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.2.1</url>
+      <description>
+        <ul>
+          <li>A floating sidebar and a toolbar at the top of each page</li>
+          <li>Frosted menus, dialogs and sheets that stay legible over anything behind them</li>
+          <li>Simple import mode: paste a Hugging Face link and the prompt column, split and first user turn are picked for you</li>
+          <li>Display math on its own line renders as display math</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-11-17">
+      <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.2.0</url>
+      <description>
+        <p>The first release of the desktop app for macOS, Windows and Linux.</p>
+      </description>
+    </release>
+  </releases>
+</component>
