@@ -342,7 +342,7 @@ export function SamplesSection({ run }: { run: Run }) {
                       aria-current={active ? "page" : undefined}
                       // The ring goes round the label, not the full height of the bar.
                       className={cn(
-                        "group/tab relative flex items-center text-sm whitespace-nowrap outline-none transition-colors duration-150",
+                        "group/tab relative flex items-center text-sm whitespace-nowrap outline-none transition-colors duration-150", // taste-ignore: outline-check -- the inner label span draws the focus-visible ring (group-focus-visible/tab:outline-2)
                         "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground after:opacity-0 after:transition-opacity",
                         active ? "font-medium text-foreground after:opacity-100" : "text-muted-foreground hover:text-foreground",
                       )}

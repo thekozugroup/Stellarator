@@ -49,7 +49,7 @@ export function DeleteSetDialog({
         </AlertDialogHeader>
         {del.isError ? <ErrorBlock message={del.error.message} /> : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={del.isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel variant="secondary" disabled={del.isPending}>Cancel</AlertDialogCancel>
           {/* A plain button so the dialog stays open while the request runs and on failure. */}
           <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>
             {del.isPending ? "Deleting…" : "Delete preference set"}

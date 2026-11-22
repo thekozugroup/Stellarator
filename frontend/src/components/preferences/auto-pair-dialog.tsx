@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ErrorBlock } from "@/components/shared/block-states"
-import { Field } from "@/components/shared/field"
+import { FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -115,60 +115,62 @@ function AutoPairForm({ set, onDone }: { set: PreferenceSet; onDone: () => void 
         <DialogTitle>Auto-pair by run</DialogTitle>
       </DialogHeader>
 
-      <Field id="auto-chosen" label="Chosen run">
-        <Select value={chosen} onValueChange={(v) => pick("chosen", v)}>
-          <SelectTrigger id="auto-chosen" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            {set.runs.map((r) => (
-              <SelectItem key={r.id} value={String(r.id)}>
-                {runLabel(r)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
+      <FormGroup footnote="Each prompt pairs the first finished response of each run.">
+        <FormRow id="auto-chosen" label="Chosen run">
+          <Select value={chosen} onValueChange={(v) => pick("chosen", v)}>
+            <SelectTrigger id="auto-chosen" className="w-full bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              {set.runs.map((r) => (
+                <SelectItem key={r.id} value={String(r.id)}>
+                  {runLabel(r)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormRow>
 
-      <Field id="auto-rejected" label="Rejected run">
-        <Select value={rejected} onValueChange={(v) => pick("rejected", v)}>
-          <SelectTrigger id="auto-rejected" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            {set.runs.map((r) => (
-              <SelectItem key={r.id} value={String(r.id)}>
-                {runLabel(r)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
+        <FormRow id="auto-rejected" label="Rejected run">
+          <Select value={rejected} onValueChange={(v) => pick("rejected", v)}>
+            <SelectTrigger id="auto-rejected" className="w-full bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              {set.runs.map((r) => (
+                <SelectItem key={r.id} value={String(r.id)}>
+                  {runLabel(r)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormRow>
 
-      {manual === 0 ? null : (
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="auto-overwrite"
-            checked={overwrite}
-            onCheckedChange={(v) => setOverwrite(v === true)}
-            aria-describedby="auto-overwrite-hint"
-            className={cn("mt-0.5", overwrite && "border-destructive data-[state=checked]:bg-destructive data-[state=checked]:border-destructive")}
-          />
-          <div className="grid gap-1">
-            <Label htmlFor="auto-overwrite" className={cn(overwrite && "text-destructive")}>
-              Replace {manual === undefined ? "pairs" : count(manual, "pair", "pairs")} picked by hand
-            </Label>
-            <p id="auto-overwrite-hint" className="text-xs text-muted-foreground">
-              Earlier auto-pairs are always replaced.
-            </p>
-          </div>
-        </div>
-      )}
+        {manual === 0 ? null : (
+          <FormItem className="flex items-start gap-3 py-2.5">
+            <Checkbox
+              id="auto-overwrite"
+              checked={overwrite}
+              onCheckedChange={(v) => setOverwrite(v === true)}
+              aria-describedby="auto-overwrite-hint"
+              className={cn("mt-0.5", overwrite && "border-destructive data-checked:border-destructive data-checked:bg-destructive")}
+            />
+            <div className="grid gap-0.5">
+              <Label htmlFor="auto-overwrite" className={cn("font-normal", overwrite && "text-negative-ink")}>
+                Replace {manual === undefined ? "pairs" : count(manual, "pair", "pairs")} picked by hand
+              </Label>
+              <p id="auto-overwrite-hint" className="text-xs text-muted-foreground">
+                Earlier auto-pairs are always replaced.
+              </p>
+            </div>
+          </FormItem>
+        )}
+      </FormGroup>
 
       {run.isError ? <ErrorBlock message={run.error.message} /> : null}
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
+        <Button type="button" variant="secondary" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" variant={overwrite && manual ? "destructive" : "default"} disabled={run.isPending}>

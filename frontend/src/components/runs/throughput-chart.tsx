@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,53 +17,89 @@ import { int } from "@/lib/format"
 import type { MetricPoint } from "@/lib/types"
 
 interface Point {
+  /** When the reading was taken. */
   t: number
+  /** Where it is drawn: its time minus the paused time before it (see layout). */
+  x: number
   /** Null only on the break inserted where the run was paused. */
   tps: number | null
   seqs: number | null
   active: number | null
 }
 
+/** A stretch of readings without a pause, and how far it is drawn left of its real time. */
+interface Session {
+  from: number
+  to: number
+  shift: number
+}
+
 /**
- * A pause leaves a hole in the readings. A null point there breaks both lines, instead of a slope
- * drawn across time when nothing ran. A hole is five readings long, and at least 30 s.
+ * A pause leaves a hole in the readings (a hole is five readings long, and at least 30 s). The
+ * paused time is cut out of the x axis down to a narrow band, marked with a dashed line, so a run
+ * resumed days later still shows each session at a readable width; a null point in the band
+ * breaks both lines. Within a session the axis is plain time.
  */
-function breakGaps(pts: Point[]): Point[] {
+function layout(pts: Omit<Point, "x">[]): { data: Point[]; breaks: number[]; sessions: Session[] } {
   const steps = pts
     .slice(1)
     .map((p, i) => p.t - pts[i].t)
     .sort((a, b) => a - b)
   const gap = Math.max(30_000, 5 * (steps[Math.floor(steps.length / 2)] ?? 0))
-  const out: Point[] = []
-  for (const p of pts) {
-    const prev = out[out.length - 1]
-    if (prev && p.t - prev.t > gap) out.push({ t: prev.t + 1, tps: null, seqs: null, active: null })
-    out.push(p)
-  }
-  return out
+  const running = steps.filter((d) => d <= gap).reduce((a, b) => a + b, 0)
+  const band = Math.max(1000, running * 0.03)
+  const data: Point[] = []
+  const breaks: number[] = []
+  const sessions: Session[] = []
+  let shift = 0
+  let from = pts[0]?.t ?? 0
+  pts.forEach((p, i) => {
+    const prev = pts[i - 1]
+    if (prev && p.t - prev.t > gap) {
+      sessions.push({ from, to: prev.t, shift })
+      const x = prev.t - shift + band / 2
+      data.push({ t: prev.t + 1, x, tps: null, seqs: null, active: null })
+      breaks.push(x)
+      shift += p.t - prev.t - band
+      from = p.t
+    }
+    data.push({ ...p, x: p.t - shift })
+  })
+  if (pts.length) sessions.push({ from, to: pts[pts.length - 1].t, shift })
+  return { data, breaks, sessions }
 }
 
 const STEPS_S = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400]
 
-/** Round time ticks: the smallest step that gives at most six labels, landing on whole steps. */
-function timeTicks(min: number, max: number): { ticks: number[]; step: number } {
-  const span = Math.max(1, (max - min) / 1000)
-  const step = (STEPS_S.find((s) => span / s <= 6) ?? 86400) * 1000
-  const ticks: number[] = []
-  for (let t = Math.ceil(min / step) * step; t <= max; t += step) ticks.push(t)
-  return { ticks, step }
+/** The smallest step that gives at most six labels across `span` ms of drawn time. */
+const tickStep = (span: number) => (STEPS_S.find((s) => Math.max(1, span / 1000) / s <= 6) ?? 86400) * 1000
+
+interface Tick {
+  /** Where it is drawn. */
+  x: number
+  /** The time it names. */
+  t: number
+  /** The first tick of a session. */
+  first?: boolean
+}
+
+/** Round clock ticks in each session, landing on whole steps. */
+function clockTicks(sessions: Session[], step: number): Tick[] {
+  const ticks: Tick[] = []
+  for (const s of sessions) {
+    for (let t = Math.ceil(s.from / step) * step; t <= s.to; t += step) ticks.push({ x: t - s.shift, t, first: t - step < s.from })
+  }
+  return ticks
 }
 
 /**
- * While the run is going the newest reading is now, so the time axis counts back from it:
- * "−10M", "−5M", "NOW", at the same step sizes as the clock ticks.
+ * While the run is going, and has not been paused, the newest reading is now, so the time axis
+ * counts back from it: "−10M", "−5M", "NOW", at the same step sizes as the clock ticks.
  */
-function agoTicks(min: number, max: number): { ticks: number[]; step: number } {
-  const span = Math.max(1, (max - min) / 1000)
-  const step = (STEPS_S.find((s) => span / s <= 6) ?? 86400) * 1000
-  const ticks: number[] = []
-  for (let t = max; t >= min; t -= step) ticks.unshift(t)
-  return { ticks, step }
+function agoTicks(min: number, max: number, step: number): Tick[] {
+  const ticks: Tick[] = []
+  for (let t = max; t >= min; t -= step) ticks.unshift({ x: t, t })
+  return ticks
 }
 
 function agoLabel(ms: number): string {
@@ -92,19 +129,33 @@ function valueTicks(max: number, integer: boolean): number[] {
 
 const hm = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
 const hms = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })
+const md = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" })
+const mdhm = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+const mdhms = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })
+const DAY_MS = 86_400_000
+
+/**
+ * A clock tick's label: seconds for short spans; once the readings cross midnight (a run resumed
+ * on a later day) the first tick of each session also names the date.
+ */
+function clockLabel(tick: Tick, step: number, multiDay: boolean): string {
+  const f = step >= DAY_MS ? md : multiDay && tick.first ? mdhm : step < 60_000 ? hms : hm
+  return f.format(tick.t).toUpperCase()
+}
 
 /** Axis labels (DESIGN.md, Data visualization): label-mono in muted ink. The family and tracking come from the wrapper's class. */
 const AXIS_TICK = { fill: "var(--muted-foreground)", fontSize: 12 }
-const SEQS_AXIS_W = 36
 /** Roboto Mono at 12 px with 0.04em tracking: every character is this wide. */
 const MONO_CHAR_W = 7.7
+/** A value axis as wide as its longest label, plus the gap to the plot. */
+const axisWidth = (ticks: number[]) => Math.ceil(Math.max(...ticks.map((v) => int(v).length)) * MONO_CHAR_W) + 10
 
-function ChartTooltip({ active, payload }: TooltipContentProps) {
+function ChartTooltip({ active, payload, multiDay }: TooltipContentProps & { multiDay: boolean }) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
   if (!p || p.tps === null) return null
   return (
     <div className="rounded-sm material-thick material-float px-3 py-2 text-xs text-popover-foreground">
-      <p className="font-mono text-muted-foreground">{hms.format(p.t)}</p>
+      <p className="font-mono text-muted-foreground">{(multiDay ? mdhms : hms).format(p.t)}</p>
       <dl className="mt-1 grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
         <dt className="flex items-center gap-1.5 text-muted-foreground">
           <span aria-hidden="true" className="h-0.5 w-2.5 rounded-full bg-periwinkle" />
@@ -127,11 +178,11 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
  * Names each scale above its own axis, with a stroke of its line: output tokens/s on the left,
  * seqs on the right. Above the plot, a name never sits on a line or on the fill.
  */
-function AxisNames() {
+function AxisNames({ seqsAxisWidth }: { seqsAxisWidth: number }) {
   const plot = usePlotArea()
   if (!plot) return null
   const y = plot.y - 14
-  const right = plot.x + plot.width + SEQS_AXIS_W
+  const right = plot.x + plot.width + seqsAxisWidth
   return (
     <g aria-hidden="true" fontSize={12} fill="var(--muted-foreground)">
       <line x1={0} x2={10} y1={y - 4} y2={y - 4} stroke="var(--periwinkle)" strokeWidth={1.5} />
@@ -147,8 +198,8 @@ function AxisNames() {
 }
 
 interface SeqsEffect {
-  /** When seqs last changed. */
-  t: number
+  /** Where seqs last changed, on the x axis. */
+  x: number
   /** Throughput after the change over throughput before it, minus one. */
   change: number
 }
@@ -190,7 +241,7 @@ function seqsEffect(data: Point[]): SeqsEffect | null {
   const b = median(before)
   if (b <= 0) return null
   const change = median(after) / b - 1
-  return Math.abs(change) >= 0.05 ? { t: data[at].t, change } : null
+  return Math.abs(change) >= 0.05 ? { x: data[at].x, change } : null
 }
 
 /**
@@ -202,7 +253,7 @@ function EffectFlag({ effect }: { effect: SeqsEffect }) {
   const plot = usePlotArea()
   const scale = useXAxisScale()
   if (!plot || !scale) return null
-  const x = scale(effect.t)
+  const x = scale(effect.x)
   if (typeof x !== "number" || !Number.isFinite(x)) return null
   const pct = Math.round(Math.abs(effect.change) * 100)
   const text = `${effect.change > 0 ? "+" : "−"}${pct}% TOK/S`
@@ -249,12 +300,12 @@ export function ThroughputChart({
   /** The current rate and setting and when they were read, appended as the newest point while the run is going. */
   live?: { tps: number; seqs: number; active: number; at: number } | null
 }) {
-  const data = useMemo<Point[]>(() => {
-    const pts: Point[] = metrics.map((m) => ({ t: Date.parse(m.t), tps: m.tokens_per_s, seqs: m.concurrency, active: m.active }))
+  const { data, breaks, sessions } = useMemo(() => {
+    const pts = metrics.map((m) => ({ t: Date.parse(m.t), tps: m.tokens_per_s, seqs: m.concurrency, active: m.active }))
     if (live && pts.length && live.at > pts[pts.length - 1].t + 500) {
       pts.push({ t: live.at, tps: live.tps, seqs: live.seqs, active: live.active })
     }
-    return breakGaps(pts)
+    return layout(pts)
   }, [metrics, live])
   const effect = useMemo(() => seqsEffect(data), [data])
 
@@ -279,14 +330,21 @@ export function ThroughputChart({
 
   const tMin = data[0].t
   const tMax = data[data.length - 1].t
-  const ago = !!live
-  const { ticks: xTicks, step } = ago ? agoTicks(tMin, tMax) : timeTicks(tMin, tMax)
-  const fmt = step < 60_000 ? hms : hm
-  const tickLabel = ago ? (t: number) => agoLabel(tMax - t) : (t: number) => fmt.format(t).toUpperCase()
+  const xMin = data[0].x
+  const xMax = data[data.length - 1].x
+  const step = tickStep(xMax - xMin)
+  const multiDay = new Date(tMin).toDateString() !== new Date(tMax).toDateString()
+  const span = multiDay ? mdhm : hm
+  // Counting back from now only reads true when no pause has been cut out of the axis.
+  const ago = !!live && breaks.length === 0
+  const xTicks = ago ? agoTicks(xMin, xMax, step) : clockTicks(sessions, step)
+  const labelAt = new Map(xTicks.map((k) => [k.x, ago ? agoLabel(tMax - k.t) : clockLabel(k, step, multiDay)]))
   const tpsTicks = valueTicks(Math.max(...data.map((d) => d.tps ?? 0)), false)
   const seqsTicks = valueTicks(Math.max(...data.map((d) => d.seqs ?? 0)), true)
+  const seqsAxisWidth = Math.max(36, axisWidth(seqsTicks))
   const last = data[data.length - 1]
   const peak = Math.max(...data.map((d) => d.tps ?? 0))
+  const pausedText = breaks.length ? ` Paused ${breaks.length === 1 ? "once" : `${breaks.length} times`}; the paused time is left out.` : ""
   const effectText = effect
     ? ` Since seqs last changed, throughput is ${Math.round(Math.abs(effect.change) * 100)}% ${effect.change > 0 ? "higher" : "lower"}.`
     : ""
@@ -295,18 +353,17 @@ export function ThroughputChart({
     <div
       className={frame}
       role="img"
-      aria-label={`Output tokens per second from ${hm.format(tMin)} to ${hm.format(tMax)}: now ${int(last.tps)} at ${int(last.seqs)} seqs, peak ${int(peak)}.${effectText}`}
+      aria-label={`Output tokens per second from ${span.format(tMin)} to ${span.format(tMax)}: now ${int(last.tps)} at ${int(last.seqs)} seqs, peak ${int(peak)}.${pausedText}${effectText}`}
     >
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 26, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid yAxisId="tps" vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
           <XAxis
-            dataKey="t"
+            dataKey="x"
             type="number"
-            scale="time"
-            domain={[tMin, tMax]}
-            ticks={xTicks}
-            tickFormatter={tickLabel}
+            domain={[xMin, xMax]}
+            ticks={xTicks.map((k) => k.x)}
+            tickFormatter={(x: number) => labelAt.get(x) ?? ""}
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
@@ -321,7 +378,7 @@ export function ThroughputChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={44}
+            width={Math.max(44, axisWidth(tpsTicks))}
           />
           <YAxis
             yAxisId="seqs"
@@ -332,10 +389,10 @@ export function ThroughputChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
-            width={SEQS_AXIS_W}
+            width={seqsAxisWidth}
           />
           <Tooltip
-            content={ChartTooltip}
+            content={(props) => <ChartTooltip {...props} multiDay={multiDay} />}
             cursor={{ stroke: "var(--input)", strokeWidth: 1, strokeDasharray: "3 3" }}
             isAnimationActive={false}
           />
@@ -361,7 +418,10 @@ export function ThroughputChart({
             activeDot={false}
             isAnimationActive={false}
           />
-          <AxisNames />
+          {breaks.map((x) => (
+            <ReferenceLine key={x} yAxisId="tps" x={x} stroke="var(--input)" strokeDasharray="3 3" ifOverflow="hidden" />
+          ))}
+          <AxisNames seqsAxisWidth={seqsAxisWidth} />
           {effect ? <EffectFlag effect={effect} /> : null}
         </ComposedChart>
       </ResponsiveContainer>

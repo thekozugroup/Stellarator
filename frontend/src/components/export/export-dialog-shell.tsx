@@ -3,7 +3,7 @@ import { Link } from "react-router"
 import { useMutation, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Download, ExternalLink } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
-import { Field } from "@/components/shared/field"
+import { FormRow } from "@/components/shared/form-group"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -54,22 +54,43 @@ function skippedText(skipped: Record<string, number>): string | null {
 
 // ------------------------------------------------------------------ option pieces
 
+/*
+ * The options read as System Settings groups (DESIGN.md, Forms): a title in secondary text over a
+ * --muted box with 16 px corners, its rows divided by hairlines inset 12 px from the box's edge.
+ */
+
+/** Inset hairline above every row but the first (as FormRow in shared/form-group). */
+const ROW_SEPARATOR =
+  "relative not-first:before:pointer-events-none not-first:before:absolute not-first:before:inset-x-3 not-first:before:top-0 not-first:before:h-px not-first:before:bg-border"
+
+const GROUP_TITLE = "px-3 text-sm font-semibold text-muted-foreground"
+
+/**
+ * A FormRow with a hint under its field: once the label sits beside the field, align it with the
+ * field's first line (32 px, 44 pt on touch) instead of the middle of the row.
+ */
+const ALIGN_TOP =
+  "@md/fg:items-start @md/fg:[&>div:first-child]:min-h-8 @md/fg:pointer-coarse:[&>div:first-child]:min-h-11"
+
 export function OptionGroup({ legend, children }: { legend: string; children: ReactNode }) {
   return (
-    <fieldset className="grid min-w-0 gap-3 pointer-coarse:gap-0">
-      <legend className="mb-3 text-sm font-semibold pointer-coarse:mb-1">{legend}</legend>
-      {children}
+    <fieldset className="grid min-w-0 gap-1.5">
+      <legend className={cn(GROUP_TITLE, "mb-1.5")}>{legend}</legend>
+      <div className="grid rounded-xl bg-muted">{children}</div>
     </fieldset>
   )
 }
 
 /**
  * One option as a whole-row label: the dot or box, its name and an optional one-line hint. The row
- * takes the tap, and on touch screens it is at least 44 px tall.
+ * takes the click; on touch screens it is at least 44 px tall.
  */
 function OptionRow({ id, label, hint, control }: { id: string; label: ReactNode; hint?: ReactNode; control: ReactNode }) {
   return (
-    <label htmlFor={id} className="flex items-start gap-3 pointer-coarse:min-h-11 pointer-coarse:py-3 has-disabled:opacity-50">
+    <label
+      htmlFor={id}
+      className={cn(ROW_SEPARATOR, "flex min-h-10 cursor-pointer items-start gap-3 px-3 py-2.5 pointer-coarse:min-h-11 has-disabled:cursor-default has-disabled:opacity-50")}
+    >
       {control}
       <span className="grid gap-0.5">
         <span id={`${id}-label`} className="text-sm leading-snug">
@@ -100,7 +121,7 @@ export function ChoiceGroup<T extends string>({
   const uid = useId()
   return (
     <OptionGroup legend={legend}>
-      <RadioGroup value={value} onValueChange={(v) => onChange(v as T)} className="gap-3 pointer-coarse:gap-0">
+      <RadioGroup value={value} onValueChange={(v) => onChange(v as T)} className="gap-0">
         {choices.map((c) => {
           const id = `${uid}-${c.value}`
           return (
@@ -160,23 +181,24 @@ export function CheckOption({
   )
 }
 
+/** The file type as a full-width segmented control under its title. */
 export function FileTypeGroup({ value, onChange }: { value: FileType; onChange: (v: FileType) => void }) {
   const id = useId()
   return (
-    <div className="grid gap-3">
-      <span id={id} className="text-sm font-semibold">
+    <div className="grid gap-1.5">
+      <span id={id} className={cn(GROUP_TITLE, "mb-1.5")}>
         File type
       </span>
       <ToggleGroup
         type="single"
-        variant="outline"
         spacing={0}
         value={value}
         onValueChange={(v) => v && onChange(v as FileType)}
         aria-labelledby={id}
+        className="w-full"
       >
         {FILE_TYPES.map((t) => (
-          <ToggleGroupItem key={t.value} value={t.value} className="px-3">
+          <ToggleGroupItem key={t.value} value={t.value} className="flex-1 px-3">
             {t.label}
           </ToggleGroupItem>
         ))}
@@ -216,18 +238,28 @@ function HubPush({
     },
   })
 
-  if (settings.isPending) return <Bar className="h-8 w-full max-w-md" />
+  const frame = (body: ReactNode, after?: ReactNode) => (
+    <section aria-labelledby={`${uid}-hub`} className="grid min-w-0 gap-1.5">
+      <h3 id={`${uid}-hub`} className={cn(GROUP_TITLE, "mb-1.5")}>
+        Push to Hugging Face
+      </h3>
+      {body}
+      {after}
+    </section>
+  )
+
+  if (settings.isPending) return frame(<Bar className="h-24 w-full rounded-xl" />)
   if (settings.isError) {
-    return <ErrorBlock message={`Couldn't check for a Hugging Face token. ${settings.error.message}`} onRetry={() => void settings.refetch()} />
+    return frame(<ErrorBlock message={`Couldn't check for a Hugging Face token. ${settings.error.message}`} onRetry={() => void settings.refetch()} />)
   }
   if (!settings.data.hf_token_set) {
-    return (
-      <p className="text-sm text-muted-foreground">
+    return frame(
+      <p className="rounded-xl bg-muted px-3 py-3 text-sm text-muted-foreground">
         Pushing needs a Hugging Face token with write access.{" "}
-        <Link to="/settings" className="inline-flex items-center text-foreground underline underline-offset-4">
+        <Link to="/settings" className="inline-flex items-center rounded-xs text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
           Add a token in Settings
         </Link>
-      </p>
+      </p>,
     )
   }
 
@@ -244,10 +276,10 @@ function HubPush({
   }
   const fieldError = mutation.error instanceof ApiError && Object.keys(mutation.error.fields).length > 0
 
-  return (
-    <form onSubmit={submit} noValidate className="grid gap-4">
-      <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <Field id={repoId} label="Dataset repository" hint="Created if it does not exist." error={errors.repo_id}>
+  return frame(
+    <form onSubmit={submit} noValidate className="grid gap-3">
+      <div className="@container/fg grid rounded-xl bg-muted">
+        <FormRow id={repoId} label="Dataset repository" hint="Created if it does not exist." error={errors.repo_id} className={ALIGN_TOP}>
           <Input
             ref={repoRef}
             id={repoId}
@@ -263,10 +295,10 @@ function HubPush({
             autoCorrect="off"
             aria-invalid={!!errors.repo_id || undefined}
             aria-describedby={errors.repo_id ? `${repoId}-error` : `${repoId}-hint`}
-            className="font-mono"
+            className="font-mono pointer-fine:text-xs"
           />
-        </Field>
-        <Field id={splitId} label="Split" error={errors.split}>
+        </FormRow>
+        <FormRow id={splitId} label="Split" error={errors.split} className={ALIGN_TOP}>
           <Input
             ref={splitRef}
             id={splitId}
@@ -279,16 +311,16 @@ function HubPush({
             autoCapitalize="none"
             aria-invalid={!!errors.split || undefined}
             aria-describedby={errors.split ? `${splitId}-error` : undefined}
-            className="font-mono"
+            className="max-w-40 font-mono pointer-fine:text-xs"
           />
-        </Field>
+        </FormRow>
+        <CheckOption checked={target.private} onChange={(v) => setTarget((t) => ({ ...t, private: v }))} label="Private dataset" />
       </div>
-      <CheckOption checked={target.private} onChange={(v) => setTarget((t) => ({ ...t, private: v }))} label="Private dataset" />
       {mutation.isError && !fieldError ? <ErrorBlock message={mutation.error.message} /> : null}
       {mutation.isSuccess ? (
-        <p role="status" className="rounded-lg bg-positive-tint px-3 py-2 text-sm text-positive-ink">
+        <p role="status" className="rounded-xl bg-positive-tint px-4 py-3 text-sm text-positive-ink">
           Pushed {count(mutation.data.count, "record", "records")} to{" "}
-          <a href={mutation.data.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium underline underline-offset-4">
+          <a href={mutation.data.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono text-xs font-medium underline underline-offset-4">
             {mutation.data.url.replace(/^https?:\/\/(www\.)?huggingface\.co\/datasets\//, "")}
             <ExternalLink className="size-3.5" aria-hidden="true" />
             <span className="sr-only">(opens in a new tab)</span>
@@ -298,7 +330,7 @@ function HubPush({
       <div>
         <Button
           type="submit"
-          variant="outline"
+          variant="secondary"
           disabled={!!disabledReasonId}
           aria-describedby={disabledReasonId}
           aria-disabled={mutation.isPending || undefined}
@@ -306,7 +338,7 @@ function HubPush({
           {mutation.isPending ? "Pushing…" : "Push dataset"}
         </Button>
       </div>
-    </form>
+    </form>,
   )
 }
 
@@ -370,7 +402,7 @@ export function ExportDialogShell({
         className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[56rem]"
       >
         <DialogHeader className="pr-8">
-          <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         {/* The scroll area runs to the dialog's edges so its scrollbar and focus rings are not clipped. */}
@@ -384,32 +416,36 @@ export function ExportDialogShell({
               {preview.isError && !data ? (
                 <ErrorBlock message={`Couldn't build the preview. ${preview.error.message}`} onRetry={() => void preview.refetch()} />
               ) : !data ? (
-                <div className="grid gap-2" aria-label="Loading preview">
-                  <Bar className="hidden h-7 w-40 lg:inline-block" />
-                  <Bar className="h-40 w-full rounded-lg lg:h-64" />
+                <div className="grid gap-3" aria-label="Loading preview">
+                  <Bar className="hidden h-8 w-40 lg:inline-block" />
+                  <Bar className="h-40 w-full rounded-xl lg:h-64" />
                 </div>
               ) : (
                 <div className={cn("grid gap-3 transition-opacity duration-150", stale && "opacity-60")}>
-                  <div aria-live="polite" className="hidden lg:block">
-                    <p className="text-xl font-medium tabular">{count(data.count, "record", "records")}</p>
-                    {skipped ? <p className="text-sm text-muted-foreground tabular">{skipped}</p> : null}
+                  {/* The answer of the preview as the figure (DESIGN.md, Typography): how many records. */}
+                  <div aria-live="polite" className="hidden px-1 lg:block">
+                    <p className="flex items-baseline gap-1.5">
+                      <span className="text-figure">{int(data.count)}</span>
+                      <span className="text-sm text-muted-foreground">{data.count === 1 ? "record" : "records"}</span>
+                    </p>
+                    {skipped ? <p className="mt-1 text-sm text-muted-foreground tabular">{skipped}</p> : null}
                   </div>
                   {preview.isError ? (
                     <ErrorBlock message={`Couldn't refresh the preview. ${preview.error.message}`} onRetry={() => void preview.refetch()} />
                   ) : null}
                   {data.example ? (
                     <div className="grid gap-1.5">
-                      <p className="text-xs text-muted-foreground">First record</p>
+                      <p className={GROUP_TITLE}>First record</p>
                       <pre
                         tabIndex={0}
                         aria-label="First record, as JSON"
-                        className="max-h-48 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] lg:max-h-[24rem]"
+                        className="max-h-48 overflow-auto rounded-xl bg-muted px-4 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] outline-none focus-visible:ring-2 focus-visible:ring-ring lg:max-h-[24rem]"
                       >
                         {JSON.stringify(data.example, null, 2)}
                       </pre>
                     </div>
                   ) : (
-                    <p id={emptyId} className="rounded-lg bg-muted px-3 py-6 text-sm text-muted-foreground">
+                    <p id={emptyId} className="rounded-xl bg-muted px-4 py-6 text-sm text-muted-foreground">
                       {emptyText}
                     </p>
                   )}
@@ -417,15 +453,12 @@ export function ExportDialogShell({
               )}
             </section>
 
-            <div className="grid min-w-0 content-start gap-7 lg:col-start-1 lg:row-start-1">{children}</div>
+            <div className="grid min-w-0 content-start gap-6 lg:col-start-1 lg:row-start-1">{children}</div>
           </div>
 
-          <section aria-labelledby={`${uid}-hub`} className="mt-8 grid gap-3">
-            <h3 id={`${uid}-hub`} className="text-sm font-semibold">
-              Push to Hugging Face
-            </h3>
+          <div className="mt-8">
             <HubPush push={push} repoExample={repoExample} disabledReasonId={nothing ? emptyId : undefined} />
-          </section>
+          </div>
         </div>
 
         {/* Phones: the count sits above the buttons, since the right-hand column is gone. */}
@@ -437,7 +470,7 @@ export function ExportDialogShell({
         ) : null}
         <DialogFooter className="pt-0">
           <DialogClose asChild>
-            <Button type="button" variant="outline">
+            <Button type="button" variant="secondary">
               Cancel
             </Button>
           </DialogClose>

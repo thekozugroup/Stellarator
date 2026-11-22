@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { CheckOption, ChoiceGroup, ExportDialogShell, FileTypeGroup, PLACEMENT_LABEL } from "@/components/export/export-dialog-shell"
+import { CheckOption, ChoiceGroup, ExportDialogShell, FileTypeGroup, OptionGroup, PLACEMENT_LABEL } from "@/components/export/export-dialog-shell"
 import { api, qs } from "@/lib/api"
 import type { ExportPreview, HubPushIn, HubPushOut, PrefExportOptions, PrefFormat, PreferenceSet, ReasoningPlacement } from "@/lib/types"
 
@@ -67,7 +67,9 @@ export function ExportPairsDialog({
         choices={SHAPES}
       />
       <ChoiceGroup legend="Thinking trace" value={options.reasoning} onChange={(v) => update({ reasoning: v })} choices={REASONING} />
-      <CheckOption checked={options.include_system} onChange={(v) => update({ include_system: v })} label="Include system prompt" />
+      <OptionGroup legend="Prompts">
+        <CheckOption checked={options.include_system} onChange={(v) => update({ include_system: v })} label="Include system prompt" />
+      </OptionGroup>
       <FileTypeGroup value={options.file_type} onChange={(v) => update({ file_type: v })} />
     </ExportDialogShell>
   )

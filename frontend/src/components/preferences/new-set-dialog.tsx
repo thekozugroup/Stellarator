@@ -2,7 +2,8 @@ import { useMemo, useRef, useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ErrorBlock, Bar } from "@/components/shared/block-states"
-import { Field } from "@/components/shared/field"
+import { FormGroup, FormRow } from "@/components/shared/form-group"
+import { Plasma } from "@/components/shared/plasma"
 import { RunStatusPill } from "@/components/shared/status-pill"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -127,58 +128,63 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
         <DialogTitle>New preference set</DialogTitle>
       </DialogHeader>
 
-      <div className="-mx-4 grid min-h-0 content-start gap-5 overflow-y-auto px-4 py-1">
-        <Field id="pref-name" label="Name" error={errors.name}>
-          <Input
-            id="pref-name"
-            ref={nameRef}
-            value={shownName}
-            onChange={(e) => {
-              setNameTouched(true)
-              setName(e.target.value)
-              if (errors.name) setErrors((x) => ({ ...x, name: undefined }))
-            }}
-            placeholder="Qwen3-32B vs Llama-3.1-8B"
-            autoComplete="off"
-            maxLength={300}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={errors.name ? "pref-name-error" : undefined}
-          />
-        </Field>
+      {/* The scroll area runs to the dialog's edges so focus rings are not clipped. */}
+      <div className="-mx-5 grid min-h-0 content-start gap-5 overflow-y-auto px-5 py-1">
+        <FormGroup>
+          <FormRow id="pref-name" label="Name" error={errors.name}>
+            <Input
+              id="pref-name"
+              ref={nameRef}
+              value={shownName}
+              onChange={(e) => {
+                setNameTouched(true)
+                setName(e.target.value)
+                if (errors.name) setErrors((x) => ({ ...x, name: undefined }))
+              }}
+              placeholder="Qwen3-32B vs Llama-3.1-8B"
+              autoComplete="off"
+              maxLength={300}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "pref-name-error" : undefined}
+            />
+          </FormRow>
+        </FormGroup>
 
-        <fieldset ref={runsRef} className="grid min-w-0 gap-2" aria-describedby="pref-runs-hint">
-          <legend className="mb-1.5 text-sm font-medium">Runs</legend>
+        <fieldset ref={runsRef} className="grid min-w-0 gap-1.5" aria-describedby="pref-runs-hint">
+          <legend className="mb-1.5 px-3 text-sm font-semibold text-muted-foreground">Runs</legend>
           {runsQuery.isPending ? (
-            <div className="grid gap-px overflow-hidden rounded-lg border" aria-label="Loading runs…">
+            <div className="grid gap-1 rounded-xl bg-muted p-2" aria-label="Loading runs…">
               {[0, 1, 2].map((n) => (
-                <div key={n} className="flex h-14 items-center gap-3 px-3">
-                  <Bar className="size-4" />
-                  <Bar className="h-4 w-48" />
-                  <Bar className="ml-auto h-4 w-16" />
+                <div key={n} className="flex h-12 items-center gap-3 px-2">
+                  <Bar className="size-4 rounded-xs bg-background" />
+                  <Bar className="h-4 w-48 bg-background" />
+                  <Bar className="ml-auto h-4 w-16 bg-background" />
                 </div>
               ))}
             </div>
           ) : runsQuery.isError ? (
             <ErrorBlock message={runsQuery.error.message} onRetry={() => runsQuery.refetch()} />
           ) : runs.length === 0 ? (
-            <p className="rounded-lg border px-3 py-4 text-sm text-muted-foreground">
+            <p className="rounded-xl bg-muted px-4 py-4 text-sm text-muted-foreground">
               No runs yet.{" "}
-              <Link to="/runs/new" className="font-medium text-foreground underline">
+              <Link to="/runs/new" className="rounded-xs font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                 New run
               </Link>
             </p>
           ) : (
-            <div className="max-h-80 overflow-y-auto rounded-lg border bg-popover">
+            // A muted box with 8 px padding holds rows with 8 px corners (16 - 8), concentric.
+            <div className="max-h-80 overflow-y-auto overscroll-contain rounded-xl bg-muted px-2 pb-2">
               {groups.map((g) => {
                 const blocked = lockedSet !== null && lockedSet !== g.promptSetId
                 return (
-                  <div key={g.promptSetId} className="border-b last:border-b-0">
-                    <div className="material-thick sticky top-0 z-10 px-3 pt-3 pb-1.5">
-                      <p className="truncate text-sm font-medium" title={g.promptSetName}>
+                  <div key={g.promptSetId}>
+                    <div className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-2 pt-3 pb-1.5">
+                      <Plasma seed={`prompt-set-${g.promptSetId}`} cells={5} className="size-5 rounded-xs" />
+                      <p className="min-w-0 truncate text-sm font-medium" title={g.promptSetName}>
                         {g.promptSetName}
                       </p>
                     </div>
-                    <ul className="pb-1.5">
+                    <ul className="grid gap-0.5">
                       {g.runs.map((run) => {
                         const id = `pref-run-${run.id}`
                         const checked = selected.includes(run.id)
@@ -189,8 +195,9 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
                             <label
                               htmlFor={id}
                               className={cn(
-                                "flex min-h-11 items-start gap-3 px-3 py-2",
-                                off ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted",
+                                "flex min-h-11 items-start gap-3 rounded-sm px-2 py-2 transition-colors duration-150",
+                                off ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent",
+                                checked && "bg-background hover:bg-background dark:bg-accent",
                               )}
                             >
                               <Checkbox
@@ -202,18 +209,16 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
                               />
                               <span className="grid min-w-0 flex-1 gap-0.5">
                                 <span className="text-sm break-words">{run.name}</span>
-                                <span className="font-mono text-[13px] text-muted-foreground [overflow-wrap:anywhere]">
-                                  {run.model}
-                                </span>
+                                <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{run.model}</span>
                               </span>
                               <span className="grid flex-none justify-items-end gap-0.5 text-right">
                                 {empty ? (
                                   <span className="text-sm text-muted-foreground">No finished samples</span>
                                 ) : (
-                                  <span className="tabular text-sm">{int(run.done)} done</span>
+                                  <span className="text-sm tabular">{int(run.done)} done</span>
                                 )}
                                 {empty ? null : run.status === "completed" ? (
-                                  <span className="tabular text-xs text-muted-foreground">
+                                  <span className="text-xs text-muted-foreground tabular">
                                     {count(run.params.samples_per_prompt, "sample", "samples")} per prompt
                                   </span>
                                 ) : (
@@ -231,11 +236,11 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
             </div>
           )}
           {errors.runs ? (
-            <p id="pref-runs-error" role="alert" className="text-sm text-destructive">
+            <p id="pref-runs-error" role="alert" className="px-3 text-sm text-destructive">
               {errors.runs}
             </p>
           ) : (
-            <p id="pref-runs-hint" className="text-xs text-muted-foreground">
+            <p id="pref-runs-hint" className="px-3 text-xs text-muted-foreground">
               {selectedRuns.length
                 ? `${count(selectedRuns.length, "run", "runs")} on ${lockedSetName} selected.`
                 : "Only runs on the same prompt set can be combined."}
@@ -247,7 +252,7 @@ function NewSetForm({ onDone }: { onDone: () => void }) {
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
+        <Button type="button" variant="secondary" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" disabled={create.isPending} aria-disabled={create.isPending || undefined}>
