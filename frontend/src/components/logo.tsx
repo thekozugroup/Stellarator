@@ -4,13 +4,22 @@ import { cn } from "@/lib/utils"
  * The Stellarator mark: one bold strand that winds twice around a ring and crosses itself five
  * times, passing over and under in turn, so its outline is a ring with five lobes. It comes from
  * the earlier mark's two coils braided around a ring. Drawn in the current text color, as five
- * identical pieces turned 72 degrees apart. desktop/icon-src/make_icon.py draws the same mark for
- * the app icon, and `python3 make_icon.py --logo` prints PIECE.
+ * identical pieces turned 72 degrees apart.
+ *
+ * `small` draws the version for 24 px and under: the same centre line as one continuous strand,
+ * 3 units of 24 wide (2 px at 16 px), with no gaps at the crossings, which would only blur at
+ * that size.
+ *
+ * desktop/icon-src/make_icon.py draws the same marks for the app icon and the favicon;
+ * `python3 make_icon.py --logo` prints PIECE and `--logo-small` prints SMALL.
  */
 const PIECE =
   "M20.24 15.21C20.44 15.92 20.57 16.71 20.52 17.53C20.48 18.34 20.27 19.18 19.83 19.90C19.40 20.63 18.74 21.24 17.97 21.60C17.19 21.95 16.32 22.06 15.50 21.98C14.68 21.89 13.89 21.61 13.21 21.25C12.53 20.89 11.94 20.45 11.45 20.02C10.97 19.58 10.58 19.16 10.26 18.81C9.93 18.45 9.68 18.16 9.46 17.93C9.24 17.70 9.05 17.52 8.86 17.35C8.67 17.19 8.48 17.04 8.29 16.90C8.09 16.76 7.88 16.64 7.65 16.51C7.42 16.38 7.16 16.25 6.83 16.10L7.93 13.75C8.29 13.91 8.61 14.07 8.92 14.24C9.22 14.40 9.49 14.58 9.75 14.76C10.01 14.94 10.26 15.13 10.51 15.34C10.76 15.56 11.02 15.79 11.27 16.06C11.53 16.33 11.79 16.62 12.07 16.94C12.35 17.25 12.65 17.58 13.00 17.91C13.35 18.23 13.74 18.55 14.17 18.81C14.59 19.06 15.04 19.26 15.47 19.34C15.90 19.43 16.30 19.42 16.63 19.33C16.95 19.24 17.21 19.07 17.42 18.82C17.63 18.57 17.79 18.24 17.87 17.83C17.95 17.42 17.95 16.94 17.86 16.45Z"
 
-export function Logo({ className }: { className?: string }) {
+const SMALL =
+  "M12.00 1.95C13.05 1.95 14.08 2.58 14.76 3.50C15.45 4.42 15.80 5.57 15.97 6.54C16.14 7.51 16.17 8.29 16.26 8.91C16.34 9.53 16.46 10.02 16.61 10.50C16.77 10.98 16.96 11.45 17.26 12.00C17.56 12.55 17.99 13.20 18.42 14.09C18.85 14.97 19.24 16.11 19.23 17.25C19.22 18.40 18.76 19.51 17.91 20.13C17.06 20.75 15.86 20.84 14.76 20.50C13.67 20.16 12.71 19.43 12.00 18.75C11.29 18.07 10.81 17.46 10.37 17.00C9.94 16.55 9.56 16.22 9.15 15.92C8.74 15.63 8.31 15.36 7.74 15.09C7.18 14.82 6.45 14.55 5.58 14.09C4.71 13.62 3.73 12.94 3.06 12.00C2.40 11.06 2.12 9.90 2.44 8.89C2.77 7.89 3.68 7.11 4.77 6.75C5.86 6.38 7.06 6.40 8.03 6.54C9.00 6.67 9.76 6.88 10.37 7.00C10.99 7.11 11.49 7.15 12.00 7.15C12.51 7.15 13.01 7.11 13.63 7.00C14.24 6.88 15.00 6.67 15.97 6.54C16.94 6.40 18.14 6.38 19.23 6.75C20.32 7.11 21.23 7.89 21.56 8.89C21.88 9.90 21.60 11.06 20.94 12.00C20.27 12.94 19.29 13.62 18.42 14.09C17.55 14.55 16.82 14.82 16.26 15.09C15.69 15.36 15.26 15.63 14.85 15.92C14.44 16.22 14.06 16.55 13.63 17.00C13.19 17.46 12.71 18.07 12.00 18.75C11.29 19.43 10.33 20.16 9.24 20.50C8.14 20.84 6.94 20.75 6.09 20.13C5.24 19.51 4.78 18.40 4.77 17.25C4.76 16.11 5.15 14.97 5.58 14.09C6.01 13.20 6.44 12.55 6.74 12.00C7.04 11.45 7.23 10.98 7.39 10.50C7.54 10.02 7.66 9.53 7.74 8.91C7.83 8.29 7.86 7.51 8.03 6.54C8.20 5.57 8.55 4.42 9.24 3.50C9.92 2.58 10.95 1.95 12.00 1.95Z"
+
+export function Logo({ className, small = false }: { className?: string; small?: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -18,9 +27,13 @@ export function Logo({ className }: { className?: string }) {
       aria-hidden="true"
       className={cn("size-5 shrink-0", className)}
     >
-      {[0, 72, 144, 216, 288].map((angle) => (
-        <path key={angle} d={PIECE} transform={`rotate(${angle} 12 12)`} />
-      ))}
+      {small ? (
+        <path d={SMALL} fill="none" stroke="currentColor" strokeWidth={3} />
+      ) : (
+        [0, 72, 144, 216, 288].map((angle) => (
+          <path key={angle} d={PIECE} transform={`rotate(${angle} 12 12)`} />
+        ))
+      )}
     </svg>
   )
 }

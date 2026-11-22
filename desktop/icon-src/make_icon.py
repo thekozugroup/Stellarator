@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Writes the Stellarator app icon sources.
 
-    python3 make_icon.py          write the files below
-    python3 make_icon.py --logo   print the path of one strand piece, for frontend/src/components/logo.tsx
+    python3 make_icon.py                write the files below
+    python3 make_icon.py --logo         print PIECE for frontend/src/components/logo.tsx
+    python3 make_icon.py --logo-small   print SMALL for frontend/src/components/logo.tsx
 
 Writes, next to this script:
   icon-macos.svg   macOS before 26: Apple's 824 px rounded square on the 1024 px canvas, with Apple's
                    drop shadow
-  icon.svg         Windows, Linux and the web favicon: the same rounded square, nearly full-bleed, no shadow
+  icon.svg         Windows, Linux and the web app's manifest icons: the same rounded square, nearly
+                   full-bleed, no shadow
+  favicon.svg      the web favicon (browser tabs, 16 to 32 px): icon.svg with the small mark, larger
   icon-square.svg  iOS home screen and web "maskable" icons: full-bleed square (the platform masks it)
   Stellarator.icon macOS 26 Icon Composer document: the pixel field as a flat bottom layer and the mark
                    as a white glass layer; the system draws the Liquid Glass (actool compiles it in CI)
@@ -18,6 +21,9 @@ earlier mark's two coils braided around a ring. Its outline is a ring with five 
 it is white, over the pixel field: a 14 x 14 grid of square cells stepping from ink and navy at
 the top left through periwinkle to coral at the bottom right, with an ordered (Bayer) dither where
 two colours meet.
+
+For 24 px and under there is a small mark: the same centre line drawn as one continuous, thicker
+strand with no gaps at the crossings, which would only blur at that size.
 
 Icon Composer appearances: the default shows FIELD; dark shows FIELD_DARK, a darker field; tinted
 and clear hide both fields, so the system's own background shows behind the glass mark.
@@ -146,6 +152,38 @@ def mark_path(scale=1.0, cx=12.0, cy=12.0, segments=24, digits=2, pieces=5):
     return "".join(d)
 
 
+# The small mark, for 24 px and under: the same centre line as one continuous strand, SMALL_WIDTH
+# wide, with no gaps at the crossings. At 16 px the strand is 2 px wide (3 of 24 units) and the
+# holes between the two turns are about 1.5 px across; the 0.6-unit gaps would be 0.4 px, a blur.
+SMALL_WIDTH = 3.0
+SMALL_EXTENT = R + A + B + SMALL_WIDTH / 2  # 11.55
+
+
+def small_mark_path(scale=1.0, cx=12.0, cy=12.0, segments=40, digits=2):
+    """The small mark's centre line, both turns as one closed curve, as SVG path data: the 24-unit
+    box scaled by `scale` and centred on (cx, cy). Stroke it SMALL_WIDTH * scale wide, no fill."""
+    h = 1e-5
+
+    def at(t):
+        x, y = _centre(t)
+        return (cx + scale * (x - 12), cy + scale * (y - 12))
+
+    def tangent(t):
+        a, b = at(t - h), at(t + h)
+        return ((b[0] - a[0]) / (2 * h), (b[1] - a[1]) / (2 * h))
+
+    f = f"{{:.{digits}f}}"
+    start = at(0)
+    d = ["M" + f.format(start[0]) + " " + f.format(start[1])]
+    for i in range(segments):
+        a, b = 4 * math.pi * i / segments, 4 * math.pi * (i + 1) / segments
+        k = (b - a) / 3
+        pa, pb, ta, tb = at(a), at(b), tangent(a), tangent(b)
+        d.append("C" + " ".join(f.format(v) for v in (pa[0] + k * ta[0], pa[1] + k * ta[1],
+                                                       pb[0] - k * tb[0], pb[1] - k * tb[1], *pb)))
+    return "".join(d) + "Z"
+
+
 # ---------------------------------------------------------------------------------------------
 # The pixel field: GRID x GRID square cells over the tile. Each cell takes the heat at its centre
 # (0 cold, 1 hot), scaled to the palette steps. Where the heat falls between two steps, the cell
@@ -224,6 +262,7 @@ def field(palette, x0, y0, size):
 # ---------------------------------------------------------------------------------------------
 # The static icons (SVG, rendered by resvg through `tauri icon`).
 MARK_SIZE = 0.60  # the mark's width as a fraction of the tile
+FAVICON_MARK_SIZE = 0.74  # the small mark on the favicon: larger, so it reads in a browser tab
 
 
 def squircle(cx, cy, half, steps=90):
@@ -248,14 +287,20 @@ def squircle(cx, cy, half, steps=90):
     return "M" + " L".join(pts) + " Z"
 
 
-def svg(half, shadow, square=False):
+def svg(half, shadow, square=False, small=False):
     # square: full-bleed, for platforms that mask the icon themselves (iOS home screen, web
     # "maskable" icons); the mark stays inside the central 80 % safe zone.
+    # small: the small mark, larger, for the favicon.
     tile = "M0,0 H1024 V1024 H0 Z" if square else squircle(512, 512, half)
     k = half / 412  # 1.0 on the macOS grid
-    scale = MARK_SIZE * half / EXTENT
-    mark = mark_path(scale, 512, 512, segments=24)
-    top, bottom = 512 - EXTENT * scale, 512 + EXTENT * scale
+    extent = SMALL_EXTENT if small else EXTENT
+    scale = (FAVICON_MARK_SIZE if small else MARK_SIZE) * half / extent
+    if small:
+        mark = (f'<path d="{small_mark_path(scale, 512, 512, segments=60)}" fill="none" stroke="url(#markFill)" '
+                f'stroke-width="{SMALL_WIDTH * scale:.2f}"/>')
+    else:
+        mark = f'<path d="{mark_path(scale, 512, 512, segments=24)}" fill="url(#markFill)"/>'
+    top, bottom = 512 - extent * scale, 512 + extent * scale
     tile_shadow = (
         '<filter id="tileShadow" x="-20%" y="-20%" width="140%" height="140%">'
         '<feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.30"/></filter>'
@@ -290,7 +335,7 @@ def svg(half, shadow, square=False):
 </defs>
 <g{' filter="url(#tileShadow)"' if shadow else ''}><path d="{tile}" fill="{FIELD[0]}"/></g>
 <g clip-path="url(#tile)">{field(FIELD, 512 - half, 512 - half, 2 * half)}</g>
-<g filter="url(#markShadow)"><path d="{mark}" fill="url(#markFill)"/></g>
+<g filter="url(#markShadow)">{mark}</g>
 {rim}
 </svg>
 """
@@ -370,11 +415,16 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--logo"]:
         print(mark_path(segments=12, digits=2, pieces=1))
         sys.exit()
+    if sys.argv[1:] == ["--logo-small"]:
+        print(small_mark_path())
+        sys.exit()
     with open(os.path.join(HERE, "icon-macos.svg"), "w") as f:
         f.write(svg(412, shadow=True))
     with open(os.path.join(HERE, "icon.svg"), "w") as f:
         f.write(svg(488, shadow=False))
     with open(os.path.join(HERE, "icon-square.svg"), "w") as f:
         f.write(svg(512, shadow=False, square=True))
+    with open(os.path.join(HERE, "favicon.svg"), "w") as f:
+        f.write(svg(488, shadow=False, small=True))
     icon_composer()
-    print("wrote icon-macos.svg, icon.svg, icon-square.svg and Stellarator.icon")
+    print("wrote icon-macos.svg, icon.svg, icon-square.svg, favicon.svg and Stellarator.icon")
