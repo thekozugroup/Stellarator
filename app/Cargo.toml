@@ -1,0 +1,63 @@
+[package]
+name = "stellarator-app"
+# The product version (the root workspace's [workspace.package] version).
+version = "0.3.0"
+description = "Stellarator's native desktop app on nsh (Native Shell): the server in-process, the UI in Rust"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Its own workspace, like desktop/src-tauri: nsh's dependencies stay out of the server builds and
+# the root workspace (which does not list app/). Builds go to app/target.
+[workspace]
+
+[lib]
+name = "stellarator_app"
+path = "src/lib.rs"
+
+# `cargo run` starts the app from src/main.rs. `nsh run` and `nsh package` generate their own runner
+# around the same library (nsh.json "root"), so everything the app needs at run time lives there.
+[[bin]]
+name = "stellarator"
+path = "src/main.rs"
+
+[dependencies]
+# nsh, pinned to the CLI version that packages the app (keep all nsh-* crates equal).
+nsh-core = "=0.6.1"
+nsh-base = "=0.6.1"
+
+# The Stellarator server, run in-process: its axum router is called directly (no TCP port).
+stellarator-core = { path = "../crates/core" }
+stellarator-server = { path = "../crates/server" }
+
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+dirs = "6"
+env_logger = "0.11"
+http-body-util = "0.1"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
+tower = { version = "0.5", features = ["util"] }
+
+# Each desktop's backend. Only the features the app uses: SVG images (the mark and the icons).
+# `nsh package` adds the rest of its standard set to the runner it builds.
+[target.'cfg(target_os = "linux")'.dependencies]
+nsh-platform-linux = { version = "=0.6.1", default-features = false, features = ["svg"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos = { version = "=0.6.1", default-features = false, features = ["svg"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+nsh-platform-windows = { version = "=0.6.1", default-features = false, features = ["svg"] }
+
+# Debug builds: optimize dependencies a little so the server and the UI are usable while iterating.
+[profile.dev.package."*"]
+opt-level = 1
+
+[profile.release]
+codegen-units = 4
+lto = "thin"
+strip = true

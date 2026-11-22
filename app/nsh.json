@@ -1,0 +1,26 @@
+{
+  "name": "Stellarator",
+  "id": "com.thekozugroup.stellarator",
+  "version": "0.3.0",
+  "build": 1,
+  "nsh": ">=0.6.1, <0.7",
+  "rust": ".",
+  "root": "App",
+  "theme": "theme.json",
+  "appearance": "system",
+  "icon": {
+    "macos": "icons/icon-macos.png",
+    "windows": "icons/icon.png",
+    "linux": "icons/icon.png"
+  },
+  "window": {
+    "title": "Stellarator",
+    "defaultSize": { "width": 1280, "height": 820 },
+    "minSize": { "width": 900, "height": 600 }
+  },
+  "macos": {
+    "infoPlist": {
+      "LSApplicationCategoryType": "public.app-category.developer-tools"
+    }
+  }
+}
