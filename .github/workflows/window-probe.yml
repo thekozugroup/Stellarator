@@ -1,0 +1,31 @@
+# Temporary (removed after use): measures the macOS 26 window corner radius and title bar for a
+# window styled like the app's main window, with and without a toolbar (desktop/probe).
+name: Window probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/window-probe.yml"
+      - "desktop/probe/**"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and run the probe
+        working-directory: desktop/probe
+        run: |
+          sw_vers
+          swiftc -O window-probe.swift -o probe -framework AppKit -framework WebKit
+          ./probe | tee probe.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-probe
+          path: desktop/probe/probe*
