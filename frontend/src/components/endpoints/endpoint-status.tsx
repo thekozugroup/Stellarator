@@ -1,5 +1,7 @@
 import type { Endpoint } from "@/lib/types"
-import { count, DASH, relative } from "@/lib/format"
+import { Pill, StatusBadge, type Tone } from "@/components/shared/status-pill"
+import { DASH, relative } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 /** The server answered but refused the key (the backend words it "The server rejected the API key (401)"). */
 export const isKeyRejected = (error: string | null | undefined) => !!error && /^the server rejected the api key/i.test(error)
@@ -13,27 +15,40 @@ export function serverReason(error: string | null | undefined) {
   return body ? `${m[1]}: ${body}` : m[1]
 }
 
-/** "N models" / "Key rejected" / "Unreachable" + the reason / "Not checked". Red only on the failing fact. */
-export function EndpointStatus({ endpoint, detail = true }: { endpoint: Endpoint; detail?: boolean }) {
-  if (endpoint.last_ok === null) {
-    return <span className="text-muted-foreground">Not checked</span>
-  }
-  if (endpoint.last_ok) {
-    return <span className="tabular">{count(endpoint.models.length, "model", "models")}</span>
-  }
+/** The state of an endpoint as a word and a tone: Reachable (green), Unreachable or Key rejected (red), Not checked (plain). */
+export function endpointState(endpoint: Endpoint): { word: string; tone: Tone; reason: string | null } {
+  if (endpoint.last_ok === null) return { word: "Not checked", tone: "plain", reason: null }
+  if (endpoint.last_ok) return { word: "Reachable", tone: "positive", reason: null }
   const rejected = isKeyRejected(endpoint.last_error)
-  const reason = rejected ? serverReason(endpoint.last_error) : endpoint.last_error
-  const word = rejected ? "Key rejected" : "Unreachable"
-  // Without the reason it stays inline, so it can sit in a "·" separated line (the phone rows).
-  if (!detail || !reason) return <span className="font-medium text-destructive">{word}</span>
+  return {
+    word: rejected ? "Key rejected" : "Unreachable",
+    tone: "negative",
+    reason: rejected ? serverReason(endpoint.last_error) : endpoint.last_error,
+  }
+}
+
+/**
+ * In lists: the dot and the word (DESIGN.md, Status), and for a failing endpoint the server's reason
+ * under it in muted text. With `detail={false}` it is the word only, so it can sit in a "·" separated
+ * line (the phone rows).
+ */
+export function EndpointStatus({ endpoint, detail = true, className }: { endpoint: Endpoint; detail?: boolean; className?: string }) {
+  const { word, tone, reason } = endpointState(endpoint)
+  if (!detail || !reason) return <Pill tone={tone} className={cn("align-middle", className)}>{word}</Pill>
   return (
-    <span className="grid gap-0.5">
-      <span className="font-medium text-destructive">{word}</span>
-      <span title={endpoint.last_error ?? undefined} className="line-clamp-3 max-w-[34ch] text-xs text-muted-foreground">
+    <span className={cn("grid justify-items-start gap-0.5", className)}>
+      <Pill tone={tone}>{word}</Pill>
+      <span title={endpoint.last_error ?? undefined} className="line-clamp-2 max-w-[34ch] text-xs text-muted-foreground">
         {reason}
       </span>
     </span>
   )
+}
+
+/** In a header (the details sheet): the status as a capsule in its tint. */
+export function EndpointStatusBadge({ endpoint }: { endpoint: Endpoint }) {
+  const { word, tone } = endpointState(endpoint)
+  return <StatusBadge tone={tone}>{word}</StatusBadge>
 }
 
 export function CheckedAt({ endpoint }: { endpoint: Endpoint }) {

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
-import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import type { EndpointPreset } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 /** Presets rarely change while the app runs; a failed fetch just hides the preset row. */
 export function useEndpointPresets() {
@@ -13,7 +13,11 @@ export function useEndpointPresets() {
   })
 }
 
-/** The one-tap choices at the top of Add endpoint. `value` is a preset id, "custom", or null before a pick. */
+/**
+ * The one-tap choices at the top of Add endpoint, as chips (DESIGN.md, Chips): 28 px capsules in
+ * the raised tone; the picked one in the accent tint. `value` is a preset id, "custom", or null
+ * before a pick.
+ */
 export function PresetRow({
   presets,
   value,
@@ -26,17 +30,19 @@ export function PresetRow({
   return (
     <div role="group" aria-label="Preset" className="flex flex-wrap gap-1.5">
       {[...presets.map((p) => ({ id: p.id as string, name: p.name, preset: p as EndpointPreset | null })), { id: "custom", name: "Custom", preset: null }].map((o) => (
-        <Button
+        <button
           key={o.id}
           type="button"
-          variant="outline"
-          size="sm"
           aria-pressed={value === o.id}
-          className="pointer-coarse:h-11 aria-pressed:border-foreground aria-pressed:bg-muted"
+          className={cn(
+            "inline-flex h-7 items-center rounded-full bg-secondary px-3 text-sm whitespace-nowrap text-foreground transition-colors duration-150 outline-none select-none",
+            "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "aria-pressed:bg-periwinkle-tint aria-pressed:font-medium aria-pressed:text-periwinkle-ink",
+          )}
           onClick={() => onPick(o.preset)}
         >
           {o.name}
-        </Button>
+        </button>
       ))}
     </div>
   )

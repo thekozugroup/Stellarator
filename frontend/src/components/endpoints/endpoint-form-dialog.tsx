@@ -1,14 +1,14 @@
 import { useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { ChevronRight, ExternalLink, Eye, EyeOff, Loader2, Plus, X } from "lucide-react"
+import { ExternalLink, Eye, EyeOff, Loader2, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Field } from "@/components/shared/field"
+import { FormDisclosure, FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
+import { Pill } from "@/components/shared/status-pill"
 import { ApiError, api } from "@/lib/api"
 import { count, duration } from "@/lib/format"
 import type { Endpoint, EndpointIn, EndpointLocation, EndpointPreset, EndpointTestOut } from "@/lib/types"
@@ -39,7 +39,7 @@ export function EndpointFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden sm:max-w-lg"
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden sm:max-w-xl"
         onOpenAutoFocus={(ev) => {
           const target = focusField ?? (preset?.needs_api_key ? "api_key" : null)
           if (!target) return
@@ -193,252 +193,253 @@ function EndpointForm({
       <DialogHeader className="pr-8 pb-4">
         <DialogTitle>{editing ? "Edit endpoint" : "Add endpoint"}</DialogTitle>
       </DialogHeader>
-      <div className="-mx-5 grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-5 py-1">
-      {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
+      {/* The scroll area runs to the dialog's edges so focus rings are not clipped. */}
+      <div className="-mx-5 grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-5 py-1">
+        {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
 
-      <Field id="ep-name" label="Name" error={errors.name}>
-        <Input
-          id="ep-name"
-          value={name}
-          placeholder="DGX Spark"
-          autoComplete="off"
-          aria-invalid={!!errors.name}
-          aria-describedby={describe("name", false)}
-          onChange={(e) => {
-            setName(e.target.value)
-            clear("name")
-          }}
-        />
-      </Field>
+        <FormGroup>
+          <FormRow id="ep-name" label="Name" error={errors.name}>
+            <Input
+              id="ep-name"
+              value={name}
+              placeholder="DGX Spark"
+              autoComplete="off"
+              aria-invalid={!!errors.name}
+              aria-describedby={describe("name", false)}
+              onChange={(e) => {
+                setName(e.target.value)
+                clear("name")
+              }}
+            />
+          </FormRow>
 
-      <Field
-        id="ep-base_url"
-        label="Base URL"
-        error={errors.base_url}
-        hint={/^https?:\/\/(localhost|127\.0\.0\.1)\b/i.test(baseUrl.trim()) ? "From Docker, this machine is http://host.docker.internal:PORT/v1." : undefined}
-      >
-        <Input
-          id="ep-base_url"
-          type="url"
-          inputMode="url"
-          value={baseUrl}
-          placeholder="http://192.168.1.50:8000/v1"
-          autoComplete="off"
-          spellCheck={false}
-          autoCapitalize="none"
-          className="font-mono pointer-fine:text-[13px]"
-          aria-invalid={!!errors.base_url}
-          aria-describedby={describe("base_url", true)}
-          onChange={(e) => {
-            setBaseUrl(e.target.value)
-            clear("base_url")
-            staleTest()
-          }}
-        />
-      </Field>
-
-      <div className="grid gap-1.5">
-        <Label htmlFor="ep-api_key" className="text-sm font-medium">
-          API key{keyUrl ? null : <span className="font-normal text-muted-foreground"> (optional)</span>}
-        </Label>
-        <div className="relative">
-          <Input
-            id="ep-api_key"
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            disabled={removeKey}
-            placeholder={editing && endpoint?.has_api_key ? undefined : "sk-012345…"}
-            autoComplete="off"
-            spellCheck={false}
-            autoCapitalize="none"
-            className="pr-10 font-mono pointer-fine:text-[13px]"
-            aria-invalid={!!errors.api_key}
-            aria-describedby={errors.api_key ? "ep-api_key-error" : editing && endpoint?.has_api_key ? "ep-api_key-hint" : undefined}
-            onChange={(e) => {
-              setApiKey(e.target.value)
-              clear("api_key")
-              staleTest()
-            }}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="absolute top-0.5 right-0.5"
-            aria-label={showKey ? "Hide API key" : "Show API key"}
-            aria-pressed={showKey}
-            onClick={() => setShowKey((s) => !s)}
+          <FormRow
+            id="ep-base_url"
+            label="Base URL"
+            error={errors.base_url}
+            hint={/^https?:\/\/(localhost|127\.0\.0\.1)\b/i.test(baseUrl.trim()) ? "From Docker, this machine is http://host.docker.internal:PORT/v1." : undefined}
           >
-            {showKey ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-          </Button>
-        </div>
-        {errors.api_key ? (
-          <p id="ep-api_key-error" className="text-sm text-destructive">
-            {errors.api_key}
-          </p>
-        ) : editing && endpoint?.has_api_key ? (
-          <p id="ep-api_key-hint" className="text-xs text-muted-foreground">
-            {removeKey ? "The saved key is removed when you save." : `Saved key ${endpoint.api_key_hint ?? "set"}. Leave blank to keep it.`}
-          </p>
-        ) : keyUrl ? (
-          <a
-            href={keyUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex min-h-6 w-fit items-center gap-1 rounded-sm text-sm underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none pointer-coarse:min-h-11"
-          >
-            Get a key
-            <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">(opens in a new tab)</span>
-          </a>
-        ) : null}
-        {editing && endpoint?.has_api_key ? (
-          <Label htmlFor="ep-remove-key" className="flex min-h-9 items-center gap-2 text-sm font-normal pointer-coarse:min-h-11">
-            <Checkbox
-              id="ep-remove-key"
-              checked={removeKey}
-              onCheckedChange={(c) => {
-                setRemoveKey(c === true)
-                if (c === true) setApiKey("")
+            <Input
+              id="ep-base_url"
+              type="url"
+              inputMode="url"
+              value={baseUrl}
+              placeholder="http://192.168.1.50:8000/v1"
+              autoComplete="off"
+              spellCheck={false}
+              autoCapitalize="none"
+              className="font-mono pointer-fine:text-xs"
+              aria-invalid={!!errors.base_url}
+              aria-describedby={describe("base_url", true)}
+              onChange={(e) => {
+                setBaseUrl(e.target.value)
+                clear("base_url")
                 staleTest()
               }}
             />
-            Remove the saved key
-          </Label>
-        ) : null}
-      </div>
+          </FormRow>
 
-      <Field
-        id="ep-default_concurrency"
-        label="Default seqs"
-        error={errors.default_concurrency}
-        hint="Prefilled on new runs."
-      >
-        <Input
-          id="ep-default_concurrency"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={4096}
-          value={seqs}
-          className="tabular max-w-40"
-          aria-invalid={!!errors.default_concurrency}
-          aria-describedby={describe("default_concurrency", true)}
-          onChange={(e) => {
-            setSeqs(e.target.value)
-            clear("default_concurrency")
-          }}
-        />
-      </Field>
-
-      <Collapsible open={headersOpen} onOpenChange={setHeadersOpen}>
-        <CollapsibleTrigger className="flex min-h-9 pointer-coarse:min-h-11 items-center gap-1.5 rounded-md text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none">
-          <ChevronRight className={`size-4 text-muted-foreground transition-transform duration-150 ${headersOpen ? "rotate-90" : ""}`} aria-hidden="true" />
-          Headers
-          <span className="font-normal text-muted-foreground">
-            ({headers.length ? `${headers.length} set` : "optional"})
-          </span>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="mt-2 grid gap-2">
-            {headers.map((h, i) => (
-              <div key={h.id} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
-                <Input
-                  aria-label={`Header ${i + 1} name`}
-                  value={h.key}
-                  placeholder="X-Org-Id"
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  className="font-mono pointer-fine:text-[13px]"
-                  onChange={(e) => {
-                    setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, key: e.target.value } : r)))
+          <FormRow
+            id="ep-api_key"
+            label="API key"
+            optional={!keyUrl}
+            error={errors.api_key}
+            hint={
+              editing && endpoint?.has_api_key ? (
+                removeKey ? (
+                  "The saved key is removed when you save."
+                ) : (
+                  <>
+                    Saved key <span className="font-mono">{endpoint.api_key_hint ?? "set"}</span>. Leave blank to keep it.
+                  </>
+                )
+              ) : undefined
+            }
+          >
+            <div className="relative">
+              <Input
+                id="ep-api_key"
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                disabled={removeKey}
+                placeholder={editing && endpoint?.has_api_key ? undefined : "sk-012345…"}
+                autoComplete="off"
+                spellCheck={false}
+                autoCapitalize="none"
+                className="pr-10 font-mono pointer-fine:text-xs"
+                aria-invalid={!!errors.api_key}
+                aria-describedby={errors.api_key ? "ep-api_key-error" : editing && endpoint?.has_api_key ? "ep-api_key-hint" : undefined}
+                onChange={(e) => {
+                  setApiKey(e.target.value)
+                  clear("api_key")
+                  staleTest()
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-0.5 right-0.5"
+                aria-label={showKey ? "Hide API key" : "Show API key"}
+                aria-pressed={showKey}
+                onClick={() => setShowKey((s) => !s)}
+              >
+                {showKey ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+              </Button>
+            </div>
+            {!errors.api_key && !(editing && endpoint?.has_api_key) && keyUrl ? (
+              <a
+                href={keyUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex min-h-6 w-fit items-center gap-1 rounded-xs text-sm underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none pointer-coarse:min-h-11"
+              >
+                Get a key
+                <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            ) : null}
+            {editing && endpoint?.has_api_key ? (
+              <Label htmlFor="ep-remove-key" className="flex min-h-7 w-fit items-center gap-2 text-sm font-normal pointer-coarse:min-h-11">
+                <Checkbox
+                  id="ep-remove-key"
+                  checked={removeKey}
+                  onCheckedChange={(c) => {
+                    setRemoveKey(c === true)
+                    if (c === true) setApiKey("")
                     staleTest()
                   }}
                 />
-                <Input
-                  aria-label={`Header ${i + 1} value`}
-                  value={h.value}
-                  placeholder="value"
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  className="font-mono pointer-fine:text-[13px]"
-                  onChange={(e) => {
-                    setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, value: e.target.value } : r)))
-                    staleTest()
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove header ${i + 1}`}
-                  onClick={() => setHeaders((rows) => rows.filter((r) => r.id !== h.id))}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </div>
-            ))}
+                Remove the saved key
+              </Label>
+            ) : null}
+          </FormRow>
+
+          <FormRow id="ep-default_concurrency" label="Default seqs" error={errors.default_concurrency} hint="Prefilled on new runs." align="end">
+            <Input
+              id="ep-default_concurrency"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={4096}
+              value={seqs}
+              className="w-24 text-right tabular"
+              aria-invalid={!!errors.default_concurrency}
+              aria-describedby={describe("default_concurrency", true)}
+              onChange={(e) => {
+                setSeqs(e.target.value)
+                clear("default_concurrency")
+              }}
+            />
+          </FormRow>
+        </FormGroup>
+
+        <FormDisclosure
+          title="Headers"
+          summary={headers.length ? count(headers.length, "header", "headers") : "Optional"}
+          open={headersOpen}
+          onOpenChange={setHeadersOpen}
+        >
+          {headers.map((h, i) => (
+            <FormItem key={h.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
+              <Input
+                aria-label={`Header ${i + 1} name`}
+                value={h.key}
+                placeholder="X-Org-Id"
+                spellCheck={false}
+                autoCapitalize="none"
+                className="font-mono pointer-fine:text-xs"
+                onChange={(e) => {
+                  setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, key: e.target.value } : r)))
+                  staleTest()
+                }}
+              />
+              <Input
+                aria-label={`Header ${i + 1} value`}
+                value={h.value}
+                placeholder="value"
+                spellCheck={false}
+                autoCapitalize="none"
+                className="font-mono pointer-fine:text-xs"
+                onChange={(e) => {
+                  setHeaders((rows) => rows.map((r) => (r.id === h.id ? { ...r, value: e.target.value } : r)))
+                  staleTest()
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Remove header ${i + 1}`}
+                onClick={() => setHeaders((rows) => rows.filter((r) => r.id !== h.id))}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </FormItem>
+          ))}
+          <FormItem>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="w-fit"
+              className="-ml-1.5"
               onClick={() => setHeaders((rows) => [...rows, { id: nextId.current++, key: "", value: "" }])}
             >
               <Plus aria-hidden="true" />
               Add header
             </Button>
+          </FormItem>
+        </FormDisclosure>
+
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={testMutation.isPending || !baseUrl.trim()}
+              onClick={() => testMutation.mutate()}
+            >
+              {testMutation.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+              {testMutation.isPending ? "Testing…" : "Test connection"}
+            </Button>
+            {!baseUrl.trim() ? <span className="text-xs text-muted-foreground">Enter a base URL to test it.</span> : null}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      <div className="grid gap-2 pt-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={testMutation.isPending || !baseUrl.trim()}
-            onClick={() => testMutation.mutate()}
-          >
-            {testMutation.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-            {testMutation.isPending ? "Testing…" : "Test connection"}
-          </Button>
-          {!baseUrl.trim() ? <span className="text-xs text-muted-foreground">Enter a base URL to test it.</span> : null}
-        </div>
-        <div aria-live="polite" className="text-sm">
-          {test?.ok ? (
-            <div className="grid gap-1">
-              <p>
-                Connected in {duration(test.latency_ms)}
-                <span className="text-muted-foreground"> · {count(test.models.length, "model", "models")}</span>
-              </p>
-              {test.models.length ? (
-                <p className="font-mono text-[13px] break-all text-muted-foreground">
-                  {test.models.slice(0, 4).join(", ")}
-                  {test.models.length > 4 ? `, and ${test.models.length - 4} more` : ""}
+          <div aria-live="polite" className="text-sm empty:hidden">
+            {test?.ok ? (
+              <div className="grid gap-1">
+                <p className="flex flex-wrap items-center gap-x-1.5">
+                  <Pill tone="positive">Connected</Pill>
+                  <span className="text-muted-foreground tabular">
+                    in {duration(test.latency_ms)} · {count(test.models.length, "model", "models")}
+                  </span>
                 </p>
-              ) : null}
-            </div>
-          ) : test ? (
-            <div className="grid gap-0.5 text-destructive">
-              {isKeyRejected(test.error) ? <p className="font-medium">Key rejected</p> : null}
-              <p>{test.error ?? "The server did not answer."}</p>
-            </div>
-          ) : testError ? (
-            <p className="text-destructive">{testError}</p>
-          ) : null}
+                {test.models.length ? (
+                  <p className="font-mono text-xs break-all text-muted-foreground">
+                    {test.models.slice(0, 4).join(", ")}
+                    {test.models.length > 4 ? `, and ${test.models.length - 4} more` : ""}
+                  </p>
+                ) : null}
+              </div>
+            ) : test ? (
+              <div className="grid gap-1">
+                <Pill tone="negative">{isKeyRejected(test.error) ? "Key rejected" : "Unreachable"}</Pill>
+                <p className="text-negative-ink">{test.error ?? "The server did not answer."}</p>
+              </div>
+            ) : testError ? (
+              <p className="text-negative-ink">{testError}</p>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      {formError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {formError}
-        </p>
-      ) : null}
+        {formError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {formError}
+          </p>
+        ) : null}
       </div>
 
       <DialogFooter className="m-0 shrink-0 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={save.isPending}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={save.isPending}>
           Cancel
         </Button>
         <Button type="submit" aria-disabled={save.isPending}>

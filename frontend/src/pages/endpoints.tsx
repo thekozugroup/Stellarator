@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Page } from "@/components/shared/page"
 import { EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
+import { Plasma } from "@/components/shared/plasma"
 import { DeleteEndpointDialog } from "@/components/endpoints/delete-endpoint-dialog"
 import { EndpointDetailsSheet } from "@/components/endpoints/endpoint-details-sheet"
 import { EndpointFormDialog } from "@/components/endpoints/endpoint-form-dialog"
@@ -69,7 +70,7 @@ export function EndpointsPage() {
       actions={(query.data && endpoints.length === 0) || phone ? null : add}
       barActions={
         endpoints.length > 0 ? (
-          <Button variant="outline" size="icon" aria-label="Add endpoint" title="Add endpoint" onClick={() => setForm({ endpoint: null })}>
+          <Button variant="secondary" size="icon" aria-label="Add endpoint" title="Add endpoint" onClick={() => setForm({ endpoint: null })}>
             <Plus aria-hidden="true" />
           </Button>
         ) : null
@@ -80,26 +81,30 @@ export function EndpointsPage() {
       ) : query.isError ? (
         <ErrorBlock message={`Couldn’t load endpoints. ${query.error.message}`} onRetry={() => query.refetch()} />
       ) : endpoints.length === 0 ? (
-        <div className="border-y">
-          <EmptyBlock
-            action={
-              <div className="flex flex-wrap gap-2">
-                {(presets.data ?? [])
-                  .filter((p) => ["openrouter", "lmstudio", "ollama"].includes(p.id))
-                  .map((p) => (
-                    <Button key={p.id} variant="outline" onClick={() => setForm({ endpoint: null, preset: p })}>
-                      Add {p.name}
-                    </Button>
-                  ))}
-                <Button variant="outline" onClick={() => setForm({ endpoint: null })}>
-                  {presets.data?.length ? "Other…" : "Add endpoint"}
-                </Button>
-              </div>
-            }
-          >
-            No endpoints yet. Add one to run prompts against a model.
-          </EmptyBlock>
-        </div>
+        <EmptyBlock
+          className="gap-4 rounded-xl bg-muted p-6"
+          action={
+            <div className="flex flex-wrap gap-2">
+              {(presets.data ?? [])
+                .filter((p) => ["openrouter", "lmstudio", "ollama"].includes(p.id))
+                .map((p) => (
+                  <Button key={p.id} variant="secondary" className="bg-background hover:bg-accent" onClick={() => setForm({ endpoint: null, preset: p })}>
+                    Add {p.name}
+                  </Button>
+                ))}
+              <Button
+                variant={presets.data?.length ? "secondary" : "default"}
+                className={presets.data?.length ? "bg-background hover:bg-accent" : undefined}
+                onClick={() => setForm({ endpoint: null })}
+              >
+                {presets.data?.length ? "Other…" : "Add endpoint"}
+              </Button>
+            </div>
+          }
+        >
+          <Plasma seed="endpoint-empty" cells={8} className="size-14 rounded-md" />
+          <p className="mt-4">No endpoints yet. Add one to run prompts against a model.</p>
+        </EmptyBlock>
       ) : (
         <EndpointList
           endpoints={endpoints}
