@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { ErrorBlock } from "@/components/shared/block-states"
 import { api } from "@/lib/api"
 import { count } from "@/lib/format"
 import type { Endpoint } from "@/lib/types"
@@ -46,13 +47,9 @@ export function DeleteEndpointDialog({ endpoint, onClose }: { endpoint: Endpoint
               : "No runs use this endpoint."}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <ErrorBlock message={error} /> : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={del.isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel variant="secondary" disabled={del.isPending}>Cancel</AlertDialogCancel>
           <Button variant="destructive" disabled={del.isPending} onClick={() => endpoint && del.mutate(endpoint.id)}>
             {del.isPending ? "Deleting…" : "Delete endpoint"}
           </Button>

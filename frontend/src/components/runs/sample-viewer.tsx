@@ -3,27 +3,44 @@ import { ChevronRight } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
 import { ModelText, TextModeToggle } from "@/components/shared/model-text"
-import { SampleStatusPill } from "@/components/shared/status-pill"
+import { StatusBadge } from "@/components/shared/status-pill"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { DASH, count, dateTime, duration, int } from "@/lib/format"
 import type { Sample } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { ROLE_LABEL, finishReasonText, sampleLabel, useSample } from "./run-data"
 import { StepPair } from "./step-pair"
 
 const SHORT_TRACE = 1500
 
+/**
+ * A card in the sheet (DESIGN.md, Shape): --muted with 16 px corners and 8 px padding, a header
+ * row (title, mono meta, copy) and the model text in a --background well with 8 px corners,
+ * concentric with the card.
+ */
+const CARD = "rounded-xl bg-muted p-2"
+const WELL = "rounded-sm bg-background px-3 py-2.5"
+
+function CardHeader({ children, copy }: { children: ReactNode; copy?: { value: string; label: string } }) {
+  return (
+    <div className="flex min-h-8 items-center justify-between gap-3 pr-0.5 pl-2">
+      {children}
+      {copy ? <CopyButton value={copy.value} label={copy.label} /> : null}
+    </div>
+  )
+}
+
 function Part({ title, meta, copy, children }: { title: string; meta?: ReactNode; copy?: { value: string; label: string }; children: ReactNode }) {
   return (
-    <section className="grid gap-2">
-      <div className="flex min-h-7 items-center justify-between gap-3">
+    <section className={CARD}>
+      <CardHeader copy={copy}>
         <h3 className="text-sm font-semibold">
           {title}
-          {meta ? <span className="ml-2 font-normal text-muted-foreground tabular">{meta}</span> : null}
+          {meta ? <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{meta}</span> : null}
         </h3>
-        {copy ? <CopyButton value={copy.value} label={copy.label} /> : null}
-      </div>
-      {children}
+      </CardHeader>
+      <div className={cn(WELL, "mt-1")}>{children}</div>
     </section>
   )
 }
@@ -33,22 +50,21 @@ function Thinking({ sample }: { sample: Sample }) {
   const [open, setOpen] = useState(text.length < SHORT_TRACE)
   const meta = sample.reasoning_tokens !== null ? count(sample.reasoning_tokens, "token", "tokens") : `${int(text.length)} characters`
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="flex min-h-7 items-center justify-between gap-3">
+    <Collapsible open={open} onOpenChange={setOpen} className={CARD}>
+      <CardHeader copy={{ value: text, label: "Copy thinking trace" }}>
         <h3 className="text-sm font-semibold">
-          <CollapsibleTrigger className="group -mx-1 flex items-center gap-1.5 rounded-md px-1 text-left">
+          <CollapsibleTrigger className="group -mx-1 flex items-center gap-1.5 rounded-xs px-1 text-left">
             <ChevronRight
               aria-hidden="true"
               className="size-4 text-muted-foreground transition-transform duration-200 ease-out group-data-[state=open]:rotate-90"
             />
             Thinking trace
-            <span className="font-normal text-muted-foreground tabular">{meta}</span>
+            <span className="font-mono text-xs font-normal text-muted-foreground">{meta}</span>
           </CollapsibleTrigger>
         </h3>
-        <CopyButton value={text} label="Copy thinking trace" />
-      </div>
+      </CardHeader>
       <CollapsibleContent>
-        <div className="mt-2 rounded-lg bg-muted px-3 py-2.5 text-muted-foreground">
+        <div className={cn(WELL, "mt-1 text-muted-foreground")}>
           <ModelText text={text} />
         </div>
       </CollapsibleContent>
@@ -64,22 +80,23 @@ function Facts({ sample }: { sample: Sample }) {
     sample.reasoning_tokens !== null ? `${int(sample.reasoning_tokens)} reasoning` : null,
   ].filter(Boolean)
   const failed = sample.status === "failed"
-  const all: [string, ReactNode, boolean][] = [
-    ["Finish reason", finish ? <span className={finish.warn ? "text-coral-ink" : undefined}>{finish.text}</span> : DASH, !!finish],
-    ["Tokens", tokenParts.length ? tokenParts.join(" · ") : DASH, tokenParts.length > 0],
-    ["Latency", duration(sample.latency_ms), sample.latency_ms !== null],
-    ["Time to first token", duration(sample.ttft_ms), sample.ttft_ms !== null],
-    ["Attempts", int(sample.attempts), true],
-    [failed ? "Failed" : "Completed", dateTime(sample.completed_at), !!sample.completed_at],
+  // [label, value, known, mono]: measurements and times are data, in mono; the finish reason is words.
+  const all: [string, ReactNode, boolean, boolean][] = [
+    ["Finish reason", finish ? <span className={finish.warn ? "text-coral-ink" : undefined}>{finish.text}</span> : DASH, !!finish, false],
+    ["Tokens", tokenParts.length ? tokenParts.join(" · ") : DASH, tokenParts.length > 0, true],
+    ["Latency", duration(sample.latency_ms), sample.latency_ms !== null, true],
+    ["Time to first token", duration(sample.ttft_ms), sample.ttft_ms !== null, true],
+    ["Attempts", int(sample.attempts), true, true],
+    [failed ? "Failed" : "Completed", dateTime(sample.completed_at), !!sample.completed_at, true],
   ]
   // A failed request has no finish reason, tokens or timings: leave those rows out instead of a column of dashes.
   const rows = all.filter(([, , known]) => known || !failed)
   return (
-    <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-      {rows.map(([k, v]) => (
+    <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 px-2 pt-1 pb-2 text-sm">
+      {rows.map(([k, v, , mono]) => (
         <div key={k} className="contents">
           <dt className="text-muted-foreground">{k}</dt>
-          <dd className="tabular">{v}</dd>
+          <dd className={mono ? "font-mono text-xs leading-5" : undefined}>{v}</dd>
         </div>
       ))}
     </dl>
@@ -89,7 +106,7 @@ function Facts({ sample }: { sample: Sample }) {
 function Body({ sample }: { sample: Sample }) {
   const promptText = sample.messages.map((m) => (sample.messages.length > 1 ? `${ROLE_LABEL[m.role] ?? m.role}:\n${m.content}` : m.content)).join("\n\n")
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-2">
       <Part title="Prompt" copy={{ value: promptText, label: "Copy prompt" }}>
         <div className="grid gap-3">
           {sample.messages.map((m, i) => (
@@ -108,7 +125,7 @@ function Body({ sample }: { sample: Sample }) {
         {sample.response ? (
           <ModelText text={sample.response} />
         ) : sample.status === "failed" ? (
-          <p className="text-sm text-destructive [overflow-wrap:anywhere]">{sample.error ?? "The request failed."}</p>
+          <p className="text-sm text-negative-ink [overflow-wrap:anywhere]">{sample.error ?? "The request failed."}</p>
         ) : sample.status === "done" && sample.finish_reason === "length" ? (
           <p className="text-sm text-coral-ink">No answer: max tokens hit while thinking.</p>
         ) : sample.status === "done" ? (
@@ -118,8 +135,10 @@ function Body({ sample }: { sample: Sample }) {
         )}
       </Part>
 
-      <section className="grid gap-2 border-t pt-5">
-        <h3 className="text-sm font-semibold">Details</h3>
+      <section className={CARD}>
+        <CardHeader>
+          <h3 className="text-sm font-semibold">Details</h3>
+        </CardHeader>
         <Facts sample={sample} />
       </section>
     </div>
@@ -128,17 +147,29 @@ function Body({ sample }: { sample: Sample }) {
 
 function Loading() {
   return (
-    <div className="grid gap-6" aria-busy="true" aria-label="Loading sample">
+    <div className="grid gap-2" aria-busy="true" aria-label="Loading sample">
       {["Prompt", "Response"].map((t) => (
-        <div key={t} className="grid gap-2">
-          <h3 className="text-sm font-semibold">{t}</h3>
-          <Bar className="w-full" />
-          <Bar className="w-11/12" />
-          <Bar className="w-2/3" />
-        </div>
+        <section key={t} className={CARD}>
+          <CardHeader>
+            <h3 className="text-sm font-semibold">{t}</h3>
+          </CardHeader>
+          <div className={cn(WELL, "mt-1 grid gap-2")}>
+            <Bar className="w-full" />
+            <Bar className="w-11/12" />
+            <Bar className="w-2/3" />
+          </div>
+        </section>
       ))}
     </div>
   )
+}
+
+/** The sample's status in the sheet's header: a capsule in the state's tint (DESIGN.md, Status). */
+function SampleStatusBadge({ sample }: { sample: Sample }) {
+  if (sample.status === "done" && sample.finish_reason === "length") return <StatusBadge tone="attention">Truncated</StatusBadge>
+  if (sample.status === "failed") return <StatusBadge tone="negative">Failed</StatusBadge>
+  if (sample.status === "running") return <StatusBadge tone="positive">In flight</StatusBadge>
+  return <StatusBadge>{sample.status === "done" ? "Done" : "Pending"}</StatusBadge>
 }
 
 /**
@@ -193,15 +224,15 @@ export function SampleViewer({
         }}
         className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[45rem]"
       >
-        <SheetHeader className="gap-2 border-b px-4 py-3 pr-14 sm:px-6">
+        <SheetHeader className="gap-2 border-b px-4 pt-3.5 pb-3 pr-14 sm:px-5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <SheetTitle className="text-base font-semibold">
               Sample{" "}
-              <span className="font-mono text-[15px]">
+              <span className="font-mono text-sm">
                 {s ? sampleLabel(s.prompt_idx, s.sample_idx, samplesPerPrompt) : ""}
               </span>
             </SheetTitle>
-            {s ? <SampleStatusPill status={s.status} finishReason={s.finish_reason} /> : null}
+            {s ? <SampleStatusBadge sample={s} /> : null}
           </div>
           <SheetDescription className="sr-only">
             The prompt, thinking trace and response of one sample. Press J for the next sample and K for the previous one.
@@ -218,7 +249,7 @@ export function SampleViewer({
           ref={bodyRef}
           tabIndex={-1}
           aria-label="Sample"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 outline-none sm:px-6" /* taste-ignore: outline-removed -- tabIndex -1 scroll area focused only by script on open, never by Tab */
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 outline-none sm:p-4" /* taste-ignore: outline-removed -- tabIndex -1 scroll area focused only by script on open, never by Tab */
         >
           {sample.isError ? (
             <ErrorBlock message={`Couldn't load this sample. ${sample.error.message}`} onRetry={() => void sample.refetch()} />

@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { Plus } from "lucide-react"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
 import { ProgressBar } from "@/components/shared/progress-bar"
 import { RunStatusPill } from "@/components/shared/status-pill"
 import { SetupChecklist } from "@/components/runs/setup-checklist"
@@ -113,16 +114,16 @@ function RunsTable({ runs }: { runs: Run[] }) {
         </Table>
       </div>
 
-      {/* Phone and tablet: one row per run with its name, status and progress. */}
-      <ul className="divide-y border-y lg:hidden">
+      {/* Phone and tablet: one row per run, its name and status, then its facts and progress. */}
+      <ul className="divide-y lg:hidden">
         {runs.map((run) => (
-          <li key={run.id} className="relative px-0 py-3 has-[a:focus-visible]:bg-foreground/4">
+          <li key={run.id} className="relative -mx-3 rounded-md px-3 py-3 has-[a:focus-visible]:bg-accent">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link
                   data-touch="inline"
                   to={`/runs/${run.id}`}
-                  className="block truncate font-medium outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                  className="block truncate font-medium outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                 >
                   {run.name}
                 </Link>
@@ -146,17 +147,18 @@ function RunsTable({ runs }: { runs: Run[] }) {
 function RunsLoading() {
   return (
     <div aria-busy="true" aria-label="Loading runs">
-      <div className="hidden h-7 items-center gap-4 border-b px-3 text-xs text-muted-foreground lg:flex">
+      <div className="hidden h-8 items-center gap-4 rounded-md bg-muted px-3 text-xs text-muted-foreground lg:flex">
         <span className="flex-1">Name</span>
         <span className="w-[17.5rem]">Progress</span>
         <span className="w-[8rem]">Status</span>
         <span className="w-[7rem] text-right">Created</span>
       </div>
       {[0, 1, 2].map((i) => (
-        <div key={i} className="flex h-[61px] items-center gap-4 border-b px-3 lg:h-8 lg:px-3">
+        <div key={i} className="flex h-[76px] items-center gap-4 border-b lg:h-11 lg:px-3">
           <div className="grid flex-1 gap-1.5 lg:block">
             <Bar className="w-48" />
             <Bar className="h-3 w-64 max-w-full lg:hidden" />
+            <Bar className="h-1.5 w-full rounded-full lg:hidden" />
           </div>
           <span className="hidden w-[17.5rem] lg:block">
             <Bar className="w-40" />
@@ -173,6 +175,30 @@ function RunsLoading() {
   )
 }
 
+/**
+ * No runs yet: the list keeps its frame (the header band) and says what will appear there, then
+ * the steps to a first run.
+ */
+function RunsEmpty() {
+  return (
+    <div className="grid gap-4">
+      <div aria-hidden="true" className="hidden h-8 items-center gap-4 rounded-md bg-muted px-3 text-xs text-muted-foreground lg:flex">
+        <span className="flex-1">Name</span>
+        <span className="w-[17.5rem]">Progress</span>
+        <span className="w-[8rem]">Status</span>
+        <span className="w-[7rem] text-right">Created</span>
+      </div>
+      <div className="flex items-center gap-4 lg:px-3">
+        <Plasma seed="runs-empty" cells={8} className="size-14 rounded-md" />
+        <p className="max-w-[60ch] text-sm text-muted-foreground">
+          No runs yet. Each run you start shows here with its progress and status, newest first.
+        </p>
+      </div>
+      <SetupChecklist />
+    </div>
+  )
+}
+
 /** Creating a run: a push button in the toolbar, or a "+" in the phone bar (Page's barActions). */
 const newRun = (
   <Button asChild>
@@ -183,7 +209,7 @@ const newRun = (
   </Button>
 )
 const newRunIcon = (
-  <Button asChild variant="outline" size="icon">
+  <Button asChild variant="secondary" size="icon">
     <Link to="/runs/new" aria-label="New run" title="New run">
       <Plus aria-hidden="true" />
     </Link>
@@ -212,9 +238,7 @@ export function RunsListPage() {
       ) : runs.isError ? (
         <ErrorBlock message={`Couldn't load runs. ${runs.error.message}`} onRetry={() => void runs.refetch()} />
       ) : runs.data.length === 0 ? (
-        <div className="rounded-lg border px-4 py-4 sm:px-6">
-          <SetupChecklist />
-        </div>
+        <RunsEmpty />
       ) : (
         <RunsTable runs={runs.data} />
       )}

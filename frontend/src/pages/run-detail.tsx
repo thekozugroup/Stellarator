@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Bar, ErrorBlock } from "@/components/shared/block-states"
-import { GroupBox } from "@/components/shared/form-group"
-import { Page } from "@/components/shared/page"
-import { RunStatusPill } from "@/components/shared/status-pill"
+import { Chip, ChipRow } from "@/components/shared/chip"
+import { Page, Panel } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
+import { RunStatusBadge } from "@/components/shared/status-pill"
 import { ExportDialog } from "@/components/runs/export-dialog"
 import { InFlightList } from "@/components/runs/in-flight"
 import { RunActions } from "@/components/runs/run-actions"
@@ -18,6 +19,7 @@ import { ApiError, api } from "@/lib/api"
 import { dateTime, int, relative, time } from "@/lib/format"
 import type { Endpoint, Page as PageOf, Run, SampleSummary } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { Missing } from "./not-found"
 
 const PROBLEM = /fail|error|could ?n[o']t|unreach|refused|timed? ?out|rate limit|429|5\d\d|circuit/i
 /** The endpoint itself needs fixing: a rejected key, or a server that cannot be reached. */
@@ -52,26 +54,32 @@ function useEndpointProblem(run: Run | undefined): { pending: boolean; error: st
 }
 
 /**
- * Why the run stopped, and the way out when the endpoint is the cause. Edit endpoint is the
- * screen's one primary action when it is what a finished run needs next; on a paused run, Resume
- * run keeps that place and Edit endpoint sits beside the reason.
+ * Why the run stopped, and the way out when the endpoint is the cause, in a tinted card: red when
+ * the reason is a failure, coral when the run is only paused. Edit endpoint is the screen's one
+ * primary action when it is what a finished run needs next; on a paused run, Resume run keeps that
+ * place and Edit endpoint sits beside the reason.
  */
 function RunNotice({ run, endpointError }: { run: Run; endpointError: string | null }) {
   const primary = !!endpointError
   const text = endpointError ?? run.status_reason
   if (!text) return null
   const problem = primary || (run.status !== "running" && PROBLEM.test(text))
+  const paused = run.status === "paused" || run.status === "pausing"
   const fixEndpoint = run.endpoint_id !== null && (primary || (problem && ENDPOINT_PROBLEM.test(text)))
   return (
     <div
       className={cn(
-        "mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm",
-        problem ? "rounded-lg bg-coral-tint px-3 py-2 text-coral-ink" : "text-muted-foreground",
+        "mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm",
+        problem
+          ? "rounded-xl bg-negative-tint px-4 py-3 text-negative-ink"
+          : paused
+            ? "rounded-xl bg-coral-tint px-4 py-3 text-coral-ink"
+            : "text-muted-foreground",
       )}
     >
       <p className="min-w-0 flex-1 basis-64">{text}</p>
       {fixEndpoint && run.endpoint_id !== null ? (
-        <Button asChild variant={primary ? "default" : "outline"} size="sm" className={primary ? undefined : "bg-background"}>
+        <Button asChild variant={primary ? "default" : "secondary"} size="sm" className={primary ? undefined : "bg-background hover:bg-background/80"}>
           <Link to={editEndpointHref(run.endpoint_id, `/runs/${run.id}`, /could not connect|unreachable|timed out|took too long/i.test(text) ? "url" : "key")}>
             Edit endpoint
           </Link>
@@ -82,76 +90,64 @@ function RunNotice({ run, endpointError }: { run: Run; endpointError: string | n
 }
 
 /**
- * Facts in a row with a dot between them. Each dot leads its fact, and the one that would start a
- * wrapped line is clipped, so no line starts or ends with a dot.
+ * Under the title (DESIGN.md, Layout): the status badge, then the objects the run uses as chips:
+ * the model (mono), the endpoint and the prompt set (links, each with its pixel tile), and when it
+ * was created.
  */
-function Facts({ items }: { items: ReactNode[] }) {
+function RunChips({ run }: { run: Run }) {
   return (
-    <span className="-m-1 block overflow-hidden p-1">
-      <span className="-ml-5 flex flex-wrap items-center gap-y-1">
-        {items.map((item, i) => (
-          <span key={i} className="inline-flex min-w-0 items-center">
-            <span aria-hidden="true" className="w-5 flex-none text-center">
-              ·
-            </span>
-            {item}
-          </span>
-        ))}
-      </span>
-    </span>
-  )
-}
-
-/** Status, then the model, endpoint and prompt set minus what the run's name already says, then when. */
-function RunMeta({ run }: { run: Run }) {
-  const name = run.name.toLowerCase()
-  const showModel = !name.includes(run.model.toLowerCase())
-  const showSet = !name.includes(run.prompt_set_name.toLowerCase())
-  const link = "inline-flex items-center underline decoration-muted-foreground/40 underline-offset-4 hover:text-foreground hover:decoration-current"
-  const endpoint =
-    run.endpoint_id !== null ? (
-      <Link data-touch="inline" to={editEndpointHref(run.endpoint_id, `/runs/${run.id}`, null)} className={link}>
-        {run.endpoint_name}
-      </Link>
-    ) : (
-      run.endpoint_name
-    )
-  const items: ReactNode[] = [<RunStatusPill key="status" status={run.status} failed={run.failed} />]
-  items.push(
-    showModel ? (
-      <span key="model" className="min-w-0 [overflow-wrap:anywhere]">
-        <span className="font-mono text-[13px] text-foreground">{run.model}</span> on {endpoint}
-      </span>
-    ) : (
-      <Fragment key="endpoint">{endpoint}</Fragment>
-    ),
-  )
-  if (showSet) {
-    items.push(
-      <Link key="set" data-touch="inline" to={`/prompts/${run.prompt_set_id}`} className={link}>
+    <ChipRow>
+      <RunStatusBadge status={run.status} />
+      <Chip mono title="Model">
+        {run.model}
+      </Chip>
+      {run.endpoint_id !== null ? (
+        <Chip
+          to={editEndpointHref(run.endpoint_id, `/runs/${run.id}`, null)}
+          title={`Endpoint: ${run.endpoint_name}`}
+          leading={<Plasma seed={`endpoint-${run.endpoint_id}`} cells={5} className="size-5 rounded-xs" />}
+        >
+          {run.endpoint_name}
+        </Chip>
+      ) : (
+        <Chip title="Endpoint (deleted)">{run.endpoint_name}</Chip>
+      )}
+      <Chip
+        to={`/prompts/${run.prompt_set_id}`}
+        title={`Prompt set: ${run.prompt_set_name}`}
+        leading={<Plasma seed={`prompt-set-${run.prompt_set_id}`} cells={5} className="size-5 rounded-xs" />}
+      >
         {run.prompt_set_name}
-      </Link>,
-    )
-  }
-  items.push(<span key="created" title={dateTime(run.created_at)}>Created {relative(run.created_at)}</span>)
-  return <Facts items={items} />
+      </Chip>
+      <Chip title={dateTime(run.created_at)}>Created {relative(run.created_at)}</Chip>
+    </ChipRow>
+  )
 }
 
 function DetailSkeleton() {
   return (
-    <Page title={null} back={{ to: "/runs", label: "Runs" }} meta={<Bar className="w-80 max-w-full" />}>
-      <div className="grid gap-3" aria-busy="true" aria-label="Loading run">
-        <Bar className="h-8 w-56" />
-        <Bar className="h-2 w-full" />
-        <div className="mt-2 flex gap-8">
+    <Page
+      title={null}
+      wide
+      back={{ to: "/runs", label: "Runs" }}
+      meta={
+        <ChipRow>
+          {["w-20", "w-40", "w-32", "w-28"].map((w) => (
+            <Bar key={w} className={cn("h-7 rounded-full", w)} />
+          ))}
+        </ChipRow>
+      }
+    >
+      <div aria-busy="true" aria-label="Loading run" className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="grid gap-1">
-              <Bar className="h-3 w-16" />
-              <Bar className="h-5 w-12" />
+            <div key={i} className={cn("grid gap-2 rounded-xl bg-muted p-4", i === 0 && "col-span-2 sm:col-span-3 lg:col-span-2")}>
+              <Bar className="h-7 w-20" />
+              <Bar className="h-3 w-24" />
             </div>
           ))}
         </div>
-        <Bar className="mt-6 h-[220px] w-full rounded-xl" />
+        <div className="h-[260px] rounded-xl bg-muted sm:h-[320px]" />
       </div>
     </Page>
   )
@@ -176,12 +172,9 @@ export function RunDetailPage() {
   if (!Number.isInteger(id) || (live.error instanceof ApiError && live.error.status === 404)) {
     return (
       <Page title="Run not found" back={{ to: "/runs", label: "Runs" }}>
-        <p className="text-sm text-muted-foreground">
-          There is no run with this address. It may have been deleted.{" "}
-          <Link to="/runs" className="text-foreground underline underline-offset-4">
-            See all runs
-          </Link>
-        </p>
+        <Missing seed="run-missing" to="/runs" action="See all runs">
+          There is no run with this address. It may have been deleted.
+        </Missing>
       </Page>
     )
   }
@@ -199,68 +192,79 @@ export function RunDetailPage() {
   const lostContact = live.isError
   const finished = r.status === "completed"
   const active = isActive(r.status)
-  // A run that is not going and drew no throughput has nothing to chart; nothing can be in flight
-  // unless it is going.
-  const showChart = active || (data.metrics.length >= 2 && data.metrics.some((m) => m.tokens_per_s > 0))
+  const hasThroughput = data.metrics.length >= 2 && data.metrics.some((m) => m.tokens_per_s > 0)
+  // The chart's card also holds the seqs control, so it stays while the run can still go; a
+  // finished run that drew no throughput has nothing to chart. Nothing is in flight unless it is going.
+  const showChart = !finished || hasThroughput
 
   return (
     <Page
+      wide
       title={r.name}
       back={{ to: "/runs", label: "Runs" }}
-      meta={<RunMeta run={r} />}
+      meta={<RunChips run={r} />}
       actions={<RunActions run={r} onExport={() => setExportOpen(true)} primaryElsewhere={problem.pending || !!problem.error} />}
     >
       {lostContact ? (
-        <p role="status" className="mb-4 flex flex-wrap items-center gap-x-3 rounded-lg bg-coral-tint px-3 py-2 text-sm text-coral-ink">
-          Lost contact with the Stellarator server. Showing figures from {time(new Date(live.dataUpdatedAt).toISOString())}.
-          <Button variant="outline" size="sm" className="bg-background" onClick={() => void live.refetch()}>
+        <p role="status" className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-coral-tint px-4 py-3 text-sm text-coral-ink">
+          <span className="min-w-0 flex-1 basis-64">
+            Lost contact with the Stellarator server. Showing figures from {time(new Date(live.dataUpdatedAt).toISOString())}.
+          </span>
+          <Button variant="secondary" size="sm" className="bg-background hover:bg-background/80" onClick={() => void live.refetch()}>
             Retry
           </Button>
         </p>
       ) : null}
       <RunNotice run={r} endpointError={problem.error} />
 
-      <div className={cn("grid grid-cols-1 gap-6", !finished && "lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-10")}>
-        <RunProgress live={data} />
-        {!finished ? (
-          <div className="border-t pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
-            <SeqsControl run={r} inFlight={data.in_flight} />
-          </div>
-        ) : null}
-      </div>
+      <RunProgress live={data} />
 
       {showChart ? (
-        <div className={cn("mt-8 grid grid-cols-1 gap-6", active && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
-          <GroupBox title="Throughput" boxClassName="p-4">
+        <div className={cn("mt-2 grid grid-cols-1 gap-2", active && "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]")}>
+          <Panel
+            title="Throughput"
+            description={r.completion_tokens > 0 ? `${int(r.completion_tokens)} output tokens` : undefined}
+            actions={
+              finished ? (
+                // A finished run's seqs can no longer change, so it is a plain figure here.
+                <p className="text-sm text-muted-foreground">
+                  Seqs <span className="ml-1 font-mono text-foreground">{int(r.concurrency)}</span>
+                </p>
+              ) : (
+                <SeqsControl run={r} />
+              )
+            }
+            bodyClassName="pt-2"
+          >
             <ThroughputChart
               metrics={data.metrics}
               live={active && !lostContact ? { tps: data.tokens_per_s, seqs: r.concurrency, active: data.in_flight, at: live.dataUpdatedAt } : null}
             />
-          </GroupBox>
+          </Panel>
           {active ? (
-            <GroupBox
+            <Panel
               title={
                 <>
-                  In flight <span className="ml-1 font-normal tabular">{int(data.in_flight)}</span>
+                  In flight <span className="ml-1 font-normal text-muted-foreground tabular">{int(data.in_flight)}</span>
                 </>
               }
-              className="xl:[contain:size] xl:grid-rows-[auto_minmax(0,1fr)]"
-              boxClassName="flex min-h-0 flex-col"
+              className="flex flex-col xl:[contain:size]"
+              bodyClassName="flex min-h-0 flex-1 flex-col p-0"
             >
               <div
                 tabIndex={data.sequences.length ? 0 : undefined}
                 role={data.sequences.length ? "region" : undefined}
                 aria-label={data.sequences.length ? "Sequences in flight" : undefined}
-                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl p-4 xl:max-h-none"
+                className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl px-4 pt-1 pb-4 focus-visible:outline-offset-[-2px] xl:max-h-none"
               >
                 <InFlightList sequences={data.sequences} inFlight={data.in_flight} samplesPerPrompt={r.params.samples_per_prompt} />
               </div>
-            </GroupBox>
+            </Panel>
           ) : null}
         </div>
       ) : null}
 
-      <div className={showChart ? "mt-6" : "mt-8"}>
+      <div className="mt-8">
         <SamplesSection run={r} />
       </div>
 

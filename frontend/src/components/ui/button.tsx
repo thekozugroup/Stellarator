@@ -23,13 +23,13 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/88",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent dark:hover:bg-[color-mix(in_oklch,var(--accent),var(--foreground)_6%)] dark:aria-expanded:bg-[color-mix(in_oklch,var(--accent),var(--foreground)_6%)]",
+          "bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent dark:hover:bg-[color-mix(in_oklab,var(--accent),var(--foreground)_6%)] dark:aria-expanded:bg-[color-mix(in_oklab,var(--accent),var(--foreground)_6%)]",
         outline:
           "border-input bg-transparent hover:bg-muted aria-expanded:bg-muted in-data-[slot=toolbar]:border-transparent in-data-[slot=toolbar]:bg-secondary in-data-[slot=toolbar]:hover:bg-accent in-data-[slot=toolbar]:aria-expanded:bg-accent",
         ghost:
           "hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground in-data-[slot=toolbar]:bg-secondary",
         destructive:
-          "bg-negative-tint text-negative-ink hover:bg-[color-mix(in_oklch,var(--destructive)_20%,var(--background))] focus-visible:ring-destructive",
+          "bg-negative-tint text-negative-ink hover:bg-[color-mix(in_oklab,var(--destructive)_20%,var(--background))] focus-visible:ring-destructive",
         link: "text-foreground underline underline-offset-4 decoration-foreground/30 hover:decoration-foreground",
       },
       size: {

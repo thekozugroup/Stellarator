@@ -105,13 +105,13 @@
     --periwinkle-tint: oklch(0.933 0.029 275);
     --periwinkle-ink: oklch(0.465 0.173 272);
     --coral: oklch(0.679 0.162 42);
-    --coral-tint: color-mix(in oklch, var(--coral) 12%, var(--background));
+    --coral-tint: color-mix(in oklab, var(--coral) 12%, var(--background));
     --coral-ink: oklch(0.515 0.142 41);
     --positive: oklch(0.619 0.152 149);
-    --positive-tint: color-mix(in oklch, var(--positive) 12%, var(--background));
+    --positive-tint: color-mix(in oklab, var(--positive) 12%, var(--background));
     --positive-ink: oklch(0.468 0.113 149);
     --destructive: oklch(0.587 0.196 27);
-    --negative-tint: color-mix(in oklch, var(--destructive) 12%, var(--background));
+    --negative-tint: color-mix(in oklab, var(--destructive) 12%, var(--background));
     --negative-ink: oklch(0.492 0.17 28);
 
     --chart-1: var(--periwinkle);
@@ -154,13 +154,13 @@
     --periwinkle-tint: oklch(0.286 0.05 275);
     --periwinkle-ink: oklch(0.86 0.063 273);
     --coral: oklch(0.747 0.152 40);
-    --coral-tint: color-mix(in oklch, var(--coral) 16%, var(--background));
+    --coral-tint: color-mix(in oklab, var(--coral) 16%, var(--background));
     --coral-ink: oklch(0.823 0.101 44);
     --positive: oklch(0.818 0.096 144);
-    --positive-tint: color-mix(in oklch, var(--positive) 16%, var(--background));
+    --positive-tint: color-mix(in oklab, var(--positive) 16%, var(--background));
     --positive-ink: oklch(0.871 0.074 144);
     --destructive: oklch(0.697 0.159 25);
-    --negative-tint: color-mix(in oklch, var(--destructive) 16%, var(--background));
+    --negative-tint: color-mix(in oklab, var(--destructive) 16%, var(--background));
     --negative-ink: oklch(0.802 0.096 23);
 
     --chart-2: oklch(0.6 0 0);
@@ -432,7 +432,7 @@
   Chrome: 4.6:1 for the bar; the thick material more).
 */
 :root {
-  --material-tint: color-mix(in oklch, var(--periwinkle) 4%, var(--background));
+  --material-tint: color-mix(in oklab, var(--periwinkle) 4%, var(--background));
   --material-bar-alpha: 86%;
   --material-thick-alpha: 90%;
   --material-bar-filter: blur(30px) saturate(180%);
@@ -442,22 +442,22 @@
   --scrim: oklch(0 0 0 / 0.32);
 }
 .dark {
-  --material-tint: color-mix(in oklch, var(--periwinkle) 6%, var(--sidebar));
+  --material-tint: color-mix(in oklab, var(--periwinkle) 6%, var(--sidebar));
   --material-edge: oklch(1 0 0 / 0.1);
   --material-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 12px 32px -8px oklch(0 0 0 / 0.6);
   --scrim: oklch(0 0 0 / 0.56);
 }
 
 @utility material-bar {
-  background-color: color-mix(in oklch, var(--material-tint) var(--material-bar-alpha), transparent);
+  background-color: color-mix(in oklab, var(--material-tint) var(--material-bar-alpha), transparent);
   -webkit-backdrop-filter: var(--material-bar-filter);
   backdrop-filter: var(--material-bar-filter);
 }
 
 @utility material-thick {
   background-color: color-mix(
-    in oklch,
-    color-mix(in oklch, var(--material-tint) 25%, var(--popover)) var(--material-thick-alpha),
+    in oklab,
+    color-mix(in oklab, var(--material-tint) 25%, var(--popover)) var(--material-thick-alpha),
     transparent
   );
   -webkit-backdrop-filter: var(--material-thick-filter);

@@ -28,7 +28,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          "--normal-bg": "color-mix(in oklch, var(--popover) var(--material-thick-alpha), transparent)",
+          "--normal-bg": "color-mix(in oklab, var(--popover) var(--material-thick-alpha), transparent)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "transparent",
           "--border-radius": "var(--radius-lg)",

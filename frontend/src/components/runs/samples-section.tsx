@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import { Search, X } from "lucide-react"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
+import { ProgressBar } from "@/components/shared/progress-bar"
 import { SampleStatusPill } from "@/components/shared/status-pill"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -93,7 +94,7 @@ function SampleRows({
   return (
     <>
       {/* From 1024 px, as Runs: below it the fixed columns leave the prompt a few words. */}
-      <div className="hidden lg:block">
+      <div className="hidden pt-3 lg:block">
         <Table className="table-fixed">
           <caption className="sr-only">Samples. Select a row to read the sample in full.</caption>
           <TableHeader>
@@ -145,13 +146,16 @@ function SampleRows({
         </Table>
       </div>
 
-      <ul className="divide-y border-t lg:hidden">
+      <ul className="divide-y lg:hidden">
         {items.map((s) => (
-          <li key={s.id} className={cn("relative py-3 has-[a:focus-visible]:bg-foreground/4", selected === s.id && "bg-accent")}>
+          <li
+            key={s.id}
+            className={cn("relative -mx-3 rounded-md px-3 py-3 has-[a:focus-visible]:bg-accent", selected === s.id && "bg-accent")}
+          >
             <div className="flex items-center gap-2 text-xs">
               <span className="font-mono text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</span>
               {showStatus ? <SampleStatusPill status={s.status} finishReason={s.finish_reason} /> : null}
-              <span className="ml-auto text-muted-foreground tabular">
+              <span className="ml-auto font-mono text-muted-foreground">
                 {s.completion_tokens !== null ? `${int(s.completion_tokens)} tokens` : null}
               </span>
             </div>
@@ -160,7 +164,7 @@ function SampleRows({
               to={open(s.id)}
               state={{ viewer: true }}
               data-sample-link={s.id}
-              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
             >
               {s.prompt_preview || DASH}
             </Link>
@@ -172,11 +176,42 @@ function SampleRows({
   )
 }
 
+/**
+ * Whether a sticky bar is held under the page toolbar: its top has reached the toolbar's bottom
+ * edge. Read on scroll and resize, once a frame at most, as the toolbar's own material is.
+ */
+function useStuck(bar: RefObject<HTMLElement | null>): boolean {
+  const [stuck, setStuck] = useState(false)
+  useEffect(() => {
+    let frame = 0
+    const read = () => {
+      frame = 0
+      const el = bar.current
+      const toolbar = document.querySelector('[data-slot="toolbar"]')
+      if (!el || !toolbar) return
+      const next = window.scrollY > 0 && el.getBoundingClientRect().top <= toolbar.getBoundingClientRect().bottom + 0.5
+      setStuck((s) => (s === next ? s : next))
+    }
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(read)
+    }
+    read()
+    window.addEventListener("scroll", schedule, { passive: true })
+    window.addEventListener("resize", schedule)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener("scroll", schedule)
+      window.removeEventListener("resize", schedule)
+    }
+  }, [bar])
+  return stuck
+}
+
 function RowsLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading samples">
+    <div aria-busy="true" aria-label="Loading samples" className="lg:pt-3">
       {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className="flex h-11 items-center gap-4 border-b px-3 lg:h-8">
+        <div key={i} className="flex h-11 items-center gap-4 border-b px-3">
           <Bar className="h-3 w-10" />
           <Bar className="w-1/3" />
           <Bar className="hidden w-1/4 lg:inline-block" />
@@ -217,6 +252,8 @@ export function SamplesSection({ run }: { run: Run }) {
     if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" })
   }, [page])
   const samples = useSamplePage(run.id, query, isActive(run.status))
+  const barRef = useRef<HTMLDivElement>(null)
+  const stuck = useStuck(barRef)
 
   // Search: typed text goes to the URL after 300 ms; the URL wins when it changes elsewhere (Back).
   const [text, setText] = useState(q)
@@ -276,78 +313,105 @@ export function SamplesSection({ run }: { run: Run }) {
       aria-labelledby="samples-heading"
       className="scroll-mt-(--top-chrome) [--sticky-below:2.75rem] pointer-coarse:[--sticky-below:3.75rem]"
     >
-      <h2 id="samples-heading" tabIndex={-1} className="mb-1 text-base font-semibold">
+      <h2 id="samples-heading" tabIndex={-1} className="text-base font-semibold">
         Samples
       </h2>
 
-      {/* Search and the status filter stay under the toolbar while the rows scroll. */}
-      <div className="sticky top-(--top-chrome) z-20 flex h-11 items-center gap-2 bg-background pointer-coarse:h-[3.75rem]">
-        <nav aria-label="Filter samples by status" className="hidden xl:block">
-          <ul className="inline-flex rounded-md bg-secondary p-0.5">
-            {SAMPLE_FILTERS.map((f) => {
-              const active = f === status
-              const n = filterCount(run, f)
-              return (
-                <li key={f}>
-                  <Link
-                    to={filterHref(f)}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-sm whitespace-nowrap transition-colors duration-150 pointer-fine:h-6",
-                      active ? "bg-background font-medium text-foreground shadow-xs dark:bg-accent" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
+      {/*
+        Search and the status filter stay under the toolbar while the rows scroll. Once the bar is
+        held there it takes the bar material, edge to edge like the toolbar above it, and shows the
+        run's progress, whose tiles have scrolled away.
+      */}
+      <div
+        ref={barRef}
+        data-stuck={stuck || undefined}
+        className="group/bar sticky top-(--top-chrome) z-20 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+      >
+        <div
+          aria-hidden="true"
+          className="material-bar pointer-events-none absolute inset-0 border-b border-border opacity-0 transition-opacity duration-200 ease-out group-data-stuck/bar:opacity-100"
+        />
+        <div className="relative flex h-11 items-center gap-3 border-b border-border pointer-coarse:h-[3.75rem]">
+          {/* Line tabs from 1024 px; below that the same choice as a pop-up button. */}
+          <nav aria-label="Filter samples by status" className="hidden h-full min-w-0 lg:block">
+            <ul className="flex h-full items-stretch gap-5">
+              {SAMPLE_FILTERS.map((f) => {
+                const active = f === status
+                const n = filterCount(run, f)
+                return (
+                  <li key={f} className="flex">
+                    <Link
+                      to={filterHref(f)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "relative flex items-center gap-1.5 rounded-xs text-sm whitespace-nowrap transition-colors duration-150",
+                        "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground after:opacity-0 after:transition-opacity",
+                        active ? "font-medium text-foreground after:opacity-100" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {FILTER_LABEL[f]}
+                      {!q ? (
+                        <span className={cn("font-normal tabular", f === "failed" && n > 0 ? "text-negative-ink" : "text-muted-foreground")}>
+                          {int(n)}
+                        </span>
+                      ) : null}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </nav>
+          <div className="lg:hidden">
+            <Select value={status} onValueChange={(v) => navigate(filterHref(v as SampleFilter), { replace: false })}>
+              <SelectTrigger aria-label="Filter samples by status" className="min-w-28">
+                <SelectValue>
+                  {FILTER_LABEL[status]}
+                  {!q ? <span className="text-muted-foreground tabular">{int(filterCount(run, status))}</span> : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent position="popper" align="start">
+                {SAMPLE_FILTERS.map((f) => (
+                  <SelectItem key={f} value={f}>
                     {FILTER_LABEL[f]}
                     {!q ? (
-                      <span className={cn("tabular", f === "failed" && n > 0 ? "text-destructive" : "text-muted-foreground")}>{int(n)}</span>
+                      <span className={cn("ml-2 tabular", f === "failed" && filterCount(run, f) > 0 ? "text-negative-ink" : "text-muted-foreground")}>
+                        {int(filterCount(run, f))}
+                      </span>
                     ) : null}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
-        <div className="xl:hidden">
-          <Select value={status} onValueChange={(v) => navigate(filterHref(v as SampleFilter), { replace: false })}>
-            <SelectTrigger aria-label="Filter samples by status" className="min-w-28">
-              <SelectValue>
-                {FILTER_LABEL[status]}
-                {!q ? <span className="text-muted-foreground tabular">{int(filterCount(run, status))}</span> : null}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent position="popper" align="start">
-              {SAMPLE_FILTERS.map((f) => (
-                <SelectItem key={f} value={f}>
-                  {FILTER_LABEL[f]}
-                  {!q ? (
-                    <span className={cn("ml-2 tabular", f === "failed" && filterCount(run, f) > 0 ? "text-destructive" : "text-muted-foreground")}>
-                      {int(filterCount(run, f))}
-                    </span>
-                  ) : null}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="relative min-w-0 flex-1 sm:ml-auto sm:max-w-72">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            type="search"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && text) {
-                e.preventDefault()
-                setText("")
-              }
-            }}
-            placeholder="Search prompts and responses…"
-            aria-label="Search samples"
-            enterKeyHint="search"
-            autoComplete="off"
-            spellCheck={false}
-            className="pl-8"
-          />
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {stuck ? (
+            // The same figures as the tiles, which are off screen now; screen readers have those.
+            <div aria-hidden="true" className="ml-auto hidden flex-none items-center gap-2.5 text-xs text-muted-foreground tabular sm:flex lg:hidden xl:flex">
+              <span>
+                <span className="font-medium text-foreground">{int(run.done)}</span> of {int(run.total)}
+              </span>
+              <ProgressBar done={run.done} failed={run.failed} total={run.total} className="w-16" />
+            </div>
+          ) : null}
+          <div className={cn("relative min-w-0 flex-1 sm:max-w-72", !stuck && "sm:ml-auto")}>
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              type="search"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && text) {
+                  e.preventDefault()
+                  setText("")
+                }
+              }}
+              placeholder="Search prompts and responses…"
+              aria-label="Search samples"
+              enterKeyHint="search"
+              autoComplete="off"
+              spellCheck={false}
+              className="pl-8"
+            />
+          </div>
         </div>
       </div>
 
@@ -358,16 +422,16 @@ export function SamplesSection({ run }: { run: Run }) {
       ) : !data ? (
         <RowsLoading />
       ) : items.length === 0 ? (
-        <div className="border-t">
+        <div>
           <EmptyBlock
             action={
               q ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setText("")}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setText("")}>
                   <X aria-hidden="true" />
                   Clear search
                 </Button>
               ) : page > 1 && total > 0 ? (
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="secondary" size="sm">
                   <Link to={{ search: withParams(params, { page: null }) }}>Go to the first page</Link>
                 </Button>
               ) : undefined
@@ -383,7 +447,7 @@ export function SamplesSection({ run }: { run: Run }) {
       )}
 
       {data && total > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
           <p className="text-muted-foreground tabular" aria-live="polite">
             Showing {int(from)}–{int(to)} of {int(total)}
           </p>
