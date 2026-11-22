@@ -28,7 +28,7 @@ jobs:
         run: |
           sw_vers
           ls -R dmg | head
-          hdiutil attach "$(ls dmg/*.dmg | head -1)" -mountpoint /Volumes/Stellarator -nobrowse
+          hdiutil attach "$(find dmg -name "*.dmg" | head -1)" -mountpoint /Volumes/Stellarator -nobrowse
           cp -R /Volumes/Stellarator/Stellarator.app "$RUNNER_TEMP/"
           xattr -cr "$RUNNER_TEMP/Stellarator.app"
       - name: Screenshot light and dark
