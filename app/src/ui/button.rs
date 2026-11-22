@@ -33,7 +33,6 @@ pub fn button(
         Variant::Secondary => theme().secondary_foreground,
     };
     base_button()
-        .label(text_label)
         .on_press(on_press)
         .h(px(CONTROL))
         .px(px(12.0))

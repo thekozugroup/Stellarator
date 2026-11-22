@@ -1,0 +1,269 @@
+# The nsh app (app/): the native Stellarator app on nsh (Native Shell), built, packaged, launched
+# and screenshotted on macOS 26, Windows and Linux. Phase 0 of the migration: the go/no-go facts
+# for each platform (does it build and run, the window's shape, fonts, dark mode, memory) come
+# from these runs. Nothing is released.
+#
+# Each job packages the app with `nsh package` (which builds a runner around app/'s crate), seeds a
+# data folder with sample runs (app/ci/seed.py) after the first launch, and uploads screenshots,
+# logs and packages as artifacts. The app prints `probe:` lines with STELLARATOR_PROBE=1
+# (app/src/platform/mod.rs).
+#
+# Triggered only by app/ and this file, so it never starts the Desktop workflow.
+
+name: nsh app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/nsh.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: nsh-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NSH_VERSION: v0.6.1
+  CARGO_TERM_COLOR: always
+  # One target folder for `cargo` and the runners `nsh package` generates (it honors this).
+  CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
+
+jobs:
+  macos:
+    name: macOS 26 (Intel)
+    runs-on: macos-26-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-macos
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/nsh" --version
+
+      # The server crate embeds frontend/dist in release builds; the native app does not serve
+      # the web UI, so an empty page is enough.
+      - name: Placeholder web UI for the server crate
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
+
+      # As .github/workflows/desktop.yml: compile the Icon Composer document with actool; when it
+      # works, nsh.json's macos.infoPlist names the icon and Assets.car goes into the app below.
+      - name: Liquid Glass icon (actool)
+        id: glass
+        run: |
+          out="$RUNNER_TEMP/icon-build"
+          mkdir -p "$out"
+          xcrun actool --version || true
+          if xcrun actool desktop/icon-src/Stellarator.icon --compile "$out" \
+              --output-format human-readable-text --notices --warnings --errors \
+              --output-partial-info-plist "$out/partial.plist" --app-icon Stellarator \
+              --include-all-app-icons --enable-on-demand-resources NO --development-region en \
+              --target-device mac --minimum-deployment-target 14.0 --platform macosx \
+            && [ -s "$out/Assets.car" ]; then
+            python3 - <<'PY'
+          import json
+          path = "app/nsh.json"
+          config = json.load(open(path))
+          config.setdefault("macos", {}).setdefault("infoPlist", {})["CFBundleIconName"] = "Stellarator"
+          json.dump(config, open(path, "w"), indent=2)
+          PY
+            echo "car=$out/Assets.car" >> "$GITHUB_OUTPUT"
+            ls -la "$out"
+          else
+            echo "::warning::actool could not compile Stellarator.icon; the app keeps the static icon."
+          fi
+
+      - name: Package (nsh package --target macos)
+        working-directory: app
+        run: |
+          # Start the generated runner workspace from app/'s lock file, so the server's
+          # dependencies stay at the versions the root workspace tests.
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target macos
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out
+
+      - name: Icon post-process, signature and DMG
+        env:
+          CAR: ${{ steps.glass.outputs.car }}
+        run: |
+          app="app/.nsh/out/Stellarator.app"
+          if [ -n "$CAR" ]; then
+            cp "$CAR" "$app/Contents/Resources/Assets.car"
+          fi
+          codesign --force --deep --sign - "$app"
+          codesign --verify --verbose "$app"
+          echo "CFBundleIconName: $(defaults read "$PWD/$app/Contents/Info" CFBundleIconName 2>&1)"
+          echo "CFBundleIconFile: $(defaults read "$PWD/$app/Contents/Info" CFBundleIconFile 2>&1)"
+          ls -la "$app/Contents/Resources" "$app/Contents/MacOS"
+          du -sh "$app"
+          mkdir -p dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname Stellarator -srcfolder dmg -ov -format UDZO Stellarator-nsh-x64.dmg
+          ls -la Stellarator-nsh-x64.dmg
+
+      - name: Window helper
+        run: swiftc -O app/ci/window-id.swift -o "$RUNNER_TEMP/window-id"
+
+      - name: Run (light, empty data folder, then seeded, then without the toolbar)
+        run: |
+          app="$PWD/app/.nsh/out/Stellarator.app"
+          data="$RUNNER_TEMP/data"
+          out="$PWD/shots"
+          defaults delete -g AppleInterfaceStyle 2> /dev/null || true
+          app/ci/macos-session.sh light-empty "$app" "$data" "$out" "$RUNNER_TEMP/window-id"
+          python3 app/ci/seed.py "$data"
+          app/ci/macos-session.sh light "$app" "$data" "$out" "$RUNNER_TEMP/window-id"
+          app/ci/macos-session.sh light-no-toolbar "$app" "$data" "$out" "$RUNNER_TEMP/window-id" STELLARATOR_NO_TOOLBAR=1
+
+      - name: Run (dark)
+        run: |
+          app="$PWD/app/.nsh/out/Stellarator.app"
+          defaults write -g AppleInterfaceStyle -string Dark
+          echo "AppleInterfaceStyle: $(defaults read -g AppleInterfaceStyle 2>&1)"
+          app/ci/macos-session.sh dark "$app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id"
+          defaults delete -g AppleInterfaceStyle || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nsh-macos
+          if-no-files-found: warn
+          path: |
+            shots/
+            Stellarator-nsh-x64.dmg
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # aws-lc-sys (rustls, in the server's HTTP client) uses its prebuilt assembly without NASM.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-windows
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        shell: pwsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$env:LOCALAPPDATA\nsh\bin\nsh.exe" --version
+
+      - name: Placeholder web UI for the server crate
+        shell: bash
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
+
+      - name: Package (nsh package --target windows)
+        shell: bash
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target windows
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out .nsh/out/Stellarator
+
+      - name: Run (empty data folder, then seeded)
+        shell: pwsh
+        run: |
+          $exe = "$PWD\app\.nsh\out\Stellarator\Stellarator.exe"
+          $data = "$env:RUNNER_TEMP\data"
+          & app\ci\windows-session.ps1 -Name empty -Exe $exe -Data $data -Out "$PWD\shots"
+          python app\ci\seed.py $data
+          & app\ci\windows-session.ps1 -Name runs -Exe $exe -Data $data -Out "$PWD\shots"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nsh-windows
+          if-no-files-found: warn
+          path: |
+            shots/
+            app/.nsh/out/*.zip
+            app/.nsh/out/*-setup.exe
+
+  linux:
+    name: Linux (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and run dependencies (GTK 4, GStreamer, a virtual display)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev clang libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            xvfb imagemagick
+          pkg-config --modversion gtk4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-linux
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/nsh" --version
+
+      - name: Placeholder web UI for the server crate
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
+
+      - name: Package (nsh package --target linux)
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target linux
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out .nsh/out/Stellarator
+
+      - name: Run (empty, seeded light, seeded dark)
+        run: |
+          exe="$PWD/app/.nsh/out/Stellarator/Stellarator"
+          data="$RUNNER_TEMP/data"
+          out="$PWD/shots"
+          screen="-screen 0 1440x900x24"
+          xvfb-run -a -s "$screen" app/ci/linux-session.sh empty "$exe" "$data" "$out"
+          python3 app/ci/seed.py "$data"
+          xvfb-run -a -s "$screen" app/ci/linux-session.sh light "$exe" "$data" "$out"
+          # Dark: GTK's own setting, which nsh reads at start when no desktop portal answers.
+          mkdir -p "$RUNNER_TEMP/xdg-dark/gtk-4.0"
+          printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$RUNNER_TEMP/xdg-dark/gtk-4.0/settings.ini"
+          xvfb-run -a -s "$screen" app/ci/linux-session.sh dark "$exe" "$data" "$out" XDG_CONFIG_HOME="$RUNNER_TEMP/xdg-dark"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nsh-linux
+          if-no-files-found: warn
+          path: |
+            shots/
+            app/.nsh/out/*.tar.gz

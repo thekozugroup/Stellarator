@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Utc};
 
+#[allow(dead_code, reason = "for the screens that show optional values")]
 /// A gray dash for a missing value (DESIGN.md, "Do and don't").
 pub const DASH: &str = "–";
 

@@ -5,8 +5,11 @@
 //! `nsh_base::theme()`), and each token has a light and a dark value that follow the system's
 //! appearance without a render.
 
+// The full scale is here for the screens that follow; this first slice uses part of it.
+#[allow(dead_code, reason = "the design system's scale; later screens use the rest")]
 pub mod fonts;
 pub mod shape;
+#[allow(dead_code, reason = "the design system's scale; later screens use the rest")]
 pub mod text;
 
 use nsh_base::theme;
@@ -18,6 +21,7 @@ pub fn token(name: &'static str) -> impl Fn() -> AdaptiveColor + Copy + 'static 
     move || theme().color(name).unwrap_or(AdaptiveColor::TRANSPARENT)
 }
 
+#[allow(dead_code, reason = "the design system's scale; later screens use the rest")]
 /// The radius scale of DESIGN.md ("Shape") and frontend/src/index.css (`--radius-*`), in points.
 pub mod radius {
     /// Checkboxes.
@@ -34,6 +38,7 @@ pub mod radius {
     pub const XXXL: f32 = 26.0;
 }
 
+#[allow(dead_code, reason = "the design system's scale; later screens use the rest")]
 /// Fixed sizes of DESIGN.md ("Density", "Layout and spacing"), in points (pointer-fine).
 pub mod metrics {
     /// The page toolbar, and on macOS the title bar band the traffic lights are centered in.

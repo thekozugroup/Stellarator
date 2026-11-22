@@ -87,7 +87,7 @@ fn open() -> anyhow::Result<Backend> {
         runtime.block_on(hook.start())?;
     }
     let router = stellarator_server::app(&parts);
-    let api = Api::new(router, runtime.handle().clone());
+    let api = Api::in_process(router, runtime.handle().clone());
     Ok(Backend { runtime, api, lifecycle: parts.lifecycle, data_dir, stopped: AtomicBool::new(false) })
 }
 

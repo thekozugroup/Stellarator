@@ -26,19 +26,21 @@ path = "src/main.rs"
 nsh-core = "=0.6.1"
 nsh-base = "=0.6.1"
 
-# The Stellarator server, run in-process: its axum router is called directly (no TCP port).
-stellarator-core = { path = "../crates/core" }
-stellarator-server = { path = "../crates/server" }
-
 anyhow = "1"
-axum = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
-dirs = "6"
-env_logger = "0.11"
-http-body-util = "0.1"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Native targets: the Stellarator server, run in-process. The UI calls its axum router directly
+# (src/api.rs); there is no TCP port. The web build (wasm32) reaches the same API with fetch.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+stellarator-core = { path = "../crates/core" }
+stellarator-server = { path = "../crates/server" }
+axum = "0.8"
+dirs = "6"
+env_logger = "0.11"
+http-body-util = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
 tower = { version = "0.5", features = ["util"] }
 

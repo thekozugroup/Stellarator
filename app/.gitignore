@@ -1,0 +1,3 @@
+# nsh writes its generated runners and default packages here.
+.nsh/
+target/

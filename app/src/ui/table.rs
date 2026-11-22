@@ -37,7 +37,7 @@ impl Column {
 
 /// A cell of `column` holding `content`: its width, padding and alignment.
 pub fn cell(column: Column, content: impl IntoElement) -> impl IntoElement {
-    let base = view().flex_row().items_center().px(px(CELL_PADDING)).min_w(px(0.0));
+    let base = view().flex_row().items_center().px(px(CELL_PADDING)).min_w(px(0.0)).overflow_hidden();
     let base = match column.width {
         Some(width) => base.w(px(width)).flex_none(),
         None => base.flex_1(),

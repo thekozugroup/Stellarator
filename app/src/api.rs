@@ -1,22 +1,19 @@
-//! A typed client for the Stellarator API, called in-process: each request goes through the
-//! server's axum router with `tower::ServiceExt::oneshot`, on the server's own runtime, with the
-//! same paths and JSON the web UI uses (frontend/src/lib/api.ts, frontend/src/lib/types.ts).
-//! Nothing listens on a port.
+//! A typed client for the Stellarator API, with the same paths and JSON the web UI uses
+//! (frontend/src/lib/api.ts, frontend/src/lib/types.ts). Two transports, one per target:
 //!
+//! - Native (macOS, Windows, Linux): in-process. Each request goes through the server's axum
+//!   router with `tower::ServiceExt::oneshot`, on the server's own runtime ([`crate::backend`]).
+//!   Nothing listens on a port.
+//! - Web (wasm32): nsh's `fetch` to the same `/api` paths on the page's own origin, the server
+//!   that serves the app.
+//!
+//! The screens only see [`Api`] and the types; they do not know which transport runs.
 //! The types below mirror the fields of the server's JSON the native screens read; serde ignores
 //! the rest, so the server can add fields without breaking the app.
 
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Method, Request, StatusCode, header};
 use chrono::{DateTime, Utc};
-use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use tower::ServiceExt;
-
-/// The largest response body read, as a guard: 64 MiB.
-const MAX_BODY: usize = 64 << 20;
 
 /// A request that failed: the server's `detail` message or what went wrong on the way.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +22,12 @@ pub struct ApiError {
     pub status: Option<u16>,
     /// A sentence for the UI.
     pub message: String,
+}
+
+impl ApiError {
+    fn transport(message: impl Into<String>) -> Self {
+        ApiError { status: None, message: message.into() }
+    }
 }
 
 impl std::fmt::Display for ApiError {
@@ -38,16 +41,54 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-/// The in-process API. Cheap to clone.
+/// An HTTP method the client sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Method {
+    Get,
+    Post,
+    Patch,
+    Delete,
+}
+
+impl Method {
+    fn as_str(self) -> &'static str {
+        match self {
+            Method::Get => "GET",
+            Method::Post => "POST",
+            Method::Patch => "PATCH",
+            Method::Delete => "DELETE",
+        }
+    }
+}
+
+/// The API. Cheap to clone.
 #[derive(Clone)]
 pub struct Api {
-    router: Router,
-    runtime: tokio::runtime::Handle,
+    transport: Transport,
+}
+
+/// How requests reach the server.
+#[derive(Clone)]
+enum Transport {
+    /// The server's router in this process, run on the server's runtime.
+    #[cfg(not(target_arch = "wasm32"))]
+    InProcess { router: axum::Router, runtime: tokio::runtime::Handle },
+    /// The browser's network stack, to the page's origin (`base`, no trailing slash).
+    #[cfg(target_arch = "wasm32")]
+    Fetch { base: String },
 }
 
 impl Api {
-    pub(crate) fn new(router: Router, runtime: tokio::runtime::Handle) -> Self {
-        Api { router, runtime }
+    /// The in-process API of the server's router, run on `runtime`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn in_process(router: axum::Router, runtime: tokio::runtime::Handle) -> Self {
+        Api { transport: Transport::InProcess { router, runtime } }
+    }
+
+    /// The API of the server at `base` (the page's origin, such as `http://127.0.0.1:8000`).
+    #[cfg(target_arch = "wasm32")]
+    pub fn fetch(base: impl Into<String>) -> Self {
+        Api { transport: Transport::Fetch { base: base.into().trim_end_matches('/').to_owned() } }
     }
 
     /// `GET /api/health`.
@@ -61,19 +102,59 @@ impl Api {
     }
 
     /// `GET` `path` and read its JSON.
-    pub async fn get<T: DeserializeOwned + Send + 'static>(&self, path: &str) -> Result<T, ApiError> {
-        self.send(Method::GET, path, None).await
+    pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
+        let (status, body) = self.send(Method::Get, path, None).await?;
+        decode(status, &body)
     }
 
-    /// One request through the router, on the server's runtime. `body` is JSON.
-    async fn send<T: DeserializeOwned + Send + 'static>(
+    /// One request: its status and body. `body` is JSON.
+    async fn send(
         &self,
         method: Method,
         path: &str,
         body: Option<serde_json::Value>,
-    ) -> Result<T, ApiError> {
+    ) -> Result<(u16, Vec<u8>), ApiError> {
+        match &self.transport {
+            #[cfg(not(target_arch = "wasm32"))]
+            Transport::InProcess { router, runtime } => {
+                in_process::send(router.clone(), runtime, method, path, body).await
+            }
+            #[cfg(target_arch = "wasm32")]
+            Transport::Fetch { base } => {
+                let mut request = nsh_core::platform::HttpRequest::new(method.as_str(), format!("{base}{path}"))
+                    .header("accept", "application/json");
+                if let Some(json) = body {
+                    request = request.header("content-type", "application/json").body(json.to_string());
+                }
+                let response = nsh_core::prelude::fetch(request).await.map_err(|e| ApiError::transport(e.to_string()))?;
+                Ok((response.status(), response.body))
+            }
+        }
+    }
+}
+
+/// The in-process transport: a request through the router on the server's runtime.
+#[cfg(not(target_arch = "wasm32"))]
+mod in_process {
+    use axum::body::Body;
+    use axum::http::{Request, header};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use super::{ApiError, Method};
+
+    /// The largest response body read, as a guard: 64 MiB.
+    const MAX_BODY: usize = 64 << 20;
+
+    pub(super) async fn send(
+        router: axum::Router,
+        runtime: &tokio::runtime::Handle,
+        method: Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<(u16, Vec<u8>), ApiError> {
         let mut request = Request::builder()
-            .method(method)
+            .method(method.as_str())
             .uri(path)
             .header(header::ACCEPT, "application/json");
         let body = match body {
@@ -83,32 +164,32 @@ impl Api {
             }
             None => Body::empty(),
         };
-        let request = request.body(body).map_err(|e| ApiError { status: None, message: e.to_string() })?;
-        let router = self.router.clone();
-        let task = self.runtime.spawn(async move {
+        let request = request.body(body).map_err(|e| ApiError::transport(e.to_string()))?;
+        // Awaited from nsh's executor: the JoinHandle is a plain future.
+        let task = runtime.spawn(async move {
             let response = router.oneshot(request).await.unwrap_or_else(|never| match never {});
-            let status = response.status();
+            let status = response.status().as_u16();
             let bytes = response
                 .into_body()
                 .collect()
                 .await
-                .map_err(|e| ApiError { status: Some(status.as_u16()), message: e.to_string() })?
+                .map_err(|e| ApiError { status: Some(status), message: e.to_string() })?
                 .to_bytes();
             if bytes.len() > MAX_BODY {
-                return Err(ApiError { status: Some(status.as_u16()), message: "The response is too large.".into() });
+                return Err(ApiError { status: Some(status), message: "The response is too large.".into() });
             }
-            decode::<T>(status, &bytes)
+            Ok((status, bytes.to_vec()))
         });
-        task.await.map_err(|e| ApiError { status: None, message: format!("The request did not finish: {e}") })?
+        task.await.map_err(|e| ApiError::transport(format!("The request did not finish: {e}")))?
     }
 }
 
 /// The JSON of a response: `T` on success, else the server's `detail` (FastAPI's shape, which the
 /// Rust server keeps).
-fn decode<T: DeserializeOwned>(status: StatusCode, bytes: &[u8]) -> Result<T, ApiError> {
-    if status.is_success() {
+fn decode<T: DeserializeOwned>(status: u16, bytes: &[u8]) -> Result<T, ApiError> {
+    if (200..300).contains(&status) {
         return serde_json::from_slice(bytes).map_err(|e| ApiError {
-            status: Some(status.as_u16()),
+            status: Some(status),
             message: format!("The server's answer could not be read: {e}"),
         });
     }
@@ -121,8 +202,8 @@ fn decode<T: DeserializeOwned>(status: StatusCode, bytes: &[u8]) -> Result<T, Ap
         Ok(Detail { detail }) => detail.to_string(),
         Err(_) => String::from_utf8_lossy(bytes).trim().to_owned(),
     };
-    let message = if message.is_empty() { status.canonical_reason().unwrap_or("Error").to_owned() } else { message };
-    Err(ApiError { status: Some(status.as_u16()), message })
+    let message = if message.is_empty() { format!("The server answered {status}.") } else { message };
+    Err(ApiError { status: Some(status), message })
 }
 
 /// `GET /api/health`.
@@ -186,7 +267,7 @@ mod tests {
 
     #[test]
     fn errors_carry_the_servers_detail() {
-        let err = decode::<Health>(StatusCode::NOT_FOUND, br#"{"detail":"Run not found."}"#).unwrap_err();
+        let err = decode::<Health>(404, br#"{"detail":"Run not found."}"#).unwrap_err();
         assert_eq!(err, ApiError { status: Some(404), message: "Run not found.".into() });
     }
 }
