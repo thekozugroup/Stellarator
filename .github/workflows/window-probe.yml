@@ -1,5 +1,6 @@
-# Temporary (removed after use): measures the macOS 26 window corner radius and title bar for a
-# window styled like the app's main window, with and without a toolbar (desktop/probe).
+# Temporary (removed before the release): launches the built macOS app on a macOS 26 runner and
+# screenshots its window in light and dark, to check the window's corners, the traffic lights and
+# the sidebar against them.
 name: Window probe
 
 on:
@@ -7,25 +8,54 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/window-probe.yml"
-      - "desktop/probe/**"
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   probe:
     runs-on: macos-26-intel
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - name: Build and run the probe
-        working-directory: desktop/probe
+      - uses: actions/download-artifact@v4
+        with:
+          name: stellarator-x86_64-apple-darwin
+          run-id: 45072217171
+          github-token: ${{ github.token }}
+          path: dmg
+      - name: Install the app
         run: |
           sw_vers
-          swiftc -O window-probe.swift -o probe -framework AppKit -framework WebKit
-          ./probe | tee probe.txt
+          ls -R dmg | head
+          hdiutil attach "$(ls dmg/*.dmg | head -1)" -mountpoint /Volumes/Stellarator -nobrowse
+          cp -R /Volumes/Stellarator/Stellarator.app "$RUNNER_TEMP/"
+          xattr -cr "$RUNNER_TEMP/Stellarator.app"
+      - name: Screenshot light and dark
+        run: |
+          cat > find.swift <<'SWIFT'
+          import CoreGraphics
+          let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
+          for w in list where (w[kCGWindowOwnerName as String] as? String ?? "").lowercased().contains("stellarator") {
+            let b = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
+            print(w[kCGWindowNumber as String]!, b["Width"] ?? 0, b["Height"] ?? 0, w[kCGWindowLayer as String] ?? -1)
+          }
+          SWIFT
+          swiftc find.swift -o find
+          mkdir -p shots
+          for mode in light dark; do
+            if [ "$mode" = dark ]; then defaults write -g AppleInterfaceStyle -string Dark; else defaults delete -g AppleInterfaceStyle 2>/dev/null || true; fi
+            open "$RUNNER_TEMP/Stellarator.app"
+            sleep 20
+            ./find | tee "shots/windows-$mode.txt"
+            id=$(./find | awk '$4 == 0 && $2 > 600 {print $1; exit}')
+            [ -n "$id" ] && screencapture -x -o -l "$id" "shots/window-$mode.png"
+            screencapture -x "shots/screen-$mode.png"
+            pkill -x stellarator || true
+            sleep 3
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: window-probe
-          path: desktop/probe/probe*
+          name: window-shots
+          path: shots
