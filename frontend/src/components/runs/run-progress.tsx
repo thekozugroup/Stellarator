@@ -11,7 +11,16 @@ import { isActive } from "./run-data"
  */
 function DurationFigure({ seconds }: { seconds: number | null }) {
   if (seconds === null) return <span className="text-muted-foreground">{DASH}</span>
-  const s = Math.max(0, Math.round(seconds))
+  // Under a second reads as "<1 s", not as a zero.
+  if (seconds < 1) {
+    return (
+      <>
+        {"<1"}
+        <span className="ml-0.5 text-base font-medium tracking-normal text-muted-foreground">s</span>
+      </>
+    )
+  }
+  const s = Math.round(seconds)
   const m = Math.floor(s / 60)
   const h = Math.floor(m / 60)
   const parts: [number, string][] =

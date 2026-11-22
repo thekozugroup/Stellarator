@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DASH, duration, int } from "@/lib/format"
 import type { Run, SampleSummary } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { PAGE_SIZE, SAMPLE_FILTERS, isActive, sampleLabel, useSamplePage, type SampleFilter } from "./run-data"
+import { PAGE_SIZE, SAMPLE_FILTERS, STACKED_LINK, STACKED_ROW, isActive, sampleLabel, useSamplePage, type SampleFilter } from "./run-data"
 import { SampleViewer } from "./sample-viewer"
 import { StepPair } from "./step-pair"
 
@@ -119,7 +119,7 @@ function SampleRows({
                     state={{ viewer: true }}
                     data-sample-link={s.id}
                     title={s.prompt_preview}
-                    className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                    className="block truncate outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                   >
                     {s.prompt_preview || DASH}
                   </Link>
@@ -148,10 +148,7 @@ function SampleRows({
 
       <ul className="divide-y lg:hidden">
         {items.map((s) => (
-          <li
-            key={s.id}
-            className={cn("relative -mx-3 rounded-md px-3 py-3 has-[a:focus-visible]:bg-accent", selected === s.id && "bg-accent")}
-          >
+          <li key={s.id} className={cn(STACKED_ROW, selected === s.id && "before:opacity-100")}>
             <div className="flex items-center gap-2 text-xs">
               <span className="font-mono text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, spp)}</span>
               {showStatus ? <SampleStatusPill status={s.status} finishReason={s.finish_reason} /> : null}
@@ -164,7 +161,7 @@ function SampleRows({
               to={open(s.id)}
               state={{ viewer: true }}
               data-sample-link={s.id}
-              className="mt-1 block truncate text-sm outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+              className={cn("mt-1 block truncate text-sm", STACKED_LINK)}
             >
               {s.prompt_preview || DASH}
             </Link>
@@ -343,18 +340,21 @@ export function SamplesSection({ run }: { run: Run }) {
                     <Link
                       to={filterHref(f)}
                       aria-current={active ? "page" : undefined}
+                      // The ring goes round the label, not the full height of the bar.
                       className={cn(
-                        "relative flex items-center gap-1.5 rounded-xs text-sm whitespace-nowrap transition-colors duration-150",
+                        "group/tab relative flex items-center text-sm whitespace-nowrap outline-none transition-colors duration-150",
                         "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-foreground after:opacity-0 after:transition-opacity",
                         active ? "font-medium text-foreground after:opacity-100" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {FILTER_LABEL[f]}
-                      {!q ? (
-                        <span className={cn("font-normal tabular", f === "failed" && n > 0 ? "text-negative-ink" : "text-muted-foreground")}>
-                          {int(n)}
-                        </span>
-                      ) : null}
+                      <span className="-mx-1 flex items-center gap-1.5 rounded-xs px-1 group-focus-visible/tab:outline-2 group-focus-visible/tab:outline-offset-2 group-focus-visible/tab:outline-ring">
+                        {FILTER_LABEL[f]}
+                        {!q ? (
+                          <span className={cn("font-normal tabular", f === "failed" && n > 0 ? "text-negative-ink" : "text-muted-foreground")}>
+                            {int(n)}
+                          </span>
+                        ) : null}
+                      </span>
                     </Link>
                   </li>
                 )

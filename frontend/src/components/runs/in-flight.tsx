@@ -23,7 +23,7 @@ function clock(ms: number): string {
  * The requests in flight, oldest first, as log rows (DESIGN.md, Components): the sample number and
  * the time it has been going in mono, the state word in its color, then the prompt. Under it, in
  * muted text, the newest words the model streamed (at most two lines) and a retry's attempt.
- * Values update in place; nothing moves. Rows share one grid so the columns line up; from a 28rem
+ * Values update in place; nothing moves. Rows share one grid so the columns line up; from a 24rem
  * panel the token count sits at the end of each row.
  */
 export function InFlightList({
@@ -38,7 +38,7 @@ export function InFlightList({
   if (!sequences.length) return <p className="py-2 text-sm text-muted-foreground">Nothing in flight.</p>
   return (
     <div className="@container">
-      <ul className="grid grid-cols-[auto_auto_auto_minmax(0,1fr)] gap-x-3 @md:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]">
+      <ul className="grid grid-cols-[auto_auto_auto_minmax(0,1fr)] gap-x-3 @sm:grid-cols-[auto_auto_auto_minmax(0,1fr)_auto]">
         {sequences.map((s) => (
           <li key={s.sample_id} className="col-span-full grid grid-cols-subgrid items-baseline py-1.5">
             <span className="font-mono text-xs text-muted-foreground">{sampleLabel(s.prompt_idx, s.sample_idx, samplesPerPrompt)}</span>
@@ -49,19 +49,19 @@ export function InFlightList({
             <span className="min-w-0 truncate text-sm" title={s.prompt_preview}>
               {s.prompt_preview}
             </span>
-            <span className="hidden text-right font-mono text-xs text-muted-foreground @md:inline">
+            <span className="hidden text-right font-mono text-xs text-muted-foreground @sm:inline">
               <span className="sr-only">, </span>
               {count(s.tokens, "token", "tokens")}
             </span>
             <div
               className={cn(
-                "col-span-full mt-0.5 text-[13px] leading-[1.6] text-muted-foreground @md:col-start-4",
-                !s.tail && s.attempt <= 1 && "@md:hidden",
+                "col-span-full mt-0.5 text-[13px] leading-[1.6] text-muted-foreground @sm:col-start-4",
+                !s.tail && s.attempt <= 1 && "@sm:hidden",
               )}
             >
               {/* In a narrow panel the token count moves here, from the end of the row. */}
               <p className="flex gap-x-3 font-mono text-xs empty:hidden">
-                <span className="@md:hidden">{count(s.tokens, "token", "tokens")}</span>
+                <span className="@sm:hidden">{count(s.tokens, "token", "tokens")}</span>
                 {s.attempt > 1 ? <span className="text-coral-ink">attempt {int(s.attempt)}</span> : null}
               </p>
               {s.tail ? (

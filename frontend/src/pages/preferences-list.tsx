@@ -6,6 +6,7 @@ import { NewPreferenceSetDialog } from "@/components/preferences/new-set-dialog"
 import { prefKeys } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
 import { Page } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
 import { ProgressBar } from "@/components/shared/progress-bar"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -23,26 +24,26 @@ function Progress({ set, className }: { set: PreferenceSet; className?: string }
       </p>
     )
   return (
-    <div className={className}>
-      <p className="tabular text-sm whitespace-nowrap">
-        {int(set.decided)} of {int(set.prompt_count)} decided
+    <div className={cn("grid gap-1.5", className)}>
+      <p className="text-sm whitespace-nowrap tabular">
+        {int(set.decided)} <span className="text-muted-foreground">of {int(set.prompt_count)} decided</span>
       </p>
       <ProgressBar
         done={set.decided}
         total={set.prompt_count}
         label={`${int(set.decided)} of ${int(set.prompt_count)} prompts decided`}
-        className="mt-1.5"
       />
     </div>
   )
 }
 
+/** The runs a set compares, by model, in mono. */
 function RunModels({ set }: { set: PreferenceSet }) {
   if (!set.runs.length) return <span className="text-muted-foreground">No runs left</span>
   return (
     <ul className="grid gap-0.5">
       {set.runs.map((r) => (
-        <li key={r.id} className="truncate font-mono text-[13px] text-muted-foreground" title={`${r.name} (${r.model})`}>
+        <li key={r.id} className="truncate font-mono text-xs text-muted-foreground" title={`${r.name} (${r.model})`}>
           {middle(r.model, 44)}
         </li>
       ))}
@@ -50,47 +51,57 @@ function RunModels({ set }: { set: PreferenceSet }) {
   )
 }
 
+/** A prompt set's name beside its pixel-field tile (DESIGN.md, Plasma tile). */
+function PromptSetName({ set, className }: { set: PreferenceSet; className?: string }) {
+  return (
+    <span className={cn("flex min-w-0 items-center gap-2", className)}>
+      <Plasma seed={`prompt-set-${set.prompt_set_id}`} cells={5} className="size-5 rounded-xs" />
+      <span className="min-w-0 truncate">{set.prompt_set_name}</span>
+    </span>
+  )
+}
+
 function SetsTable({ sets }: { sets: PreferenceSet[] }) {
   return (
     <>
-      {/* Desktop and tablet: a table. */}
+      {/* From 1024 px: a table. */}
       <div className="hidden lg:block">
         <Table className="table-fixed">
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow className="hover:[&>td]:bg-transparent">
               <TableHead className="w-[28%]">Name</TableHead>
-              <TableHead className="w-[20%]">Prompt set</TableHead>
+              <TableHead className="w-[22%]">Prompt set</TableHead>
               <TableHead className="w-[22%]">Runs</TableHead>
-              <TableHead className="w-[17%] text-right">Progress</TableHead>
-              <TableHead className="w-[13%] text-right">Created</TableHead>
+              <TableHead className="w-[16%]">Progress</TableHead>
+              <TableHead className="w-[12%] text-right">Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sets.map((set) => (
               <TableRow key={set.id} className="relative">
-                <TableCell className="py-1.5 whitespace-normal">
+                <TableCell className="py-2 whitespace-normal">
                   <Link
                     to={`/preferences/${set.id}`}
-                    className="line-clamp-2 rounded-sm font-medium break-words after:absolute after:inset-0 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+                    className="line-clamp-2 rounded-xs font-medium break-words after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
                     title={set.name}
                   >
                     {set.name}
                   </Link>
                 </TableCell>
-                <TableCell className="py-1.5 whitespace-normal">
+                <TableCell className="py-2">
                   <Link
                     to={`/prompts/${set.prompt_set_id}`}
-                    className="relative z-10 line-clamp-2 rounded-sm break-words text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+                    className="relative z-10 -mx-1 flex w-fit max-w-[calc(100%+0.5rem)] rounded-xs px-1 text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     title={set.prompt_set_name}
                   >
-                    {set.prompt_set_name}
+                    <PromptSetName set={set} />
                   </Link>
                 </TableCell>
-                <TableCell className="py-1.5 whitespace-normal">
+                <TableCell className="py-2 whitespace-normal">
                   <RunModels set={set} />
                 </TableCell>
-                <TableCell className="py-1.5 text-right">
-                  <Progress set={set} className="ml-auto max-w-44" />
+                <TableCell className="py-2">
+                  <Progress set={set} className="max-w-44" />
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground" title={new Date(set.created_at).toLocaleString()}>
                   {relative(set.created_at)}
@@ -101,18 +112,23 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
         </Table>
       </div>
 
-      {/* Phone: stacked rows with the name, the progress and the context. */}
-      <ul className="divide-y lg:hidden">
+      {/* Phone and tablet: one stacked row per set with the name, the progress and the context. */}
+      <ul className="lg:hidden">
         {sets.map((set) => (
-          <li key={set.id}>
-            <Link to={`/preferences/${set.id}`} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 active:bg-accent">
+          <li key={set.id} className="border-b last:border-b-0">
+            <Link
+              to={`/preferences/${set.id}`}
+              className="-mx-2 flex items-center gap-3 rounded-md px-2 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-accent"
+            >
               <span className="grid min-w-0 flex-1 gap-2">
-                <span className="font-medium break-words">{set.name}</span>
+                <span className="grid gap-0.5">
+                  <span className="font-medium break-words">{set.name}</span>
+                  <PromptSetName set={set} className="text-xs text-muted-foreground" />
+                </span>
                 <Progress set={set} />
-                <span className="grid gap-0.5 text-sm text-muted-foreground">
-                  <span className="truncate">{set.prompt_set_name}</span>
+                <span className="grid gap-0.5 text-xs text-muted-foreground">
                   {set.runs.map((r) => (
-                    <span key={r.id} className="truncate font-mono text-[13px]">
+                    <span key={r.id} className="truncate font-mono">
                       {r.model}
                     </span>
                   ))}
@@ -130,13 +146,14 @@ function SetsTable({ sets }: { sets: PreferenceSet[] }) {
 
 function LoadingRows() {
   return (
-    <div aria-label="Loading preference sets…" className="divide-y">
+    <div aria-busy="true" aria-label="Loading preference sets…">
+      <div className="hidden h-8 rounded-md bg-muted lg:block" />
       {[0, 1, 2].map((n) => (
-        <div key={n} className="grid gap-2 py-3 lg:grid-cols-[28%_20%_22%_17%_13%] lg:gap-0">
+        <div key={n} className="grid items-center gap-2 border-b py-3 last:border-b-0 lg:h-14 lg:grid-cols-[28%_22%_22%_16%_12%] lg:gap-0 lg:px-3 lg:py-0">
           <Bar className="h-4 w-40" />
           <Bar className="h-4 w-28" />
           <Bar className="h-4 w-36" />
-          <Bar className="h-4 w-28 lg:ml-auto" />
+          <Bar className="h-1.5 w-28 rounded-full" />
           <Bar className="h-4 w-14 lg:ml-auto" />
         </div>
       ))}
@@ -162,7 +179,7 @@ export function PreferencesPage() {
     <Page
       title="Preferences"
       actions={
-        phone ? null : (
+        phone || (sets.isSuccess && sets.data.length === 0) ? null : (
           <Button onClick={() => setOpen(true)}>
             <Plus aria-hidden="true" />
             New preference set
@@ -170,9 +187,11 @@ export function PreferencesPage() {
         )
       }
       barActions={
-        <Button variant="outline" size="icon" aria-label="New preference set" title="New preference set" onClick={() => setOpen(true)}>
-          <Plus aria-hidden="true" />
-        </Button>
+        sets.isSuccess && sets.data.length === 0 ? null : (
+          <Button variant="secondary" size="icon" aria-label="New preference set" title="New preference set" onClick={() => setOpen(true)}>
+            <Plus aria-hidden="true" />
+          </Button>
+        )
       }
     >
       <>
@@ -185,19 +204,23 @@ export function PreferencesPage() {
           />
         ) : sets.data.length === 0 ? (
           <EmptyBlock
+            className="gap-4 rounded-xl bg-muted p-6"
             action={
               noRuns ? (
-                <Button asChild variant="outline">
+                <Button asChild>
                   <Link to="/runs/new">New run</Link>
                 </Button>
               ) : (
-                <Button variant="outline" onClick={() => setOpen(true)}>
-                  New preference set
-                </Button>
+                <Button onClick={() => setOpen(true)}>New preference set</Button>
               )
             }
           >
-            {noRuns ? "No runs yet. Start a run with 2 or more samples per prompt." : "No preference sets yet."}
+            <Plasma seed="preferences-empty" cells={8} className="size-14 rounded-md" />
+            <p className="mt-4">
+              {noRuns
+                ? "No runs yet. Start a run with 2 or more samples per prompt, then compare its responses here."
+                : "No preference sets yet. Pick runs on one prompt set and choose the better response to each prompt."}
+            </p>
           </EmptyBlock>
         ) : (
           <SetsTable sets={sets.data} />

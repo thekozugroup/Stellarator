@@ -92,7 +92,7 @@ function Facts({ sample }: { sample: Sample }) {
   // A failed request has no finish reason, tokens or timings: leave those rows out instead of a column of dashes.
   const rows = all.filter(([, , known]) => known || !failed)
   return (
-    <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 px-2 pt-1 pb-2 text-sm">
+    <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2 px-2 pt-1 pb-2 text-sm">
       {rows.map(([k, v, , mono]) => (
         <div key={k} className="contents">
           <dt className="text-muted-foreground">{k}</dt>

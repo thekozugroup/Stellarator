@@ -88,13 +88,13 @@ export function EndpointsPage() {
               {(presets.data ?? [])
                 .filter((p) => ["openrouter", "lmstudio", "ollama"].includes(p.id))
                 .map((p) => (
-                  <Button key={p.id} variant="secondary" className="bg-background hover:bg-accent" onClick={() => setForm({ endpoint: null, preset: p })}>
+                  <Button key={p.id} variant="secondary" className="bg-background hover:bg-accent dark:bg-secondary" onClick={() => setForm({ endpoint: null, preset: p })}>
                     Add {p.name}
                   </Button>
                 ))}
               <Button
                 variant={presets.data?.length ? "secondary" : "default"}
-                className={presets.data?.length ? "bg-background hover:bg-accent" : undefined}
+                className={presets.data?.length ? "bg-background hover:bg-accent dark:bg-secondary" : undefined}
                 onClick={() => setForm({ endpoint: null })}
               >
                 {presets.data?.length ? "Other…" : "Add endpoint"}

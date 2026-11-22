@@ -199,7 +199,7 @@ export function Page({
               </p>
             </>
           )}
-          <div className="flex items-center justify-end gap-2 empty:hidden max-md:[&_[data-slot=button]]:rounded-full">
+          <div className="flex items-center justify-end gap-2 empty:hidden max-md:[&_:is([data-slot=button],[data-slot=dropdown-menu-trigger])]:rounded-full">
             {actionsInBar ? actions : toolbarLayout ? null : barActions}
           </div>
         </div>

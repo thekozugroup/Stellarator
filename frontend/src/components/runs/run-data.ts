@@ -124,3 +124,12 @@ export function troubleField(trouble: "Key rejected" | "Unreachable" | null): "k
 /** Common seqs values, offered as one segmented row on New run and on a run. */
 export const SEQS_CHOICES = [1, 4, 8, 16, 32, 64, 128, 256]
 
+/**
+ * A stacked row below 1024 px: straight hairlines between rows, and the highlight (the selected
+ * row, or the row whose link has keyboard focus) a --accent shape with 10 px corners that reaches
+ * 12 px past the text on both sides, as table rows do. The row's link covers the same shape.
+ */
+export const STACKED_ROW =
+  "relative isolate py-3 before:pointer-events-none before:absolute before:inset-y-0 before:-inset-x-3 before:-z-10 before:rounded-md before:bg-accent before:opacity-0 has-[a:focus-visible]:before:opacity-100"
+export const STACKED_LINK =
+  "outline-none after:absolute after:inset-y-0 after:-inset-x-3 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"

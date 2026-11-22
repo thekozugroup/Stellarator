@@ -77,8 +77,8 @@ export function SeqsControl({ run }: { run: Run }) {
 
   return (
     <div className="grid gap-1.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <label htmlFor="seqs-value" className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <label htmlFor="seqs-value" className="mr-1 text-sm text-muted-foreground">
           Seqs
         </label>
         <div className="flex items-center gap-1">

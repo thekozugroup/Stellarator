@@ -19,8 +19,13 @@ import { Bar, ErrorBlock } from "@/components/shared/block-states"
 import { CopyButton } from "@/components/shared/copy-button"
 import { FormGroup, FormItem, FormRow } from "@/components/shared/form-group"
 import { Page } from "@/components/shared/page"
+import { Plasma } from "@/components/shared/plasma"
+import { Logo } from "@/components/logo"
 import { ApiError, api } from "@/lib/api"
 import type { Settings } from "@/lib/types"
+
+/** A secondary button on a muted card: the ground in light (a white button on gray), the raised tone in dark. */
+const ON_CARD = "bg-background hover:bg-accent dark:bg-secondary"
 
 export function SettingsPage() {
   const query = useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") }) // taste-ignore: missing-states -- settings always exist; loading shows Bar placeholders and errors an ErrorBlock
@@ -101,13 +106,13 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
                 <Bar className="w-48" />
               ) : settings.hf_token_from_env ? (
                 <span>
-                  Set by the <span className="font-mono text-[13px]">HF_TOKEN</span> environment variable
+                  Set by the <span className="font-mono text-xs">HF_TOKEN</span> environment variable
                   {settings.hf_token_hint ? <span className="text-muted-foreground"> ({settings.hf_token_hint})</span> : null}
                   <span className="mt-0.5 block text-xs text-muted-foreground">Set where the container starts.</span>
                 </span>
               ) : settings.hf_token_set ? (
                 <span>
-                  A token is saved <span className="font-mono text-[13px] text-muted-foreground">({settings.hf_token_hint})</span>
+                  A token is saved <span className="font-mono text-xs text-muted-foreground">{settings.hf_token_hint}</span>
                 </span>
               ) : (
                 <span className="text-muted-foreground">No token</span>
@@ -117,7 +122,8 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
+                  className={ON_CARD}
                   onClick={() => {
                     setError(null)
                     setEditing(true)
@@ -154,7 +160,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
                   autoComplete="off"
                   spellCheck={false}
                   autoCapitalize="none"
-                  className="pr-10 font-mono pointer-fine:text-[13px]"
+                  className="pr-10 font-mono pointer-fine:text-xs"
                   aria-invalid={!!error}
                   aria-describedby={error ? "hf-token-error" : undefined}
                   onChange={(e) => {
@@ -178,7 +184,8 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
             <FormItem className="flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
+                className={ON_CARD}
                 disabled={write.isPending}
                 onClick={() => {
                   setEditing(false)
@@ -206,7 +213,7 @@ function HuggingFaceSection({ settings }: { settings?: Settings }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={write.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="secondary" disabled={write.isPending}>Cancel</AlertDialogCancel>
             <Button type="button" variant="destructive" disabled={write.isPending} onClick={() => write.mutate("")}>
               {write.isPending ? "Removing…" : "Remove token"}
             </Button>
@@ -223,7 +230,7 @@ function StorageSection({ settings }: { settings?: Settings }) {
       <FormRow group label="Data directory">
         {settings ? (
           <span className="flex min-w-0 items-center gap-0.5">
-            <span title={settings.data_dir} className="min-w-0 truncate font-mono text-[13px]">
+            <span title={settings.data_dir} className="min-w-0 truncate font-mono text-xs">
               {settings.data_dir}
             </span>
             <CopyButton value={settings.data_dir} label="Copy data directory" />
@@ -269,17 +276,32 @@ function AppearanceSection() {
 
 const MODE: Record<Settings["mode"], string> = { desktop: "Desktop app", docker: "Docker", native: "Server" }
 
+/** The app tile (the mark on the pixel field, as in the sidebar), the name and the version, then how it runs. */
 function AboutSection({ settings }: { settings?: Settings }) {
   return (
     <FormGroup title="About">
-      <FormRow group label="Version">
-        <span className="flex min-h-7 items-center">{settings ? <span className="font-mono text-[13px]">{settings.version}</span> : <Bar className="w-12" />}</span>
-      </FormRow>
-      {settings ? (
-        <FormRow group label="Mode">
-          <span className="flex min-h-7 items-center">{MODE[settings.mode]}</span>
-        </FormRow>
-      ) : null}
+      <FormItem className="flex items-center gap-3 py-3">
+        <span className="relative inline-flex size-10 flex-none items-center justify-center overflow-hidden rounded-md">
+          <Plasma seed="stellarator" cells={6} className="absolute inset-0 size-full rounded-none" />
+          <Logo className="relative size-6 text-white" />
+        </span>
+        <span className="grid min-w-0 gap-0.5">
+          <span className="text-base leading-5 font-semibold">Stellarator</span>
+          <span className="flex min-h-4 items-center text-sm text-muted-foreground">
+            {settings ? (
+              <>
+                Version&nbsp;<span className="font-mono text-xs text-foreground">{settings.version}</span>
+              </>
+            ) : (
+              <Bar className="h-3.5 w-24" />
+            )}
+          </span>
+        </span>
+      </FormItem>
+      <FormItem className="flex min-h-11 items-center justify-between gap-4 pointer-coarse:py-1">
+        <span>Runs as</span>
+        <span className="text-muted-foreground">{settings ? MODE[settings.mode] : <Bar className="w-20" />}</span>
+      </FormItem>
     </FormGroup>
   )
 }

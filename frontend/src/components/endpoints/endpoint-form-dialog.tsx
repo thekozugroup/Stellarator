@@ -20,6 +20,13 @@ const FIELD_ORDER = ["name", "base_url", "api_key", "default_concurrency", "head
 
 type HeaderRow = { id: number; key: string; value: string }
 
+/**
+ * Rows with a hint or a second control under the field: once the label sits beside the control,
+ * align it with the control's first line (32 px, 44 pt on touch) instead of the middle of the row.
+ */
+const ROW =
+  "@md/fg:items-start @md/fg:[&>div:first-child]:min-h-8 @md/fg:pointer-coarse:[&>div:first-child]:min-h-11"
+
 /** Add or edit one endpoint. `endpoint` set means edit. Values survive a failed save. */
 export function EndpointFormDialog({
   open,
@@ -198,7 +205,7 @@ function EndpointForm({
         {!editing && presets.data?.length ? <PresetRow presets={presets.data} value={presetId} onPick={pick} /> : null}
 
         <FormGroup>
-          <FormRow id="ep-name" label="Name" error={errors.name}>
+          <FormRow id="ep-name" label="Name" error={errors.name} className={ROW}>
             <Input
               id="ep-name"
               value={name}
@@ -217,6 +224,7 @@ function EndpointForm({
             id="ep-base_url"
             label="Base URL"
             error={errors.base_url}
+            className={ROW}
             hint={/^https?:\/\/(localhost|127\.0\.0\.1)\b/i.test(baseUrl.trim()) ? "From Docker, this machine is http://host.docker.internal:PORT/v1." : undefined}
           >
             <Input
@@ -244,17 +252,7 @@ function EndpointForm({
             label="API key"
             optional={!keyUrl}
             error={errors.api_key}
-            hint={
-              editing && endpoint?.has_api_key ? (
-                removeKey ? (
-                  "The saved key is removed when you save."
-                ) : (
-                  <>
-                    Saved key <span className="font-mono">{endpoint.api_key_hint ?? "set"}</span>. Leave blank to keep it.
-                  </>
-                )
-              ) : undefined
-            }
+            className={ROW}
           >
             <div className="relative">
               <Input
@@ -299,6 +297,17 @@ function EndpointForm({
                 <span className="sr-only">(opens in a new tab)</span>
               </a>
             ) : null}
+            {!errors.api_key && editing && endpoint?.has_api_key ? (
+              <p id="ep-api_key-hint" className="text-xs text-muted-foreground">
+                {removeKey ? (
+                  "The saved key is removed when you save."
+                ) : (
+                  <>
+                    Saved key <span className="font-mono">{endpoint.api_key_hint ?? "set"}</span>. Leave blank to keep it.
+                  </>
+                )}
+              </p>
+            ) : null}
             {editing && endpoint?.has_api_key ? (
               <Label htmlFor="ep-remove-key" className="flex min-h-7 w-fit items-center gap-2 text-sm font-normal pointer-coarse:min-h-11">
                 <Checkbox
@@ -315,7 +324,7 @@ function EndpointForm({
             ) : null}
           </FormRow>
 
-          <FormRow id="ep-default_concurrency" label="Default seqs" error={errors.default_concurrency} hint="Prefilled on new runs." align="end">
+          <FormRow id="ep-default_concurrency" label="Default seqs" error={errors.default_concurrency} hint="Prefilled on new runs." align="end" className={ROW}>
             <Input
               id="ep-default_concurrency"
               type="number"

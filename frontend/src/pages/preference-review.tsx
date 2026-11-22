@@ -1,5 +1,5 @@
 import { TextModeToggle } from "@/components/shared/model-text"
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, Ellipsis, Keyboard, Trash2 } from "lucide-react"
@@ -17,6 +17,9 @@ import {
   type ItemFilter,
 } from "@/components/preferences/queries"
 import { Bar, EmptyBlock, ErrorBlock } from "@/components/shared/block-states"
+import { Chip, ChipRow } from "@/components/shared/chip"
+import { Plasma } from "@/components/shared/plasma"
+import { Pill } from "@/components/shared/status-pill"
 import { Page } from "@/components/shared/page"
 import { actionBarClass } from "@/components/shared/action-bar"
 import { Button } from "@/components/ui/button"
@@ -38,6 +41,13 @@ import { int } from "@/lib/format"
 import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import type { Candidate, Page as PageOf, PreferenceItem, PreferenceSet } from "@/lib/types"
 
+/**
+ * The review bar is the preference review's own state, so its material takes the accent at 10%
+ * (DESIGN.md, Materials). Mixed in oklab: the ground is achromatic, and an oklch mix would pull
+ * the hue toward 0 (pink).
+ */
+const REVIEW_BAR_TINT = { "--material-tint": "color-mix(in oklab, var(--periwinkle) 10%, var(--background))" } as CSSProperties
+
 /** How long a finished pair stays on screen before the next prompt replaces it. */
 const BEAT_MS = 450
 
@@ -45,6 +55,9 @@ type Sel = { chosen: number | null; rejected: number | null }
 type SaveState =
   | { promptId: number; status: "saving" | "clearing" | "saved" | "cleared" }
   | { promptId: number; status: "error"; op: "save" | "clear"; message: string }
+
+/** A secondary button on a muted card: the ground in light (a white button on gray), the raised tone in dark. */
+const ON_CARD = "bg-background hover:bg-accent dark:bg-secondary"
 
 const FILTER_LABEL: Record<ItemFilter, string> = { undecided: "Undecided", decided: "Decided", all: "All" }
 const FILTER_NOUN: Record<ItemFilter, string> = { undecided: "undecided", decided: "decided", all: "prompts" }
@@ -88,8 +101,9 @@ export function PreferenceReviewPage() {
     return (
       <Page title="Preference set not found" back={{ to: "/preferences", label: "Preferences" }}>
         <EmptyBlock
+          className="rounded-xl bg-muted p-6"
           action={
-            <Button asChild variant="outline">
+            <Button asChild variant="secondary" className={ON_CARD}>
               <Link to="/preferences">Open preference sets</Link>
             </Button>
           }
@@ -110,14 +124,11 @@ export function PreferenceReviewPage() {
     return (
       <Page
         title={null}
-        meta={<Bar className="h-4 w-96 max-w-full" />}
+        meta={<Bar className="h-7 w-96 max-w-full rounded-full" />}
         back={{ to: "/preferences", label: "Preferences" }}
       >
         <div aria-busy="true" aria-label="Loading preference set…">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <Bar className="h-8 w-80 max-w-full" />
-            <Bar className="h-8 w-64" />
-          </div>
+          <Bar className="mb-6 h-8 w-64 rounded-md max-sm:hidden" />
           <ReviewSkeleton />
         </div>
       </Page>
@@ -446,8 +457,8 @@ function Review({ set }: { set: PreferenceSet }) {
   } else {
     body = (
       <Fragment key={item.prompt_id}>
-        <div className="mb-2 flex items-center justify-between gap-x-4 gap-y-1 sm:mb-3">
-          <h2 id="review-question" ref={headingRef} tabIndex={-1} className="tabular text-sm text-muted-foreground focus:outline-none">
+        <div className="mb-3 flex items-center justify-between gap-x-4 gap-y-1">
+          <h2 id="review-question" ref={headingRef} tabIndex={-1} className="text-base font-semibold tabular focus:outline-none">
             <span className="sr-only">Which response is better for this prompt? </span>
             Prompt {int(item.prompt_idx + 1)}
           </h2>
@@ -456,7 +467,7 @@ function Review({ set }: { set: PreferenceSet }) {
             <Button
               variant="ghost"
               size="icon"
-              className="pointer-coarse:hidden"
+              className="text-muted-foreground pointer-coarse:hidden"
               aria-label="Keyboard shortcuts"
               aria-keyshortcuts="?"
               title="Keyboard shortcuts (?)"
@@ -467,7 +478,7 @@ function Review({ set }: { set: PreferenceSet }) {
           </div>
         </div>
         <PromptView messages={item.messages} />
-        <div className="mt-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="mt-3 grid items-start gap-3 lg:grid-cols-2 [&>*]:min-w-0">
           {item.candidates.map((c, n) => (
             <CandidateCard
               key={c.sample_id}
@@ -491,7 +502,7 @@ function Review({ set }: { set: PreferenceSet }) {
   const menu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="More actions" title="More actions">
+        <Button variant="secondary" size="icon" aria-label="More actions" title="More actions">
           <Ellipsis aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
@@ -533,7 +544,7 @@ function Review({ set }: { set: PreferenceSet }) {
         wide ? (
           <>
             {set.runs.length >= 2 ? (
-              <Button variant="outline" onClick={() => setAutoOpen(true)}>
+              <Button variant="secondary" onClick={() => setAutoOpen(true)}>
                 Auto-pair by run…
               </Button>
             ) : null}
@@ -544,10 +555,9 @@ function Review({ set }: { set: PreferenceSet }) {
       }
       barActions={menu}
     >
-      <div className="mb-4 max-sm:hidden sm:mb-6">
+      <div className="mb-6 max-sm:hidden">
         <ToggleGroup
           type="single"
-          variant="outline"
           spacing={0}
           value={filter}
           onValueChange={(v) => v && setFilter(v as ItemFilter)}
@@ -562,7 +572,7 @@ function Review({ set }: { set: PreferenceSet }) {
               className="gap-1.5 px-3"
             >
               {FILTER_LABEL[f]}
-              <span className="tabular font-normal text-muted-foreground">{int(counts[f])}</span>
+              <span className="font-normal text-muted-foreground tabular">{int(counts[f])}</span>
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -573,21 +583,21 @@ function Review({ set }: { set: PreferenceSet }) {
       </section>
 
       {item ? (
-        <div className={actionBarClass(null, "mt-6")}>
+        <div className={actionBarClass(null, "mt-6")} style={REVIEW_BAR_TINT}>
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div id="review-status" className="min-w-0 flex-1 basis-64 empty:hidden">
               <StatusLine item={item} sel={sel} status={status} onRetry={retry} />
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {sel.chosen != null || sel.rejected != null ? (
-                <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => void clear()} aria-keyshortcuts="U">
+                <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => void clear()} aria-keyshortcuts="U" title="Clear pair (U)">
                   Clear pair
                 </Button>
               ) : null}
               <nav aria-label="Prompts" className="flex items-center gap-1">
                 <Button
-                  variant="ghost"
-                  size="icon-lg"
+                  variant="secondary"
+                  size="icon"
                   className="pointer-coarse:size-11"
                   aria-label="Previous prompt"
                   aria-keyshortcuts="K"
@@ -597,12 +607,12 @@ function Review({ set }: { set: PreferenceSet }) {
                 >
                   <ChevronLeft aria-hidden="true" />
                 </Button>
-                <span className="tabular px-1 text-sm whitespace-nowrap text-muted-foreground">
+                <span className="px-1.5 text-sm whitespace-nowrap text-muted-foreground tabular">
                   {int(Math.min(i + 1, Math.max(total, 1)))} of {int(total)} {FILTER_NOUN[filter]}
                 </span>
                 <Button
-                  variant="ghost"
-                  size="icon-lg"
+                  variant="secondary"
+                  size="icon"
                   className="pointer-coarse:size-11"
                   aria-label="Next prompt"
                   aria-keyshortcuts="J"
@@ -638,27 +648,37 @@ function runLabel(r: PreferenceSet["runs"][number], set: PreferenceSet): string 
   return defaultName && !shared ? r.model : r.name
 }
 
+/**
+ * The chips row under the title (DESIGN.md, Layout): the runs it compares, then the prompt set with
+ * its pixel-field tile. Each is a link.
+ */
 function SetMeta({ set }: { set: PreferenceSet }) {
-  const link = "text-foreground underline-offset-2 hover:underline"
   return (
-    <p className="max-w-[90ch]">
+    <ChipRow>
       {set.runs.length ? (
-        set.runs.map((r, n) => (
-          <Fragment key={r.id}>
-            {n > 0 ? " vs " : null}
-            <Link to={`/runs/${r.id}`} className={link} title={r.name}>
-              {runLabel(r, set)}
-            </Link>
-          </Fragment>
-        ))
+        set.runs.map((r, n) => {
+          const name = runLabel(r, set)
+          return (
+            <Fragment key={r.id}>
+              {n > 0 ? <span className="text-sm text-muted-foreground">vs</span> : null}
+              <Chip to={`/runs/${r.id}`} mono={name === r.model} title={r.name}>
+                {name}
+              </Chip>
+            </Fragment>
+          )
+        })
       ) : (
-        "Runs deleted"
+        <Chip>Runs deleted</Chip>
       )}
-      {" · "}
-      <Link to={`/prompts/${set.prompt_set_id}`} className={link}>
+      <Chip
+        to={`/prompts/${set.prompt_set_id}`}
+        title={set.prompt_set_name}
+        leading={<Plasma seed={`prompt-set-${set.prompt_set_id}`} cells={5} className="size-5 rounded-xs" />}
+        className="ml-1"
+      >
         {set.prompt_set_name}
-      </Link>
-    </p>
+      </Chip>
+    </ChipRow>
   )
 }
 
@@ -679,12 +699,12 @@ function StatusLine({
   }
   if (status?.status === "error") {
     return (
-      <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-destructive">
+      <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-negative-ink">
         <span className="min-w-0">
           {status.op === "save" ? "Couldn't save this pair." : "Couldn't clear this pair."} {status.message} Your choice is
           kept here.
         </span>
-        <Button variant="outline" size="sm" onClick={onRetry}>
+        <Button variant="secondary" size="sm" onClick={onRetry}>
           Retry
         </Button>
       </div>
@@ -693,27 +713,29 @@ function StatusLine({
   if (status?.status === "saving") return <p className="text-sm text-muted-foreground">Saving…</p>
   if (status?.status === "clearing") return <p className="text-sm text-muted-foreground">Clearing pair…</p>
   if (status?.status === "cleared") return <p className="text-sm text-muted-foreground">Pair cleared.</p>
+  const letterOf = (id: number | null) => <span className="font-semibold text-foreground">{name(id)}</span>
   if (sel.chosen != null && sel.rejected != null) {
     const by = item.source === "rule" && sel.chosen === item.chosen_sample_id && sel.rejected === item.rejected_sample_id
     return (
-      <p className="text-sm">
-        {status?.status === "saved" ? "Saved: " : ""}
-        <span className="font-medium">{name(sel.chosen)}</span> chosen over{" "}
-        <span className="font-medium">{name(sel.rejected)}</span>
-        {by ? <span className="text-muted-foreground">, paired by auto-pair</span> : null}.
+      <p className="flex flex-wrap items-center gap-x-2 text-sm">
+        {status?.status === "saved" ? <Pill tone="positive">Saved</Pill> : null}
+        <span>
+          {letterOf(sel.chosen)} chosen over {letterOf(sel.rejected)}
+          {by ? <span className="text-muted-foreground">, paired by auto-pair</span> : null}.
+        </span>
       </p>
     )
   }
   if (sel.chosen != null)
     return (
       <p className="text-sm">
-        <span className="font-medium">{name(sel.chosen)}</span> is chosen. Pick a rejected response.
+        {letterOf(sel.chosen)} is chosen. <span className="text-muted-foreground">Pick a rejected response.</span>
       </p>
     )
   if (sel.rejected != null)
     return (
       <p className="text-sm">
-        <span className="font-medium">{name(sel.rejected)}</span> is rejected. Pick a chosen response.
+        {letterOf(sel.rejected)} is rejected. <span className="text-muted-foreground">Pick a chosen response.</span>
       </p>
     )
   return null
@@ -772,12 +794,12 @@ function ShortcutsDialog({
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
-        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2.5 text-sm">
+        <dl className="grid rounded-xl bg-muted px-3 text-sm">
           {rows.map((r) => (
-            <Fragment key={r.action}>
-              <dt className="inline-flex items-center gap-1 whitespace-nowrap">{r.keys}</dt>
-              <dd className="text-muted-foreground">{r.action}</dd>
-            </Fragment>
+            <div key={r.action} className="flex min-h-10 items-center justify-between gap-6 not-first:border-t">
+              <dt>{r.action}</dt>
+              <dd className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground [&_[data-slot=kbd]]:bg-background dark:[&_[data-slot=kbd]]:bg-secondary">{r.keys}</dd>
+            </div>
           ))}
         </dl>
       </DialogContent>
@@ -785,6 +807,7 @@ function ShortcutsDialog({
   )
 }
 
+/** An empty queue keeps its frame (DESIGN.md, Do): a muted card with the pixel field, one sentence and the action that fills it. */
 function ReviewEmpty({
   set,
   filter,
@@ -794,76 +817,65 @@ function ReviewEmpty({
   filter: ItemFilter
   onFilter: (f: ItemFilter) => void
 }) {
+  const frame = (text: ReactNode, action: ReactNode) => (
+    <EmptyBlock className="gap-4 rounded-xl bg-muted p-6" action={action}>
+      <Plasma seed={`preference-set-${set.id}`} cells={8} className="size-14 rounded-md" />
+      <div className="mt-4">{text}</div>
+    </EmptyBlock>
+  )
   if (set.prompt_count === 0 || filter === "all") {
-    return (
-      <EmptyBlock
-        className="rounded-lg border px-4"
-        action={
-          <Button asChild variant="outline">
-            <Link to="/runs">Open runs</Link>
-          </Button>
-        }
-      >
-        No prompt has two finished responses yet.
-      </EmptyBlock>
+    return frame(
+      "No prompt has two finished responses yet. Prompts appear here once a run has two responses to compare.",
+      <Button asChild variant="secondary" className={ON_CARD}>
+        <Link to="/runs">Open runs</Link>
+      </Button>,
     )
   }
   if (filter === "decided") {
-    return (
-      <EmptyBlock
-        className="rounded-lg border px-4"
-        action={
-          <Button variant="outline" onClick={() => onFilter("undecided")}>
-            Show undecided
-          </Button>
-        }
-      >
-        No prompt is decided yet.
-      </EmptyBlock>
+    return frame(
+      "No prompt is decided yet.",
+      <Button variant="secondary" className={ON_CARD} onClick={() => onFilter("undecided")}>
+        Show undecided
+      </Button>,
     )
   }
-  return (
-    <EmptyBlock
-      className="rounded-lg border px-4"
-      action={
-        <Button variant="outline" onClick={() => onFilter("decided")}>
-          Review decided prompts
-        </Button>
-      }
-    >
-      <p className="text-base text-foreground">
-        {set.prompt_count === 1 ? "The one prompt is decided." : `All ${int(set.prompt_count)} prompts are decided.`}
-      </p>
-    </EmptyBlock>
+  return frame(
+    <p className="text-base font-semibold text-foreground">
+      {set.prompt_count === 1 ? "The one prompt is decided." : `All ${int(set.prompt_count)} prompts are decided.`}
+    </p>,
+    <Button variant="secondary" className={ON_CARD} onClick={() => onFilter("decided")}>
+      Review decided prompts
+    </Button>,
   )
 }
 
+/** Loading: the prompt card and two response cards at their real shapes. */
 function ReviewSkeleton({ withHeading = false }: { withHeading?: boolean }) {
   return (
     <div aria-busy="true" aria-label="Loading prompt…">
       {withHeading ? (
         <p className="sr-only">Which response is better for this prompt?</p>
-      ) : (
-        <Bar className="mb-3 h-5 w-72 max-w-full" />
-      )}
-      <div className="grid gap-2 rounded-lg bg-muted px-4 py-3">
-        <Bar className="h-3 w-10 bg-background" />
+      ) : null}
+      <Bar className="mb-3 h-5 w-24" />
+      <div className="grid gap-2 rounded-xl bg-muted px-5 py-4">
         <Bar className="h-4 w-full max-w-xl bg-background" />
         <Bar className="h-4 w-2/3 max-w-md bg-background" />
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         {[0, 1].map((n) => (
-          <div key={n} className="rounded-lg border">
-            <div className="flex items-center gap-3 border-b px-4 py-3">
-              <Bar className="h-5 w-5" />
-              <Bar className="h-4 w-40" />
-              <Bar className="ml-auto h-9 w-48" />
+          <div key={n} className="rounded-xl bg-muted">
+            <div className="flex items-center gap-3 py-3 pr-3 pl-5">
+              <Bar className="size-7 rounded-sm bg-background" />
+              <Bar className="h-4 w-40 bg-background" />
+              <Bar className="ml-auto h-8 w-44 rounded-md bg-background" />
             </div>
-            <div className="grid gap-2 px-4 py-4">
-              <Bar className="h-4 w-36" />
-              <Bar className="h-4 w-full" />
-              <Bar className="h-4 w-full" />
-              <Bar className="h-4 w-3/4" />
+            <div className="grid gap-2 px-2 pb-2">
+              <Bar className="h-9 w-full rounded-sm bg-background" />
+              <div className="grid gap-2 rounded-sm bg-background px-3 py-3">
+                <Bar className="h-4 w-full" />
+                <Bar className="h-4 w-full" />
+                <Bar className="h-4 w-3/4" />
+              </div>
             </div>
           </div>
         ))}

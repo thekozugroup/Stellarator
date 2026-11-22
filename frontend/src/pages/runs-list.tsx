@@ -7,12 +7,13 @@ import { Plasma } from "@/components/shared/plasma"
 import { ProgressBar } from "@/components/shared/progress-bar"
 import { RunStatusPill } from "@/components/shared/status-pill"
 import { SetupChecklist } from "@/components/runs/setup-checklist"
-import { useRuns } from "@/components/runs/run-data"
+import { STACKED_LINK, STACKED_ROW, useRuns } from "@/components/runs/run-data"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { dateTime, int, relative } from "@/lib/format"
 import { TOOLBAR_QUERY, useMediaQuery } from "@/lib/media"
 import type { Run } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 /** The bar with "1,284 of 5,000" beside it on one line; the failed count in red only when there is one. */
 function RunProgress({ run, stacked = false }: { run: Run; stacked?: boolean }) {
@@ -21,7 +22,7 @@ function RunProgress({ run, stacked = false }: { run: Run; stacked?: boolean }) 
       <span>
         {int(run.done)} <span className="text-muted-foreground">of {int(run.total)}</span>
       </span>
-      {run.failed > 0 ? <span className="text-destructive">{int(run.failed)} failed</span> : null}
+      {run.failed > 0 ? <span className="text-negative-ink">{int(run.failed)} failed</span> : null}
     </span>
   )
   if (stacked) {
@@ -90,7 +91,7 @@ function RunsTable({ runs }: { runs: Run[] }) {
                     data-touch="inline"
                     to={`/runs/${run.id}`}
                     title={`${run.name}\n${factsTitle(run)}`}
-                    className="block truncate outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                    className="block truncate outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
                   >
                     <span className="font-medium">{run.name}</span>
                     <span className="ml-2 text-xs text-muted-foreground">
@@ -117,13 +118,13 @@ function RunsTable({ runs }: { runs: Run[] }) {
       {/* Phone and tablet: one row per run, its name and status, then its facts and progress. */}
       <ul className="divide-y lg:hidden">
         {runs.map((run) => (
-          <li key={run.id} className="relative -mx-3 rounded-md px-3 py-3 has-[a:focus-visible]:bg-accent">
+          <li key={run.id} className={STACKED_ROW}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link
                   data-touch="inline"
                   to={`/runs/${run.id}`}
-                  className="block truncate font-medium outline-none after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring"
+                  className={cn("block truncate font-medium", STACKED_LINK)}
                 >
                   {run.name}
                 </Link>

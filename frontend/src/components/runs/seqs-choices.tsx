@@ -20,7 +20,7 @@ export function SeqsChoices({ value, onChange, className }: { value: number; onC
       className={cn("w-full max-w-full min-w-0 sm:w-fit", className)}
     >
       {SEQS_CHOICES.map((n) => (
-        <ToggleGroupItem key={n} value={String(n)} style={{ minWidth: 0 }} className="min-w-0 flex-1 px-1 tabular sm:px-2.5">
+        <ToggleGroupItem key={n} value={String(n)} style={{ minWidth: 0 }} className="min-w-0 flex-1 px-1 tabular sm:px-2">
           {n}
         </ToggleGroupItem>
       ))}

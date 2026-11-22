@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
  */
 export function Missing({ seed, to, action, children }: { seed: string; to: string; action: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-4 rounded-xl bg-muted p-6 text-sm text-muted-foreground">
+    <div className="flex max-w-[40rem] flex-col items-start gap-4 rounded-xl bg-muted p-6 text-sm text-muted-foreground">
       <Plasma seed={seed} cells={8} className="size-14 rounded-md" />
       <p className="max-w-[60ch]">{children}</p>
       <Button asChild variant="secondary" className="bg-background hover:bg-background/80">

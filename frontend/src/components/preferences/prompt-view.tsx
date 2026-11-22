@@ -18,7 +18,10 @@ function text(content: unknown): string {
 
 const LONG = 1400 // characters before the prompt is shown folded
 
-/** The prompt as sent, one block per message with its role. Long prompts fold to keep the responses in view. */
+/**
+ * The prompt as sent, one block per message with its role as a data tag. A --muted card with 16 px
+ * corners. Long prompts fold to keep the responses in view.
+ */
 export function PromptView({ messages }: { messages: Message[] }) {
   const total = messages.reduce((n, m) => n + text(m.content).length, 0)
   const long = total > LONG
@@ -37,25 +40,25 @@ export function PromptView({ messages }: { messages: Message[] }) {
   const showToggle = long || tall
   const folded = !open
   return (
-    <div className="rounded-lg bg-muted">
+    <div className="rounded-xl bg-muted">
       <div
         ref={body}
-        className={cn("relative grid gap-4 px-4 py-3", folded && (long ? "max-h-72 overflow-hidden" : "") , folded && "max-sm:max-h-[5.5rem] max-sm:overflow-hidden")}
+        className={cn("relative grid gap-4 px-5 py-4", folded && (long ? "max-h-72 overflow-hidden" : ""), folded && "max-sm:max-h-[5.5rem] max-sm:overflow-hidden")}
       >
         {messages.map((m, n) => (
-          <div key={n} className="grid gap-1">
-            {messages.length > 1 ? <p className="text-xs text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</p> : null}
+          <div key={n} className="grid gap-1.5">
+            {messages.length > 1 ? <p className="label-mono text-muted-foreground">{ROLE_LABEL[m.role] ?? m.role}</p> : null}
             <ModelText text={text(m.content)} className="text-sm" />
           </div>
         ))}
       </div>
       {showToggle ? (
-        <div className="border-t border-background px-4 py-1 sm:py-2">
+        <div className="border-t border-background px-3 py-1">
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="min-h-9 rounded-md text-sm pointer-coarse:min-h-11 font-medium text-foreground underline-offset-2 hover:underline"
+            className="inline-flex min-h-8 items-center rounded-sm px-2 text-sm font-medium text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
           >
             {open ? "Show less" : "Show all"}
           </button>
