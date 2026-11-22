@@ -46,7 +46,7 @@ function NameButton({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: (e: Endp
       type="button"
       onClick={() => onOpen(endpoint)}
       title={endpoint.name}
-      className="max-w-full rounded-xs text-left font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+      className="max-w-full justify-self-start rounded-xs text-left font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
     >
       <span className="line-clamp-2 break-words">{endpoint.name}</span>
     </button>

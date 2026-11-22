@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils"
 import { TextModeToggle } from "@/components/shared/model-text"
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
@@ -47,7 +46,6 @@ import type { Candidate, Page as PageOf, PreferenceItem, PreferenceSet } from "@
  * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
  * sections do on iOS sheets.
  */
-const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
 
 /**
  * The review bar is the preference review's own state, so its material takes the accent at 10%
@@ -798,7 +796,7 @@ function ShortcutsDialog({
   ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className={cn("sm:max-w-sm", ON_MATERIAL)}>
+      <DialogContent aria-describedby={undefined} className={"sm:max-w-sm"}>
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>

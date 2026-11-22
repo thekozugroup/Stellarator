@@ -25,7 +25,6 @@ import { prefKeys, shortModel } from "./queries"
  * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
  * sections do on iOS sheets.
  */
-const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
 
 interface AutoPairOut {
   created: number
@@ -43,7 +42,7 @@ export function AutoPairDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className={cn("sm:max-w-md", ON_MATERIAL)}>
+      <DialogContent aria-describedby={undefined} className={"sm:max-w-md"}>
         {open ? <AutoPairForm set={set} onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>
     </Dialog>

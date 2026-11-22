@@ -153,11 +153,11 @@ export function FormRow({
       className={cn(
         SEPARATOR,
         "grid gap-1.5 px-3 py-2 pointer-coarse:py-1.5",
-        !stacked && "@md/fg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] @md/fg:gap-x-4",
+        !stacked && "@md/fg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] @md/fg:items-start @md/fg:gap-x-4",
         className,
       )}
     >
-      <div className={cn("flex items-center", !stacked && "@md/fg:min-h-7 @md/fg:pointer-coarse:min-h-11")}>{labelTip}</div>
+      <div className={cn("flex items-center", !stacked && "@md/fg:min-h-8 @md/fg:pointer-coarse:min-h-11")}>{labelTip}</div>
       <div
         role={group ? "group" : undefined}
         aria-labelledby={group ? labelId : undefined}

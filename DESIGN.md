@@ -117,7 +117,7 @@ Sizes follow the input (Density): pointer-fine is a mouse or trackpad, touch is 
 | Toolbar title, breadcrumb, section heading (`text-base`) | Inter | 15 px | 17 px (toolbar), 16 px | 600 (parents 500) | 20 px | -0.011em |
 | Body, controls (`text-sm`) | Inter | 13 px | 14 px | 400, 500 on buttons | 18 / 20 px | -0.003em |
 | Meta, table headers (`text-xs`) | Inter | 12 px | 12 px | 400 | 16 px | 0 |
-| Data (`font-mono`) | Roboto Mono | 12 px | 13 px | 400 | 16 px | 0 |
+| Data (`font-mono`) | Roboto Mono | 12 px | 12 px | 400 | 16 px | 0 |
 | Data tag and axis (`label-mono`) | Roboto Mono | 12 px | 12 px | 400, uppercase | 16 px | 0.04em |
 
 Rules:
@@ -260,7 +260,9 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
   items with 8 px corners; the highlighted item `--accent` with ink text; a checkmark or icon at
   the end; separators full width; destructive items red ink.
 - **Dialogs and alerts**: `material-thick` over the scrim, 18 px corners, 20 px padding, title
-  15 px at 600; buttons at the end (stacked full width below 640 px).
+  15 px at 600; buttons at the end (stacked full width below 640 px), Cancel secondary. Inside
+  dialogs, alerts and sheets `--muted` becomes the ground (light) or the raised tone (dark), so a
+  card or group stands out from the material instead of matching it.
 - **Side sheets**: `material-thick`; edge to edge on phones; from 640 px they float 8 px inside the
   window with `--panel-radius` corners.
 - **Tooltips**: `material-thick`, 8 px corners, 12 px text, shown after a 700 ms hover (keyboard

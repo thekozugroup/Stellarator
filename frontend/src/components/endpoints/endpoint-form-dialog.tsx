@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils"
 import { useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { ExternalLink, Eye, EyeOff, Loader2, Plus, X } from "lucide-react"
@@ -21,7 +20,6 @@ import { PresetRow, useEndpointPresets } from "./presets"
  * so groups and wells inside it take the ground in light and the raised tone in dark, as grouped
  * sections do on iOS sheets.
  */
-const ON_MATERIAL = "[--muted:var(--background)] dark:[--muted:var(--secondary)]"
 
 const DEFAULT_SEQS = 16
 const FIELD_ORDER = ["name", "base_url", "api_key", "default_concurrency", "headers"]
@@ -54,7 +52,7 @@ export function EndpointFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={cn("flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden sm:max-w-xl", ON_MATERIAL)}
+        className={"flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden sm:max-w-xl"}
         onOpenAutoFocus={(ev) => {
           const target = focusField ?? (preset?.needs_api_key ? "api_key" : null)
           if (!target) return
