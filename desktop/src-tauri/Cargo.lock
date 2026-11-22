@@ -5123,7 +5123,7 @@ checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
 
 [[package]]
 name = "stellarator-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5146,7 +5146,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-desktop"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
@@ -5171,7 +5171,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-engine"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5192,7 +5192,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-export"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -5218,7 +5218,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-import"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -5244,7 +5244,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-server"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",

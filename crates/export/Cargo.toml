@@ -21,7 +21,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 sha2 = "0.10.9"
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "json"] }
-stellarator-core = { version = "0.2.0", path = "../core" }
+stellarator-core = { version = "0.3.0", path = "../core" }
 tokio = { version = "1.53.3", features = ["full"] }
 tokio-util = { version = "0.7.19", features = ["io"] }
 tracing = "0.1.44"

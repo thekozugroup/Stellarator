@@ -2,7 +2,7 @@
 name = "stellarator-desktop"
 # Keep equal to the root workspace's version (Cargo.toml at the repository root); the desktop
 # workflow checks it. tauri.conf.json takes the app version from here.
-version = "0.2.1"
+version = "0.3.0"
 description = "Stellarator desktop app: the Stellarator server and its web UI in one native process"
 edition = "2021"
 license = "MIT"
