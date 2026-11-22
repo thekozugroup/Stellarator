@@ -139,10 +139,12 @@ const DAY_MS = 86_400_000
 
 /**
  * A clock tick's label: seconds for short spans; once the readings cross midnight (a run resumed
- * on a later day) the first tick of each session also names the date.
+ * on a later day) the first tick of each session names the date instead of the time.
  */
 function clockLabel(tick: Tick, step: number, multiDay: boolean): string {
-  const f = step >= DAY_MS ? md : multiDay && tick.first ? mdhm : step < 60_000 ? hms : hm
+  // The date replaces the time on a session's first tick: a date and a time together are twice as
+  // wide as the other labels and run into the next one.
+  const f = step >= DAY_MS || (multiDay && tick.first) ? md : step < 60_000 ? hms : hm
   return f.format(tick.t).toUpperCase()
 }
 

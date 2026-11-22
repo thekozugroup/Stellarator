@@ -94,10 +94,11 @@ Either way it is one process, the server with its web UI, and one data folder.
 
 <img alt="A run in progress on the 7,473 prompts of openai/gsm8k: progress, a throughput chart against seqs, and the sequences in flight" src="docs/assets/screenshot-run.png" width="100%">
 
-A run on the 7,473 prompts of `openai/gsm8k`. Seqs went from 32 to 64 partway through, and the
-chart shows throughput following. Every sequence in flight is marked thinking or answering.
+A run on the 7,473 prompts of `openai/gsm8k`, live: progress, time left, throughput drawn over
+the seqs setting (change seqs and the chart shows the effect), and every sequence in flight marked
+thinking or answering.
 
-<img alt="One sample: the prompt, the thinking trace, and the answer rendered with display math and a table" src="docs/assets/screenshot-sample.png" width="100%">
+<img alt="One sample in its side panel: the prompt, the thinking trace, the answer and the details (finish reason, tokens, latency)" src="docs/assets/screenshot-sample.png" width="100%">
 
 One sample: the prompt, the thinking trace kept apart from the answer, and the answer rendered as
 Markdown with tables, code and LaTeX. Raw shows the text exactly as the model returned it.
