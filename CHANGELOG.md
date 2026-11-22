@@ -6,26 +6,29 @@ Each version's section is copied into its GitHub release under "What's new".
 
 ### A new look
 
-- A new design system (DESIGN.md): Inter for text and Roboto
-  Mono for data, an ink near-black, neutral grays, a periwinkle accent on data, coral for
-  attention and green for success, cards set apart by tone instead of borders, large titles on
-  detail screens, and a breadcrumb in the toolbar ("Runs / Distill gsm8k").
-- Detail screens open with the title, a row of chips (status, model, endpoint, prompt set) and the
-  facts as tiles.
+- A new design system (DESIGN.md): Inter for text and Roboto Mono for data, an ink near-black,
+  neutral grays, a periwinkle accent on data, coral for attention and green for success, and cards
+  set apart by tone instead of borders.
+- Detail screens open with a large title, a row of chips (status, model, endpoint, prompt set) and
+  the facts as tiles; the toolbar shows where you are ("Runs / Distill gsm8k").
 - Frosted, tinted materials on the chrome that floats over content: the toolbar once you scroll,
-  menus, dialogs, sheets, toasts, the phone tab bar and sticky action bars.
-- Endpoints and prompt sets get a small pixel-field tile, the product's new texture.
+  menus, dialogs, sheets, toasts, the phone tab bar, and the action bars of New run, Import and
+  preference review, which now float above the content.
+- A run's chart counts back from now, cuts out paused time, and flags the change in tokens per
+  second after you change seqs. The sequences in flight read like a log.
+- Endpoints and prompt sets get a small pixel-field tile.
 
 ### Corners that fit the window
 
 - On macOS 26 the window now has the larger corners of macOS 26 apps with a toolbar (26 pt
-  instead of 16 pt), and the traffic lights sit where macOS puts them. The sidebar and everything
-  inside it are concentric with those corners. On macOS 15 and earlier, Windows and Linux the
-  sidebar runs flush with the window's edge.
+  instead of 16 pt), and the traffic lights sit where macOS puts them. The sidebar, dialogs,
+  sheets and everything inside them are concentric with those corners. On macOS 15 and earlier,
+  Windows and Linux the sidebar runs flush with the window's edge.
 
-### New app icon and mark
+### New mark and app icon
 
-- A bolder mark and an icon in the new palette.
+- A simpler, monochrome mark, and an app icon styled like a stock macOS app: a two-color gradient
+  with the mark in frosted glass.
 
 ## 0.2.1
 
