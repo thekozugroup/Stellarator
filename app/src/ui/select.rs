@@ -43,34 +43,113 @@ pub fn select_button(
     placeholder: &'static str,
     accessibility: &'static str,
 ) -> impl IntoElement {
-    let trigger = view()
-        .h(px(CONTROL))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .pl(px(12.0))
-        .pr(px(8.0))
-        .rounded(px(radius::MD))
-        .bg(move || theme().secondary)
-        .hover(|s| s.bg(move || theme().accent))
-        .cursor(Cursor::Pointer)
-        .child(
-            body(text(move || value.get().map(|v| title(&v)).unwrap_or_else(|| placeholder.to_owned())))
-                .number_of_lines(1)
-                .text_color(move || if value.get().is_some() { theme().foreground } else { theme().muted_foreground }),
-        )
-        .child(icon(icon::CHEVRONS_UP_DOWN, 14.0, move || theme().muted_foreground));
-    select()
-        .items(options)
-        .value(move || nsh_base::SelectValue::from(value.get()))
-        .on_change(move |next: &Option<SharedString>| value.set(next.clone()))
-        .accessibility_label(accessibility)
-        .offset(px(4.0))
-        .popup_style(popup)
-        .item_class(ITEM_CLASS)
-        .trigger(trigger)
-        // As wide as its title (`w-fit`), not its column.
-        .self_start()
+    select_field(options, move || value.get(), move |next| value.set(next), accessibility)
+        .title(title)
+        .placeholder(placeholder)
+}
+
+/// A pop-up button whose value is read with `get` and changed with `set` (a form row's select).
+/// By default it is as wide as its title ([`select_button`]); [`SelectField::fill`] makes it as
+/// wide as its column (the web UI's `w-full` select), [`SelectField::mono`] sets its title in
+/// Roboto Mono.
+pub fn select_field(
+    options: Vec<SelectItem>,
+    get: impl Fn() -> Option<SharedString> + 'static,
+    set: impl Fn(Option<SharedString>) + 'static,
+    accessibility: &'static str,
+) -> SelectField {
+    SelectField {
+        options,
+        get: Rc::new(get),
+        set: Rc::new(set),
+        title: None,
+        placeholder: "",
+        accessibility,
+        fill: false,
+        mono: false,
+    }
+}
+
+/// A pop-up button built with [`select_field`].
+pub struct SelectField {
+    options: Vec<SelectItem>,
+    get: Rc<dyn Fn() -> Option<SharedString>>,
+    set: Rc<dyn Fn(Option<SharedString>)>,
+    title: Option<Rc<dyn Fn(&str) -> String>>,
+    placeholder: &'static str,
+    accessibility: &'static str,
+    fill: bool,
+    mono: bool,
+}
+
+impl SelectField {
+    /// What the button says for a value (the option's title by default).
+    pub fn title(mut self, title: impl Fn(&str) -> String + 'static) -> Self {
+        self.title = Some(Rc::new(title));
+        self
+    }
+
+    /// What it says while there is no value.
+    pub fn placeholder(mut self, placeholder: &'static str) -> Self {
+        self.placeholder = placeholder;
+        self
+    }
+
+    /// As wide as its column.
+    pub fn fill(mut self) -> Self {
+        self.fill = true;
+        self
+    }
+
+    /// The title in Roboto Mono, 12 px (dataset configs).
+    pub fn mono(mut self) -> Self {
+        self.mono = true;
+        self
+    }
+}
+
+impl IntoElement for SelectField {
+    fn into_element(self) -> AnyElement {
+        let titles: Vec<(SharedString, SharedString)> = self.options.iter().map(|o| (o.value.clone(), o.title.clone())).collect();
+        let title: Rc<dyn Fn(&str) -> String> = self.title.clone().unwrap_or_else(|| {
+            Rc::new(move |v: &str| titles.iter().find(|(value, _)| value.as_ref() == v).map(|(_, t)| t.to_string()).unwrap_or_else(|| v.to_owned()))
+        });
+        let (get, set, placeholder) = (self.get.clone(), self.set.clone(), self.placeholder);
+        let (g1, g2, g3) = (get.clone(), get.clone(), get);
+        let mut label = body(text(move || g1().map(|v| title(&v)).unwrap_or_else(|| placeholder.to_owned())))
+            .number_of_lines(1)
+            .text_color(move || if g2().is_some() { theme().foreground } else { theme().muted_foreground });
+        if self.mono {
+            label = label.font_family(crate::theme::fonts::ROBOTO_MONO.family).text_size(px(12.0));
+        }
+        let mut trigger = view()
+            .h(px(CONTROL))
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .pl(px(12.0))
+            .pr(px(8.0))
+            .rounded(px(radius::MD))
+            .bg(move || theme().secondary)
+            .hover(|s| s.bg(move || theme().accent))
+            .cursor(Cursor::Pointer)
+            .child(view().flex_1().min_w(px(0.0)).child(label))
+            .child(icon(icon::CHEVRONS_UP_DOWN, 14.0, move || theme().muted_foreground));
+        if self.fill {
+            trigger = trigger.w_full();
+        }
+        let el = select()
+            .items(self.options)
+            .value(move || nsh_base::SelectValue::from(g3()))
+            .on_change(move |next: &Option<SharedString>| set(next.clone()))
+            .accessibility_label(self.accessibility)
+            .offset(px(4.0))
+            .popup_style(popup)
+            .item_class(ITEM_CLASS)
+            .trigger(trigger);
+        // As wide as its title (`w-fit`), not its column, unless it fills.
+        if self.fill { el.self_stretch().into_element() } else { el.self_start().into_element() }
+    }
 }
 
 /// A pop-up button as wide as its column (`w-full`), filled with `fill` (`on-dialog-control` in a

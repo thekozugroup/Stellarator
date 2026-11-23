@@ -19,6 +19,7 @@ pub use stellarator_api as types;
 
 use types::{EndpointOut, EndpointTestIn, EndpointTestOut, Location, RunOut};
 use types::{ExportPreviewOut, HubPushIn, HubPushOut, Page, RunLive, SampleOut, SampleSummary};
+use types::{ImportCommitIn, ImportMapping, ImportPreviewIn, ImportPreviewOut, ImportSource, PromptOut, PromptSetOut, UploadOut};
 
 /// A request that failed: the server's `detail` message or what went wrong on the way.
 #[derive(Debug, Clone, PartialEq)]
@@ -222,6 +223,57 @@ impl Api {
         }
     }
 
+    /// `GET /api/prompt-sets`: every prompt set, newest first.
+    pub async fn prompt_sets(&self) -> Result<Vec<PromptSetOut>, ApiError> {
+        self.get("/api/prompt-sets").await
+    }
+
+    /// `GET /api/prompt-sets/{id}`.
+    pub async fn prompt_set(&self, id: i64) -> Result<PromptSetOut, ApiError> {
+        self.get(&format!("/api/prompt-sets/{id}")).await
+    }
+
+    /// `PATCH /api/prompt-sets/{id}`: renames it.
+    pub async fn rename_prompt_set(&self, id: i64, name: &str) -> Result<PromptSetOut, ApiError> {
+        self.patch(&format!("/api/prompt-sets/{id}"), &serde_json::json!({ "name": name })).await
+    }
+
+    /// `DELETE /api/prompt-sets/{id}`: the set, its prompts and its runs (also stops an import).
+    pub async fn delete_prompt_set(&self, id: i64) -> Result<(), ApiError> {
+        self.delete(&format!("/api/prompt-sets/{id}")).await
+    }
+
+    /// `GET /api/prompt-sets/{id}/prompts`: one page of a set's prompts, filtered by `q` when it is
+    /// not empty.
+    pub async fn prompts(&self, id: i64, offset: i64, limit: i64, q: &str) -> Result<Page<PromptOut>, ApiError> {
+        let mut path = format!("/api/prompt-sets/{id}/prompts?offset={offset}&limit={limit}");
+        if !q.is_empty() {
+            path.push_str("&q=");
+            path.push_str(&query_escape(q));
+        }
+        self.get(&path).await
+    }
+
+    /// `POST /api/imports/upload`: a file for an import (multipart, the field `file`).
+    pub async fn import_upload(&self, filename: &str, bytes: Vec<u8>) -> Result<UploadOut, ApiError> {
+        let boundary = "----stellarator-upload-3f9c2b7e";
+        let (content_type, body) = multipart_file(boundary, filename, &bytes);
+        let (status, answer) = self.send_body(Method::Post, "/api/imports/upload", Some((content_type, body))).await?;
+        decode(status, &answer)
+    }
+
+    /// `POST /api/imports/preview`: the first prompts of a source as the mapping would import them.
+    pub async fn import_preview(&self, source: &ImportSource, mapping: &ImportMapping) -> Result<ImportPreviewOut, ApiError> {
+        let body = ImportPreviewIn { source: source.clone(), mapping: mapping.clone() };
+        self.post("/api/imports/preview", &body).await
+    }
+
+    /// `POST /api/imports`: starts the import in the background; the answer is the set, importing.
+    pub async fn import_commit(&self, source: &ImportSource, mapping: &ImportMapping, name: &str) -> Result<PromptSetOut, ApiError> {
+        let body = ImportCommitIn { source: source.clone(), mapping: mapping.clone(), name: name.to_owned() };
+        self.post("/api/imports", &body).await
+    }
+
     /// `GET` `path` and read its JSON.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
         let (status, body) = self.send(Method::Get, path, None).await?;
@@ -262,6 +314,17 @@ impl Api {
         path: &str,
         body: Option<serde_json::Value>,
     ) -> Result<(u16, Vec<u8>), ApiError> {
+        let body = body.map(|json| ("application/json".to_owned(), json.to_string().into_bytes()));
+        self.send_body(method, path, body).await
+    }
+
+    /// One request with a body of any type: `(content type, bytes)`.
+    async fn send_body(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<(String, Vec<u8>)>,
+    ) -> Result<(u16, Vec<u8>), ApiError> {
         match &self.transport {
             #[cfg(not(target_arch = "wasm32"))]
             Transport::InProcess { router, runtime } => {
@@ -272,8 +335,8 @@ impl Api {
                 let base = crate::web::page_origin().await;
                 let mut request = nsh_core::platform::HttpRequest::new(method.as_str(), format!("{base}{path}"))
                     .header("accept", "application/json");
-                if let Some(json) = body {
-                    request = request.header("content-type", "application/json").body(json.to_string());
+                if let Some((content_type, bytes)) = body {
+                    request = request.header("content-type", content_type).body(bytes);
                 }
                 let response = nsh_core::prelude::fetch(request)
                     .await
@@ -302,16 +365,16 @@ mod in_process {
         runtime: &tokio::runtime::Handle,
         method: Method,
         path: &str,
-        body: Option<serde_json::Value>,
+        body: Option<(String, Vec<u8>)>,
     ) -> Result<(u16, Vec<u8>), ApiError> {
         let mut request = Request::builder()
             .method(method.as_str())
             .uri(path)
             .header(header::ACCEPT, "application/json");
         let body = match body {
-            Some(json) => {
-                request = request.header(header::CONTENT_TYPE, "application/json");
-                Body::from(json.to_string())
+            Some((content_type, bytes)) => {
+                request = request.header(header::CONTENT_TYPE, content_type);
+                Body::from(bytes)
             }
             None => Body::empty(),
         };
@@ -424,6 +487,31 @@ fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         return path;
     }
     (1u32..).map(|n| dir.join(numbered(name, n))).find(|p| !p.exists()).unwrap_or(path)
+}
+
+/// A `multipart/form-data` body of one file in the field `file`: its content type and bytes.
+fn multipart_file(boundary: &str, filename: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+    let name: String = filename.chars().filter(|c| !matches!(c, '"' | '\r' | '\n' | '\\')).collect();
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+/// `s` percent-encoded for a query value (everything but unreserved characters).
+fn query_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 /// The JSON of a response: `T` on success, else the error ([`error_of`]).
@@ -613,5 +701,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(settings.mode, "desktop");
+    }
+
+    #[test]
+    fn a_query_value_is_escaped() {
+        assert_eq!(query_escape("a b&c=é"), "a%20b%26c%3D%C3%A9");
+        assert_eq!(query_escape("x-y_z.~"), "x-y_z.~");
+    }
+
+    #[test]
+    fn an_upload_is_one_multipart_field() {
+        let (content_type, body) = multipart_file("B", "my \"file\".md", b"hi");
+        assert_eq!(content_type, "multipart/form-data; boundary=B");
+        let text = String::from_utf8(body).unwrap();
+        assert!(text.starts_with("--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"my file.md\"\r\n"));
+        assert!(text.ends_with("\r\n\r\nhi\r\n--B--\r\n"));
     }
 }

@@ -40,6 +40,7 @@ pub const PAUSE: ImageAsset = asset!("icons/pause.svg");
 pub const ROTATE_CCW: ImageAsset = asset!("icons/rotate-ccw.svg");
 pub const MINUS: ImageAsset = asset!("icons/minus.svg");
 pub const KEYBOARD: ImageAsset = asset!("icons/keyboard.svg");
+pub const UPLOAD: ImageAsset = asset!("icons/upload.svg");
 
 /// The app's icon (frontend/public/icon-192.png), for About.
 pub const APP_ICON: ImageAsset = asset!("icon-192.png");

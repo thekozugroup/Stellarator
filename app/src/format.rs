@@ -283,6 +283,19 @@ pub fn bytes(n: u64) -> String {
     format!("{} {}", dec1(v), units[i])
 }
 
+/// The text a prompt is known by: the last user message, else the last message of any role, else
+/// nothing (`promptText` in frontend/src/lib/format.ts). Messages are `{role, content}` objects.
+pub fn prompt_text(messages: &[serde_json::Value]) -> String {
+    let content = |m: &serde_json::Value| m.get("content").and_then(|c| c.as_str()).unwrap_or_default().to_owned();
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .or(messages.last())
+        .map(content)
+        .unwrap_or_default()
+}
+
 /// One line of at most `max` characters: whitespace collapsed, an ellipsis when cut.
 pub fn one_line(s: &str, max: usize) -> String {
     let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -319,6 +332,18 @@ mod tests {
     use chrono::{Duration, NaiveDate, TimeZone};
 
     use super::*;
+
+    #[test]
+    fn a_prompt_is_known_by_its_last_user_message() {
+        use serde_json::json;
+        let chat = [json!({"role": "system", "content": "Be brief."}), json!({"role": "user", "content": "Hi"})];
+        assert_eq!(prompt_text(&chat), "Hi");
+        let many = [json!({"role": "user", "content": "one"}), json!({"role": "assistant", "content": "two"}), json!({"role": "user", "content": "three"})];
+        assert_eq!(prompt_text(&many), "three");
+        // No user message: the last message of any role; none at all: nothing.
+        assert_eq!(prompt_text(&[json!({"role": "assistant", "content": "only"})]), "only");
+        assert_eq!(prompt_text(&[]), "");
+    }
 
     #[test]
     fn integers_group_by_thousands_in_the_locale() {

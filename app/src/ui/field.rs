@@ -49,6 +49,8 @@ pub struct TextField {
     accessibility: Option<SharedString>,
     element: Option<ElementRef>,
     background: Option<fn() -> AdaptiveColor>,
+    height: Option<f32>,
+    mono_body: bool,
 }
 
 /// A one-line text field showing and editing `value`.
@@ -75,6 +77,8 @@ pub fn text_field(value: Signal<String>) -> TextField {
         accessibility: None,
         element: None,
         background: None,
+        height: None,
+        mono_body: false,
     }
 }
 
@@ -110,6 +114,13 @@ impl TextField {
     /// Roboto Mono at 12 px (URLs, keys, header names).
     pub fn mono(mut self) -> Self {
         self.mono = true;
+        self
+    }
+
+    /// Roboto Mono at the field's regular size (13 px, 16 px on a phone): text the user writes
+    /// rather than data (the pasted prompts, a dataset name).
+    pub fn mono_body(mut self) -> Self {
+        self.mono_body = true;
         self
     }
 
@@ -190,6 +201,12 @@ impl TextField {
         self
     }
 
+    /// A height in points (a multiline field's default is 96).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = Some(h);
+        self
+    }
+
     /// The fill (the ground by default).
     pub fn background(mut self, color: fn() -> AdaptiveColor) -> Self {
         self.background = Some(color);
@@ -250,7 +267,7 @@ impl IntoElement for TextField {
         if let Some(m) = self.masked {
             field = field.masked(move || m());
         }
-        if self.mono {
+        if self.mono || self.mono_body {
             field = field.font_family(ROBOTO_MONO.family).letter_spacing(px(0.0));
         }
         if self.tabular {
@@ -412,10 +429,11 @@ pub struct FormGroup {
     footnote: Option<AnyElement>,
     rows: Vec<AnyElement>,
     in_dialog: bool,
+    tail: Option<Rc<dyn Fn() -> Vec<AnyElement>>>,
 }
 
 pub fn form_group(rows: Vec<AnyElement>) -> FormGroup {
-    FormGroup { title: None, footnote: None, rows, in_dialog: false }
+    FormGroup { title: None, footnote: None, rows, in_dialog: false, tail: None }
 }
 
 impl FormGroup {
@@ -428,6 +446,13 @@ impl FormGroup {
     /// 12 px muted text below the box (any element: a sentence with a link).
     pub fn footnote(mut self, footnote: impl IntoElement) -> Self {
         self.footnote = Some(footnote.into_element());
+        self
+    }
+
+    /// More rows after the fixed ones that come and go: `rows` is read again when what it reads
+    /// changes, and the hairlines are drawn only for the rows it gives (none: no hairline).
+    pub fn dynamic_rows(mut self, rows: impl Fn() -> Vec<AnyElement> + 'static) -> Self {
+        self.tail = Some(Rc::new(rows));
         self
     }
 
@@ -453,6 +478,17 @@ fn separated(rows: Vec<AnyElement>) -> Vec<AnyElement> {
 
 impl IntoElement for FormGroup {
     fn into_element(self) -> AnyElement {
+        let tail = self.tail.clone();
+        let tail_rows = tail.map(|rows| {
+            dynamic(move || {
+                let list = rows();
+                (!list.is_empty()).then(|| {
+                    view().children(
+                        list.into_iter().map(|row| view().child(row).child(inset_hairline()).into_element()).collect::<Vec<_>>(),
+                    )
+                })
+            })
+        });
         view()
             .gap(px(6.0))
             .min_w(px(0.0))
@@ -464,7 +500,8 @@ impl IntoElement for FormGroup {
                 view()
                     .rounded(px(if self.in_dialog { radius::MD } else { radius::XL }))
                     .bg(group_fill(self.in_dialog))
-                    .children(separated(self.rows)),
+                    .children(separated(self.rows))
+                    .child(tail_rows),
             )
             .child(self.footnote.map(|f| view().px(px(12.0)).child(f)))
             .into_element()

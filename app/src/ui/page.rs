@@ -83,6 +83,8 @@ pub struct Page {
     actions: Option<Build>,
     bar_actions: Option<Build>,
     bottom_bar: Option<Build>,
+    /// The bottom bar floats only below 1024 px (Import); from there the screen places it.
+    bar_below_lg: bool,
     wide: bool,
     content: Vec<AnyElement>,
 }
@@ -101,6 +103,7 @@ pub fn page_with(title: impl Fn() -> Option<SharedString> + 'static) -> Page {
         actions: None,
         bar_actions: None,
         bottom_bar: None,
+        bar_below_lg: false,
         wide: false,
         content: Vec::new(),
     }
@@ -129,6 +132,14 @@ impl Page {
     /// window's bottom edge (over the tab bar on phones) while the content scrolls under it.
     pub fn bottom_bar(mut self, bar: impl Fn() -> AnyElement + 'static) -> Self {
         self.bottom_bar = Some(Rc::new(bar));
+        self
+    }
+
+    /// With [`Page::bottom_bar`]: the bar floats below 1024 px only. From 1024 px the bar is not
+    /// drawn and the page clears nothing for it; the screen shows its own content in the flow
+    /// (`actionBarClass("lg")` in the web UI).
+    pub fn bottom_bar_below_lg(mut self) -> Self {
+        self.bar_below_lg = true;
         self
     }
 
@@ -263,9 +274,10 @@ fn desktop_page(p: Page) -> AnyElement {
     });
     let top_meta = (!detail && p.meta.is_some()).then(|| meta_row(p.meta.clone(), None, || false, false));
     let has_bottom_bar = p.bottom_bar.is_some();
+    let bar_below_lg = p.bar_below_lg;
     let body = column(p.wide)
         .pt(px(TOOLBAR_HEIGHT + if detail { 24.0 } else { 16.0 }))
-        .pb(move || px(if has_bottom_bar { 96.0 } else if window_width() >= 1024.0 { 32.0 } else { 24.0 }))
+        .pb(move || px(if has_bottom_bar && !(bar_below_lg && window_width() >= ACTIONS_IN_BAR_FROM) { 96.0 } else if window_width() >= 1024.0 { 32.0 } else { 24.0 }))
         .child(head)
         .child(top_meta)
         .children(p.content);
@@ -541,6 +553,28 @@ pub fn panel(
     actions: Option<AnyElement>,
     content: impl IntoElement,
 ) -> impl IntoElement {
+    panel_with_body(heading, description, actions, content, 16.0, 16.0)
+}
+
+/// A card whose body has 8 px sides and bottom and 4 px on top, for content that draws its own
+/// rows (`bodyClassName="p-2 pt-1"`: the import preview).
+pub fn panel_tight(
+    heading: Option<SharedString>,
+    description: Option<SharedString>,
+    actions: Option<AnyElement>,
+    content: impl IntoElement,
+) -> impl IntoElement {
+    panel_with_body(heading, description, actions, content, 8.0, 4.0)
+}
+
+fn panel_with_body(
+    heading: Option<SharedString>,
+    description: Option<SharedString>,
+    actions: Option<AnyElement>,
+    content: impl IntoElement,
+    padding: f32,
+    top: f32,
+) -> impl IntoElement {
     let header = (heading.is_some() || actions.is_some()).then(|| {
         view()
             .flex_row()
@@ -564,5 +598,5 @@ pub fn panel(
         .rounded(px(radius::XL))
         .bg(move || theme().muted)
         .child(header)
-        .child(view().p(px(16.0)).child(content))
+        .child(view().p(px(padding)).pt(px(top)).child(content))
 }

@@ -233,6 +233,18 @@ pub fn alert(
     error: impl Fn() -> Option<String> + 'static,
     on_action: impl Fn() + 'static,
 ) -> impl IntoElement {
+    alert_with_cancel(open, "Cancel", spec, busy, error, on_action)
+}
+
+/// [`alert`] whose dismiss button has its own words ("Keep importing").
+pub fn alert_with_cancel(
+    open: Signal<bool>,
+    cancel_label: &'static str,
+    spec: impl Fn() -> Alert + 'static,
+    busy: impl Fn() -> bool + 'static,
+    error: impl Fn() -> Option<String> + 'static,
+    on_action: impl Fn() + 'static,
+) -> impl IntoElement {
     let busy = Rc::new(busy);
     let error = Rc::new(error);
     let on_action = Rc::new(on_action);
@@ -253,7 +265,7 @@ pub fn alert(
         let close = cancel_button.clone();
         let spec = spec();
         let wide = window_width() >= 640.0;
-        let cancel = button("Cancel").variant(Variant::Secondary).disabled(move || b1()).on_press(move || close());
+        let cancel = button(cancel_label).variant(Variant::Secondary).disabled(move || b1()).on_press(move || close());
         let action = button(spec.action.clone())
             .variant(if spec.destructive { Variant::Destructive } else { Variant::Primary })
             .busy(move || b2(), spec.busy_label.clone())

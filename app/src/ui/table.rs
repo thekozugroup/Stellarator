@@ -19,19 +19,27 @@ pub struct Column {
     pub title: &'static str,
     pub width: Option<f32>,
     pub numeric: bool,
+    /// For a column without a width: its share of the free space (1 for [`Column::flex`]).
+    pub grow: f32,
 }
 
 impl Column {
     pub const fn flex(title: &'static str) -> Self {
-        Column { title, width: None, numeric: false }
+        Column { title, width: None, numeric: false, grow: 1.0 }
+    }
+
+    /// A column without a width that takes `grow` shares of the free space (two flex columns with
+    /// 1.1 and 1 share it 11 to 10).
+    pub const fn share(title: &'static str, grow: f32) -> Self {
+        Column { title, width: None, numeric: false, grow }
     }
 
     pub const fn fixed(title: &'static str, width: f32) -> Self {
-        Column { title, width: Some(width), numeric: false }
+        Column { title, width: Some(width), numeric: false, grow: 1.0 }
     }
 
     pub const fn numeric(title: &'static str, width: f32) -> Self {
-        Column { title, width: Some(width), numeric: true }
+        Column { title, width: Some(width), numeric: true, grow: 1.0 }
     }
 }
 
@@ -40,7 +48,7 @@ pub fn cell(column: Column, content: impl IntoElement) -> impl IntoElement {
     let base = view().flex_row().items_center().px(px(CELL_PADDING)).py(px(4.0)).min_w(px(0.0)).overflow_hidden();
     let base = match column.width {
         Some(width) => base.w(px(width)).flex_none(),
-        None => base.flex_1(),
+        None => base.flex_grow(column.grow).basis(px(0.0)),
     };
     let base = if column.numeric { base.justify_end() } else { base };
     base.child(content)
