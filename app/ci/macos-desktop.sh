@@ -41,10 +41,11 @@ if ! wait_window "$first"; then
 fi
 sleep 3
 
-# The window, moved by its top band.
+# The window, moved by its top band: right and a little up, so it stays clear of the Dock (macOS
+# moves a window that opens behind it).
 before=$(bounds)
 x=$(field "$before" X); y=$(field "$before" Y)
-"$drag" "$(echo "$x + 140" | bc)" "$(echo "$y + 26" | bc)" "$(echo "$x + 290" | bc)" "$(echo "$y + 116" | bc)"
+"$drag" "$(echo "$x + 140" | bc)" "$(echo "$y + 26" | bc)" "$(echo "$x + 290" | bc)" "$(echo "$y - 4" | bc)"
 sleep 1
 moved=$(bounds)
 echo "window at launch $before, after the drag $moved"
@@ -57,6 +58,9 @@ echo "window at launch $before, after the drag $moved"
   done
 } | tee "$out/desktop-menus.txt"
 grep -q "Settings" "$out/desktop-menus.txt" || echo "::warning::no Settings item read from the Stellarator menu (see desktop-menus.txt)"
+# macOS lists the open windows at the end of the Window menu, and adds Enter Full Screen to View.
+grep -q "^Window: .*, Stellarator$" "$out/desktop-menus.txt" || echo "::warning::the Window menu does not list the window"
+grep -q "^View: .*Full Screen" "$out/desktop-menus.txt" || echo "::warning::no Enter Full Screen in the View menu"
 
 # A second process on the same data folder: it shows why it cannot start, then quits from there.
 "$exe" > "$out/desktop-second.log" 2>&1 &
@@ -90,10 +94,16 @@ if wait_window "$again"; then
   reopened=$(bounds)
   screencapture -x "$out/desktop-reopened.png"
   echo "window when started again $reopened"
-  [ "$(field "$reopened" X)" = "$(field "$moved" X)" ] && [ "$(field "$reopened" Y)" = "$(field "$moved" Y)" ] \
-    || echo "::warning::the window did not open where it was left"
+  same=1
+  for f in X Y Width Height; do [ "$(field "$reopened" $f)" = "$(field "$moved" $f)" ] || same=0; done
+  [ $same = 1 ] && echo "the window opened where it was left" || echo "::warning::the window did not open where it was left"
 else
   echo "::warning::the app did not open its window the second time"; tail -5 "$out/desktop-reopened.log"
 fi
 quit_app "$again"
+
+# The earlier steps' launches (macos-session.sh) on the same data folder: without a move or a
+# resize between them, each opens as the one before closed.
+echo "the window at the earlier launches:"
+for f in "$out"/*-window.txt; do echo "  $(basename "$f" -window.txt): $(tail -n 1 "$f")"; done
 exit 0

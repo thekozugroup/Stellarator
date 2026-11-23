@@ -7,7 +7,11 @@
 //!   keeps a second process away from the database (crates/core/src/datalock.rs): it shows why in
 //!   [`startup_failure`] and quits.
 //! - **The window's place.** nsh.json `"window": { "restoreBounds": true }`: nsh keeps the main
-//!   window's size, position and maximized or full-screen mode and opens it there next time.
+//!   window's size, position and maximized or full-screen mode and opens it there next time. On
+//!   macOS (nsh 0.6.1) the window comes back 32 pt shorter each launch, its bottom edge in place,
+//!   seemingly as AppKit keeps the content size when the hidden title bar (full-size content)
+//!   applies after nsh placed the window. [`show_window`] puts the kept place back before the
+//!   window shows; with that fixed in nsh it changes nothing.
 //! - **No flash at launch.** nsh.json `"defaultVisible": false`: the window opens hidden;
 //!   [`show_window`] shows it once it is ready (on macOS after the toolbar that gives its corners,
 //!   `platform::setup_window`), so it never shows with the plain title bar's corners first.
@@ -16,9 +20,10 @@
 //!   and Linux have no menu bar, as the Tauri app: their text fields handle the editing keys
 //!   themselves, and the app's keys are in `shortcuts`.
 
+use std::cell::Cell;
 use std::time::Duration;
 
-use nsh_core::desktop::MenuRole;
+use nsh_core::desktop::{MenuRole, WindowMode, WindowPlacement};
 use nsh_core::element::desktop::{MenuItem, main_window, set_application_menu};
 use nsh_core::platform::Os;
 use nsh_core::prelude::*;
@@ -31,12 +36,25 @@ pub const REPO_URL: &str = "https://github.com/thekozugroup/Stellarator";
 /// How long the window may stay hidden at launch, whatever happens: past it, it shows.
 const SHOW_AT_THE_LATEST: Duration = Duration::from_millis(1500);
 
+/// Where nsh keeps the main window's place (nsh-core's `placement_key("main")`).
+const KEPT_PLACEMENT_KEY: &str = "nsh.window:main";
+
+thread_local! {
+    /// macOS: the main window's place from the last run, read before this run changes it; put
+    /// back once, when the window first shows.
+    static KEPT: Cell<Option<WindowPlacement>> = const { Cell::new(None) };
+}
+
 /// Sets up the desktop side. Called once from the root component.
 pub fn install() {
     if !os().is_desktop() {
         return;
     }
     if os() == Os::MacOs {
+        let kept = nsh_core::storage::Storage::get_item(KEPT_PLACEMENT_KEY)
+            .and_then(|json| serde_json::from_str::<WindowPlacement>(&json).ok())
+            .filter(|p| p.mode == WindowMode::Normal);
+        KEPT.with(|k| k.set(kept));
         set_application_menu(mac_menu());
     } else {
         // No toolbar to wait for: show the window with its first frame.
@@ -62,7 +80,11 @@ pub fn install() {
 /// changes nothing.
 pub fn show_window() {
     if os().is_desktop() {
-        main_window().show();
+        let window = main_window();
+        if let Some(kept) = KEPT.with(Cell::take) {
+            window.set_placement(kept);
+        }
+        window.show();
     }
 }
 
@@ -113,15 +135,14 @@ fn mac_menu() -> Vec<MenuItem> {
                 MenuItem::role(MenuRole::SelectAll),
             ],
         ),
+        // No Enter Full Screen item here: AppKit adds its own to the View menu. nsh takes the first
+        // submenu with a window role (full screen among them) for the Window menu, the one macOS
+        // lists the open windows and the tiling items in, and that has to be Window.
         MenuItem::submenu(
             "View",
-            [
-                MenuItem::new("Back").shortcut(crate::shortcuts::BACK).on_select(|| {
-                    nav::back();
-                }),
-                MenuItem::separator(),
-                MenuItem::role(MenuRole::ToggleFullScreen),
-            ],
+            [MenuItem::new("Back").shortcut(crate::shortcuts::BACK).on_select(|| {
+                nav::back();
+            })],
         ),
         MenuItem::submenu(
             "Window",
