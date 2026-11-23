@@ -17,10 +17,10 @@ use super::icon::{self, icon};
 use super::select::{ITEM_CLASS, popup};
 use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::metrics::CONTROL;
-use crate::theme::radius;
+use crate::theme::{radius, token};
 use crate::theme::text::body;
 
-/// A pop-up button whose items and trigger are drawn by the screen. `items` is read again when
+/// A pop-up button on a card, whose items and trigger are drawn by the screen. `items` is read again when
 /// what it reads changes; `shown` is what the trigger says for the value (`None`: the
 /// `placeholder`, muted); `render_item` draws one row.
 pub struct RichSelect {
@@ -57,7 +57,8 @@ impl IntoElement for RichSelect {
             .border_1()
             .border_color(move || if i1() { theme().destructive } else { AdaptiveColor::TRANSPARENT })
             .style_when(move || i2(), |s| s.ring(px(3.0)).ring_color(move || theme().destructive.opacity(0.2)))
-            .bg(move || theme().secondary)
+            // On a card: the ground in light, the raised tone in dark (index.css `--on-card-control`).
+            .bg(token("on-card-control"))
             .hover(|s| s.bg(move || theme().accent))
             .cursor(Cursor::Pointer)
             .child(view().flex_1().min_w(px(0.0)).flex_row().items_center().gap(px(8.0)).child(content))
@@ -89,8 +90,8 @@ impl IntoElement for RichSelect {
 }
 
 /// A combobox for a value the user may also type: the items are the listed ones; `on_query` hears
-/// what is typed so the screen can offer it as one more item. A 32 px field in the form's field
-/// style with the up-and-down chevrons at its end.
+/// what is typed so the screen can offer it as one more item. A 32 px field in the look of a
+/// secondary button on a card (the web UI's trigger), with the up-and-down chevrons at its end.
 pub struct TypedCombobox {
     pub items: Rc<dyn Fn() -> Vec<SelectItem>>,
     pub value: Rc<dyn Fn() -> Vec<SharedString>>,
@@ -144,9 +145,13 @@ impl IntoElement for TypedCombobox {
             .pr(px(8.0))
             .rounded(px(radius::MD))
             .border_1()
-            .border_color(move || if i1() { theme().destructive } else { theme().input })
+            .border_color(move || if i1() { theme().destructive } else { AdaptiveColor::TRANSPARENT })
             .style_when(move || i2(), |s| s.ring(px(3.0)).ring_color(move || theme().destructive.opacity(0.2)))
-            .bg(move || theme().background)
+            // As the secondary button the web UI's field is: the card's control fill, the accent
+            // under the pointer, dimmed while there is no endpoint.
+            .bg(token("on-card-control"))
+            .hover(|s| s.bg(move || theme().accent))
+            .disabled_style(|s| s.opacity(0.5))
             .self_stretch()
             .text_size(px(13.0));
         if let Some(e) = self.element {

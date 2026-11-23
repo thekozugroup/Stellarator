@@ -13,7 +13,6 @@ use super::status::{checked_at, endpoint_state, endpoint_status_badge};
 use crate::api::types::EndpointOut as Endpoint;
 use crate::data::now_utc;
 use crate::format::int;
-use crate::nav::{self, Route};
 use crate::theme::text::{body, meta, mono, title};
 use crate::theme::{muted_ink, radius};
 use crate::ui::button::{Variant, button};
@@ -209,8 +208,7 @@ pub fn details(
         )
         .child(button("New run").variant(if failing { Variant::Secondary } else { Variant::Primary }).on_press(move || {
             open.set(false);
-            let _ = id;
-            nav::push(Route::NewRun, None);
+            crate::screens::new_run::open(crate::screens::new_run::Prefill { endpoint: Some(id), ..Default::default() });
         }));
 
     view()
