@@ -9,6 +9,7 @@
   "theme": "theme.json",
   "appearance": "system",
   "singleInstance": true,
+  "web": { "base": "/" },
   "icon": {
     "macos": "icons/icon-macos.png",
     "windows": "icons/icon.png",
