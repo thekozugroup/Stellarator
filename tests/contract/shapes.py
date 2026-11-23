@@ -309,8 +309,8 @@ RUN_PARAMS = Obj(
         "max_attempts": int,
         "request_timeout_s": float,
         "pause_after_failures": int,
-        "tools": Opt(RUN_TOOLS),
-    }
+    },
+    optional={"tools": RUN_TOOLS},
 )
 
 RUN = Obj(

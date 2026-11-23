@@ -451,8 +451,9 @@ pub struct RunParams {
     /// Pause the run after this many samples fail in a row (0 = never).
     #[serde(default = "d_pause_after")]
     pub pause_after_failures: i64,
-    /// MCP tools for the model to call. None (the default): no tools.
-    #[serde(default)]
+    /// MCP tools for the model to call. None (the default): no tools. Left out of the JSON when
+    /// None, so the parameters of runs without tools stay as they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<RunTools>,
 }
 

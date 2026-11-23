@@ -212,6 +212,7 @@ class Trash:
         self.pref_sets: list[int] = []
         self.prompt_sets: list[int] = []
         self.endpoints: list[int] = []
+        self.mcp_servers: list[int] = []
 
     def empty(self) -> None:
         for kind, ids in (
@@ -219,6 +220,7 @@ class Trash:
             ("preference-sets", self.pref_sets),
             ("prompt-sets", self.prompt_sets),
             ("endpoints", self.endpoints),
+            ("mcp-servers", self.mcp_servers),
         ):
             for i in reversed(ids):
                 try:
