@@ -1,6 +1,5 @@
 //! The screens. Each route of [`crate::nav::Route`] has its view here; a screen is a function that
-//! returns a [`crate::ui::page::Page`] (its frame) with its content. Screens not yet ported show a
-//! placeholder that names what will come.
+//! returns a [`crate::ui::page::Page`] (its frame) with its content.
 //!
 //! To add a screen: add its route to `nav::Route` (with its destination and label there), write
 //! `screens/<name>.rs` with `pub fn screen(...) -> impl IntoElement`, and add its arm below.
@@ -11,7 +10,6 @@ pub mod export;
 pub mod new_run;
 mod gallery;
 mod import;
-mod placeholder;
 mod preferences;
 mod prompts;
 mod run;
