@@ -174,8 +174,10 @@ pub async fn connect(config: &Config) -> anyhow::Result<SqlitePool> {
     std::fs::create_dir_all(&config.data_dir)?;
     std::fs::create_dir_all(config.upload_dir())?;
     std::fs::create_dir_all(config.export_dir())?;
-    let url = format!("sqlite://{}", config.db_path().display());
-    let options = SqliteConnectOptions::from_str(&url)?
+    // The path, not a `sqlite://` URL: on Windows the data folder is a verbatim path
+    // (`\\?\C:\...`, from `Config::new`'s canonicalize), whose `?` a URL would read as a query.
+    let options = SqliteConnectOptions::new()
+        .filename(config.db_path())
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal)
