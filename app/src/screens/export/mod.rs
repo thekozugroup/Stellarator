@@ -184,19 +184,35 @@ fn shell(
     };
     let result = preview_column(spec.clone(), preview, retry, two_columns);
     let options_column = view().min_w(px(0.0)).gap(px(24.0)).children(options);
+    // From 1024 px the preview stays at the top of the scroll area while the options scroll past it,
+    // until the options end (the web UI's `lg:sticky lg:top-0`): nsh has no sticky position, so it
+    // moves down by the scroll offset, held inside the options' height.
+    let scroll_ref = element_ref();
+    let scrolled = signal(0.0_f32);
+    let options_h = signal(0.0_f32);
+    let preview_h = signal(0.0_f32);
+    watch_scroll(move || scroll_ref.node(), move |e: &ScrollEvent| scrolled.set(e.offset.y.0.max(0.0)));
     let columns = if two_columns {
         view()
             .flex_row()
             .items_start()
             .gap(px(32.0))
-            .child(options_column.flex_1().basis(px(0.0)))
-            .child(view().flex_1().basis(px(0.0)).min_w(px(0.0)).child(result))
+            .child(options_column.flex_1().basis(px(0.0)).on_layout(move |b: &Bounds<Points>| options_h.set(b.size.height.0)))
+            .child(
+                view()
+                    .flex_1()
+                    .basis(px(0.0))
+                    .min_w(px(0.0))
+                    .on_layout(move |b: &Bounds<Points>| preview_h.set(b.size.height.0))
+                    .translate_y(move || px(sticky_offset(scrolled.get(), options_h.get(), preview_h.get())))
+                    .child(result),
+            )
             .into_element()
     } else {
         view().gap(px(32.0)).child(result).child(options_column).into_element()
     };
     let nothing = move || preview.with(|p| p.data.as_ref().is_some_and(|d| d.count == 0));
-    let scroll_area = scroll().flex_shrink(1.0).min_h(px(0.0)).mx(px(-16.0)).child(
+    let scroll_area = scroll().flex_shrink(1.0).min_h(px(0.0)).mx(px(-16.0)).element_ref(&scroll_ref).child(
         view()
             .px(px(16.0))
             .pb(px(4.0))
@@ -248,6 +264,12 @@ fn shell(
         .child(scroll_area)
         .child(phone_count)
         .child(download)
+}
+
+/// How far the preview moves down to stay at the top of a scroll area scrolled by `scrolled`: no
+/// further than the end of the options beside it.
+fn sticky_offset(scrolled: f32, options_h: f32, preview_h: f32) -> f32 {
+    scrolled.min((options_h - preview_h).max(0.0)).max(0.0)
 }
 
 /// Cancel and the download button, as the dialog's footer (its top padding taken back: the web
@@ -889,6 +911,14 @@ mod tests {
         assert_eq!(short_hub_url("https://huggingface.co/datasets/you/x"), "you/x");
         assert_eq!(short_hub_url("https://www.huggingface.co/datasets/you/x"), "you/x");
         assert_eq!(short_hub_url("https://example.com/x"), "https://example.com/x");
+    }
+
+    #[test]
+    fn the_preview_stays_in_view_until_the_options_end() {
+        assert_eq!(sticky_offset(0.0, 900.0, 400.0), 0.0);
+        assert_eq!(sticky_offset(120.0, 900.0, 400.0), 120.0);
+        assert_eq!(sticky_offset(700.0, 900.0, 400.0), 500.0);
+        assert_eq!(sticky_offset(50.0, 300.0, 400.0), 0.0);
     }
 
     #[test]

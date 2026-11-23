@@ -108,12 +108,14 @@ pub fn seqs_control(
 
     let apply: Rc<dyn Fn(i64)> = Rc::new(move |n: i64| {
         let next = n.clamp(MIN, MAX);
-        draft.set(next.to_string());
-        // The hint and the chart show the new value straight away.
-        show(Some(next));
+        // Waiting first: while it waits the field does not follow the shown value (which is about
+        // to become this one), so the last confirmed value stays the settled one.
         let id = next_wait.get() + 1;
         next_wait.set(id);
         waiting.set(id);
+        draft.set(next.to_string());
+        // The hint and the chart show the new value straight away.
+        show(Some(next));
         let settled = settled.clone();
         let send = send.clone();
         let show = show.clone();
@@ -121,10 +123,14 @@ pub fn seqs_control(
             if waiting.get_untracked() != id {
                 return;
             }
-            waiting.set(0);
-            if next != settled.get() {
+            // Decided before the wait ends: the end of the wait lets the field follow the shown
+            // value again, which would make it the settled one.
+            let changed = next != settled.get();
+            if changed {
                 send(next);
-            } else {
+            }
+            waiting.set(0);
+            if !changed {
                 show(None);
             }
         });

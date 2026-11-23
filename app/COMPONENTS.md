@@ -181,3 +181,9 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | A screen's key bindings still fire while a dialog or menu of the same window is open | The screen checks its own dialogs' signals (and `menu_with_open`) before acting, as the preference review does |
 | `TextView`'s part styles are read once | `model_text_with` makes the text view again when its color changes (a response marked rejected) |
 | No `scrollIntoView` with a margin | The preference review reveals a zero-height mark placed the toolbar's height above the prompt |
+| `TextViewParts` given with `provide_context` do not reach a text view made in a `dynamic` | `model_text_with` also passes the size, line height and color as the root's classes |
+| `TextView` reads `$x$` as a formula (the web UI keeps single dollars as text) | `normalize_math` escapes single dollars outside code |
+| `Plot`'s marks take dashes only from a JS style, and its axes size themselves and keep the time labels inside the plot | The run's throughput chart is a canvas with the labels, the flag and the readout as views over it |
+| No CSS grid | Grid tiles take their width from the row's `on_layout` (`tile_width` in `screens/run/progress.rs`); a panel beside another takes its height with an absolutely placed scroll view |
+| No `position: sticky` inside a dialog's scroll area | The export preview moves down by the scroll offset (`translate_y`), held inside the options' height |
+| No `text-wrap: balance` | Long titles wrap where the line is full |
