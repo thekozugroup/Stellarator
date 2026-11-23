@@ -147,13 +147,6 @@ pub struct Clash {
     pub servers: Vec<String>,
 }
 
-impl Clash {
-    /// The names the model sees, in the servers' order.
-    pub fn sent_as(&self) -> Vec<String> {
-        self.servers.iter().map(|s| format!("{s}__{}", self.tool)).collect()
-    }
-}
-
 /// "a and b", "a, b and c".
 pub fn and_list(items: &[String]) -> String {
     match items.len() {
@@ -368,7 +361,6 @@ mod tests {
         f.set_server(&list[1], true, &list);
         let found = clashes(&f, &list);
         assert_eq!(found, vec![Clash { tool: "search".into(), servers: vec!["docs".into(), "github".into()] }]);
-        assert_eq!(found[0].sent_as(), ["docs__search", "github__search"]);
         assert_eq!(clash_lines(&found), ["`search` is on docs and github: sent as `docs__search` and `github__search`."]);
         let many: Vec<Clash> = ["a", "b", "c", "d", "e"]
             .iter()
