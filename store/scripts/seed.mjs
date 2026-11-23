@@ -7,11 +7,11 @@
 //
 //   node store/scripts/seed.mjs
 //
-// Needs: a server with an empty data folder at STELLARATOR_UI (default http://127.0.0.1:5180, the
-// Vite dev server, or the server's own address), the mock model server at MOCK_URL (default
-// http://127.0.0.1:8000/v1), and internet access for the Hugging Face import. Takes 2 to 4 minutes.
+// Needs: a server with an empty data folder at STELLARATOR_UI (default http://127.0.0.1:8096), the
+// mock model server at MOCK_URL (default http://127.0.0.1:8000/v1), and internet access for the
+// Hugging Face import. Takes 2 to 4 minutes.
 
-const BASE = (process.env.STELLARATOR_UI ?? "http://127.0.0.1:5180").replace(/\/$/, "")
+const BASE = (process.env.STELLARATOR_UI ?? "http://127.0.0.1:8096").replace(/\/$/, "")
 const MOCK = process.env.MOCK_URL ?? "http://127.0.0.1:8000/v1"
 // How far the long run goes before it is paused, and the seqs it is left at.
 const LONG_DONE = Number(process.env.LONG_DONE ?? 4200)

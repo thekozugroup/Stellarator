@@ -39,7 +39,7 @@ those systems, linking to the matching section below) and "Source on GitHub" (se
 
 > Version 0.4.0 · Free and open source (MIT) · No account
 
-**Image**: `hero.png` (2400 x 1350). Alt text: "Stellarator showing a run in progress: 5,838 of
+**Image**: `hero.png` (2400 x 1350). Alt text: "Stellarator showing a run in progress: 6,139 of
 7,473 samples done, a throughput chart where tokens per second rise after seqs change from 12 to
 32, and the sequences in flight."
 

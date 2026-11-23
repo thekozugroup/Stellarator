@@ -1,17 +1,19 @@
 // Captures the raw app screens that compose.mjs frames into store images.
 //
-// It drives the web UI in headless Chromium (Playwright) at 2x, with the desktop app's window
-// emulated: on macOS the overlay title bar and 26 pt corners, on Windows 8 px corners, on Linux
-// none. Which screens, themes and platforms it captures comes from images.json, so a new image
-// there is captured on the next run.
+// It drives the app's browser build (`nsh package --target web`, served by stellarator-server) in
+// headless Chromium (Playwright) at 2x. The address carries `?frame=mac`, `windows` or `linux`
+// (app/src/web.rs), so the app lays the screen out as in that platform's window: on macOS the
+// band for the traffic lights and 26 pt corners, on Windows 8 px corners, on Linux none. Which
+// screens, themes and platforms it captures comes from images.json, so a new image there is
+// captured on the next run.
 //
 //   node store/scripts/capture.mjs [--only <shot>[,<shot>]] [--out <dir>]
 //
-// Needs the app running with the sample data (store/README.md): the UI at STELLARATOR_UI
-// (default http://127.0.0.1:5180), its API at the same address under /api, and the mock model
-// server behind the "DGX Spark vLLM" endpoint for the live run. The live run takes about four
-// minutes: it resumes the long run, lets it run at 12 seqs, raises seqs to 32 so the chart shows the
-// change, captures, and pauses the run again.
+// Needs the server running with the sample data and the web build (store/README.md) at
+// STELLARATOR_UI (default http://127.0.0.1:8096), and the mock model server behind the "DGX Spark
+// vLLM" endpoint for the live run. The live run takes about four minutes: it resumes the long run,
+// lets it run at 12 seqs, raises seqs to 32 so the chart shows the change, captures, and pauses the
+// run again.
 
 import { createRequire } from "node:module"
 import { execSync } from "node:child_process"
@@ -20,7 +22,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const here = dirname(fileURLToPath(import.meta.url))
-const BASE = (process.env.STELLARATOR_UI ?? "http://127.0.0.1:5180").replace(/\/$/, "")
+const BASE = (process.env.STELLARATOR_UI ?? "http://127.0.0.1:8096").replace(/\/$/, "")
 const args = process.argv.slice(2)
 const opt = (name) => {
   const i = args.indexOf(name)
@@ -57,11 +59,11 @@ function loadPlaywright() {
   }
 }
 
-/** The window each platform gives the page (docs/desktop.md, "The title bar on macOS"). */
+/** The window of each platform: its content size, and the app's `?frame=` for it. */
 const SHELLS = {
-  mac: { viewport: { width: 1280, height: 800 }, desktop: { titleBar: "overlay", windowRadius: 26 } },
-  windows: { viewport: { width: 1280, height: 720 }, desktop: { windowRadius: 8 } },
-  linux: { viewport: { width: 1280, height: 720 }, desktop: { windowRadius: 0 } },
+  mac: { viewport: { width: 1280, height: 800 }, frame: "mac" },
+  windows: { viewport: { width: 1280, height: 720 }, frame: "windows" },
+  linux: { viewport: { width: 1280, height: 720 }, frame: "linux" },
 }
 
 async function api(method, path, body) {
@@ -76,31 +78,46 @@ async function api(method, path, body) {
 
 const settle = (page, ms = 800) => page.waitForTimeout(ms)
 
+/** Opens `path` laid out as `shell`'s window and waits for it to draw. */
+async function open(page, path, shell, ms = 2000) {
+  await page.goto(`${BASE}${path}?frame=${SHELLS[shell].frame}`, { waitUntil: "networkidle" })
+  await settle(page, ms)
+}
+
+/** Picks `option` in the pop-up `combobox`. */
+async function pick(page, combobox, option) {
+  await combobox.click()
+  await settle(page, 600)
+  await page.getByRole("option", { name: option }).first().click()
+  await settle(page, 600)
+}
+
 /** Each screen: how to get there and into the state the image shows. */
 const SHOTS = {
-  "run-live": async (page, ctx) => {
-    await page.goto(`${BASE}/runs/${ctx.liveRun.id}`, { waitUntil: "networkidle" })
-    await settle(page, 7000)
+  "run-live": async (page, shell, ctx) => {
+    await open(page, `/runs/${ctx.liveRun.id}`, shell, 7000)
   },
-  "run-new": async (page) => {
-    await page.goto(`${BASE}/runs/new`, { waitUntil: "networkidle" })
-    await settle(page)
-    await page.getByRole("combobox", { name: "Endpoint" }).click()
-    await page.getByRole("option", { name: /DGX Spark/ }).click()
-    await settle(page)
-    await page.locator("#model").click()
-    await page.getByRole("option", { name: "mock-reasoning-content" }).click()
-    await page.getByRole("combobox", { name: "Prompt set" }).click()
-    await page.getByRole("option", { name: /gsm8k/ }).click()
-    await page.locator("#concurrency").fill("32")
-    await page.locator("#temperature").fill("0.6")
-    await page.locator("#temperature").blur()
+  "run-new": async (page, shell) => {
+    await open(page, "/runs/new", shell)
+    await pick(page, page.getByRole("combobox", { name: "Endpoint" }), /DGX Spark/)
+    await settle(page, 1200)
+    await pick(page, page.getByRole("combobox").nth(1), "mock-reasoning-content")
+    await pick(page, page.getByRole("combobox", { name: "Prompt set" }), /gsm8k/)
+    await page.getByRole("radiogroup", { name: "Common seqs values" }).getByRole("radio", { name: "32", exact: true }).click()
+    // Temperature: the field that holds the default 0.7.
+    const fields = page.getByRole("textbox")
+    for (let i = 0; i < (await fields.count()); i++) {
+      if ((await fields.nth(i).inputValue().catch(() => "")) === "0.7") {
+        await fields.nth(i).fill("0.6")
+        break
+      }
+    }
+    await page.mouse.click(1000, 120)
     await settle(page)
   },
-  import: async (page) => {
-    await page.goto(`${BASE}/prompts/import`, { waitUntil: "networkidle" })
-    await settle(page, 500)
-    const field = page.locator("input").first()
+  import: async (page, shell) => {
+    await open(page, "/prompts/import", shell, 1000)
+    const field = page.getByRole("textbox", { name: "openai/gsm8k" })
     await field.fill(HF_DATASET)
     await field.press("Enter")
     try {
@@ -110,36 +127,35 @@ const SHOTS = {
     } catch {
       console.warn(`  ${HF_DATASET} did not load (offline?); showing the paste source instead`)
     }
-    await page.getByRole("tab", { name: "Paste" }).click()
-    await page.locator("textarea").first().fill(PASTE_TEXT)
+    await page.getByRole("radio", { name: "Paste" }).click()
+    await settle(page, 500)
+    await page.getByRole("textbox").last().fill(PASTE_TEXT)
     await settle(page, 2500)
   },
-  endpoints: async (page) => {
-    await page.goto(`${BASE}/endpoints`, { waitUntil: "networkidle" })
-    await settle(page, 500)
+  endpoints: async (page, shell) => {
+    await open(page, "/endpoints", shell, 1000)
     await page.getByRole("button", { name: "Add endpoint" }).first().click()
-    await settle(page, 500)
+    await settle(page, 600)
     await page.getByRole("button", { name: "vLLM", exact: true }).click()
     await settle(page, 300)
-    await page.locator("#ep-name").fill("GPU server vLLM")
-    await page.locator("#ep-base_url").fill("http://192.168.1.50:8000/v1")
-    await page.locator("#ep-name").focus()
+    const name = page.getByRole("textbox", { name: "DGX Spark" })
+    await name.fill("GPU server vLLM")
+    await page.getByRole("textbox", { name: "http://192.168.1.50:8000/v1" }).fill("http://192.168.1.50:8000/v1")
+    await name.focus()
     await settle(page, 600)
   },
-  preferences: async (page) => {
-    await page.goto(`${BASE}/preferences/1`, { waitUntil: "networkidle" })
-    await settle(page, 1200)
+  preferences: async (page, shell) => {
+    await open(page, "/preferences/1", shell, 2500)
   },
-  export: async (page) => {
-    await page.goto(`${BASE}/runs/1`, { waitUntil: "networkidle" })
-    await settle(page)
-    await page.getByRole("button", { name: /export/i }).first().click()
+  export: async (page, shell) => {
+    await open(page, "/runs/1", shell)
+    await page.getByRole("button", { name: "Export dataset…" }).click()
     await settle(page, 1500)
   },
-  sample: async (page) => {
-    await page.goto(`${BASE}/runs/1`, { waitUntil: "networkidle" })
-    await settle(page)
-    await page.locator("table tbody tr").nth(1).locator("a, button").first().click()
+  sample: async (page, shell) => {
+    await open(page, "/runs/1", shell)
+    // The second sample of the first prompt (#1.2).
+    await page.getByRole("link", { name: /capital of Australia/ }).nth(1).click()
     await settle(page, 1500)
   },
 }
@@ -172,22 +188,17 @@ async function main() {
   mkdirSync(OUT, { recursive: true })
   const { chromium } = loadPlaywright()
   const browser = await chromium.launch()
-  const ctxFor = async ({ theme, shell }) => {
-    const c = await browser.newContext({
+  const ctxFor = ({ theme, shell }) =>
+    browser.newContext({
       viewport: SHELLS[shell].viewport,
       deviceScaleFactor: 2,
       colorScheme: theme,
       reducedMotion: "reduce",
     })
-    await c.addInitScript((d) => {
-      window.__STELLARATOR_DESKTOP__ = Object.freeze(d)
-    }, SHELLS[shell].desktop)
-    return c
-  }
   const capture = async (key, job, ctx) => {
     const c = await ctxFor(job)
     const page = await c.newPage()
-    await SHOTS[job.shot](page, ctx)
+    await SHOTS[job.shot](page, job.shell, ctx)
     await page.screenshot({ path: join(OUT, `${key}.png`) })
     await c.close()
     console.log(`  wrote ${key}.png`)
