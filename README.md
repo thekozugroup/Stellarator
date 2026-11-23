@@ -16,7 +16,7 @@ container next to your GPU.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Quick start](#quick-start) · [What it looks like](#what-it-looks-like) ·
-[What it does](#what-it-does) · [Export formats](#export-formats) ·
+[What it does](#what-it-does) · [Export formats](#export-formats) · [Tools](docs/tools.md) ·
 [Desktop app](docs/desktop.md) · [Docker](docs/docker.md) · [Design](DESIGN.md) ·
 [Changelog](CHANGELOG.md)
 
@@ -177,6 +177,22 @@ The import preview shows the first prompts and what was left out before anything
 For vLLM or SGLang, start the server with a reasoning parser (`--reasoning-parser qwen3` or
 `deepseek_r1`, for example) to get the trace as its own field.
 
+### Tool use from MCP servers
+
+Give a run tools from MCP servers, and the model calls them while it answers. Stellarator runs each
+call on its server, sends the result back and keeps every step: each assistant turn with its
+thinking and tool calls, each tool result, and the final answer. The exports carry the whole trace
+in the formats trainers read, so a student model learns from the teacher's real calls and results.
+
+- Add servers by pasting the JSON you use in Claude Desktop, Cursor, Windsurf or VS Code; stdio and
+  streamable HTTP servers. Env and header values are kept secret like API keys.
+- Pick servers and tools per run, with a limit on rounds of calls, a timeout per call and a limit on
+  result length.
+- The endpoint must support tool calling (vLLM: `--enable-auto-tool-choice --tool-call-parser`).
+
+[docs/tools.md](docs/tools.md) has the details: endpoint flags, export formats per trainer, and the
+server-mode rule for stdio servers.
+
 ### Preference pairs
 
 Collect several candidates per prompt (set samples per prompt to 2 or more, or run the same prompt
@@ -215,7 +231,13 @@ Preference (one record per pair):
 The thinking trace can go inline as `<think>` tags, in a `reasoning_content` field (Qwen3 and
 DeepSeek chat templates), in a `thinking` field (gpt-oss chat template), or be left out. Files are
 JSONL, JSON, Parquet or CSV, downloaded or pushed straight to the Hugging Face Hub. Truncated
-responses (finish reason `length`) are skipped by default.
+responses (finish reason `length`, or `tool_rounds` for a sample that ran out of tool rounds) are
+skipped by default.
+
+For runs with tools, chat messages add the assistant turns with `tool_calls`, the `tool` messages
+and a `tools` column (TRL, Axolotl); ShareGPT uses LLaMA-Factory's `function_call` and
+`observation` turns; DPO and KTO records hold whole trajectories. Alpaca and prompt-completion
+cannot hold tool calls and are refused for those runs ([docs/tools.md](docs/tools.md#exports)).
 
 ## Configuration
 
@@ -227,6 +249,7 @@ Everything else is set in the app. These environment variables are read at start
 | `STELLARATOR_BIND` | `0.0.0.0:8080` | Server and Docker: the address to listen on |
 | `STELLARATOR_PORT` | `8080` | Docker Compose: the host port |
 | `HF_TOKEN` | none | Hugging Face token for gated datasets and Hub pushes; wins over the one saved in Settings |
+| `STELLARATOR_ALLOW_STDIO_MCP` | unset | Server and Docker: `1` allows stdio MCP servers, which start commands ([docs/tools.md](docs/tools.md#stdio-servers-in-server-mode)). The desktop app always allows them |
 | `RUST_LOG` | `info` | Log detail, for example `debug` |
 
 The desktop app's data lives in `~/Library/Application Support/com.thekozugroup.stellarator` on a
@@ -275,14 +298,15 @@ Details in [docs/desktop.md](docs/desktop.md#builds-and-releases-ci).
 ```
 app/              The app: screens and components in Rust on nsh; installers in app/packaging
 crates/core       API contract, database, settings, endpoint presets
-crates/engine     Runs: worker pool, streaming, thinking-trace extraction, retries, metrics
+crates/engine     Runs: worker pool, streaming, thinking-trace extraction, retries, metrics, the tool loop
+crates/mcp        MCP client (stdio and streamable HTTP), pasted-config import, tool names
 crates/import     Hugging Face (Parquet range reads), file and pasted-text imports
 crates/export     Dataset formats, JSONL/JSON/Parquet/CSV writers, Hugging Face Hub push
 crates/server     HTTP routes and the embedded web UI; the stellarator-server binary
-crates/mock       A fake OpenAI-compatible server, for trying it out and for tests
+crates/mock       A fake OpenAI-compatible server and MCP server, for trying it out and for tests
 tests/contract/   Black-box HTTP tests for the API
 store/            Store listings, screenshots and the scripts that make them
-docs/             Desktop app, Docker, images
+docs/             Desktop app, Docker, tools, images
 ```
 
 [PRODUCT.md](PRODUCT.md) says who the tool is for; [DESIGN.md](DESIGN.md) records its visual system.

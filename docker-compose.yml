@@ -8,6 +8,9 @@ services:
       - stellarator-data:/data
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
+      # Stdio MCP servers start commands inside the container; set to "1" to allow them (trusted
+      # networks only). HTTP MCP servers work without it. See docs/tools.md.
+      STELLARATOR_ALLOW_STDIO_MCP: ${STELLARATOR_ALLOW_STDIO_MCP:-}
     # Lets the container reach a model server running on the same machine (for example vLLM on
     # port 8000) at http://host.docker.internal:8000/v1. The server must listen on 0.0.0.0 or
     # the Docker bridge address, not only on 127.0.0.1.

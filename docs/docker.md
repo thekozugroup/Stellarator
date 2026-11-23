@@ -27,6 +27,9 @@ To try it without a GPU, start the mock model server too and add an endpoint wit
 docker compose --profile mock up -d
 ```
 
+The mock also serves a small MCP server at `http://mock:9100/mcp`, for trying runs with tools (see
+[tools.md](tools.md#try-it-with-the-mock)).
+
 ## DGX Spark and other model servers on the same machine
 
 The container reaches the host as `host.docker.internal` (compose maps it to the host gateway).
@@ -67,6 +70,19 @@ The image is multi-arch. The DGX Spark is linux/arm64 and builds natively with
 | `STELLARATOR_DATA_DIR` | `/data` | Where the SQLite database and uploads live. Declared as a volume. |
 | `STELLARATOR_BIND` | `0.0.0.0:8080` | Address the server listens on inside the container. |
 | `RUST_LOG` | `info` | Log level (`warn` for quieter logs, `debug` to trace requests). |
+| `STELLARATOR_ALLOW_STDIO_MCP` | unset | `1` allows stdio MCP servers, which run commands inside the container. Unset, only HTTP MCP servers can be added. See below. |
+
+## MCP servers (tools)
+
+Runs can call tools from MCP servers ([tools.md](tools.md)). In the container:
+
+- **HTTP MCP servers** work as they are. A server on the host is at
+  `http://host.docker.internal:<port>/mcp`, like a model server.
+- **Stdio MCP servers** start a command, and the container has no sign-in, so they are refused
+  unless you set `STELLARATOR_ALLOW_STDIO_MCP=1` (in `docker-compose.yml` under `environment`, or
+  `-e` with `docker run`). Do this only on a trusted network. The command runs inside the container,
+  which has no Node.js, Python or Docker client: `npx` and `uvx` servers need an image that adds
+  them. Running the MCP server outside the container and adding it over HTTP is usually simpler.
 
 ## Data, backup and restore
 

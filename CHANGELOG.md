@@ -2,6 +2,33 @@
 
 Each version's section is copied into its GitHub release under "What's new".
 
+## Unreleased
+
+### Tool use from MCP servers
+
+- Runs can give the model tools from MCP servers. Stellarator runs each call on its server, sends
+  the result back, and repeats until the model answers or a limit on rounds is reached. Each
+  sample keeps its whole trace: every assistant turn with its thinking and tool calls, every tool
+  result, and the final answer. See [docs/tools.md](docs/tools.md).
+- MCP servers: add them by pasting the JSON from Claude Desktop, Cursor, Windsurf or VS Code, or
+  one at a time; stdio and streamable HTTP. A check lists their tools. Env and header values are
+  secrets, returned as hints only and kept when a server is edited.
+- Per run: pick servers and tools, the number of rounds (default 8), a timeout per call (60 s), a
+  limit on result length (20,000 characters) and `tool_choice` (`auto` or `required`). The exact
+  tool definitions are stored with the run; two servers' tools of the same name become
+  `<server>__<tool>`.
+- Bad arguments, unknown tools, tool errors and timeouts go back to the model as the tool's result.
+  A crashed MCP server is reconnected once. An endpoint without tool calling pauses the run with
+  the flags to add. Samples out of rounds are truncated with finish reason `tool_rounds`.
+- Exports: chat messages with `tool_calls`, `tool` messages and a `tools` column (TRL, Axolotl);
+  ShareGPT with `function_call` and `observation` turns (LLaMA-Factory); raw with the trace; DPO
+  and KTO with whole trajectories. Alpaca and prompt-completion are refused for runs with tools.
+  Parquet marks tool arguments and definitions as JSON, so `datasets` reads them as objects.
+- In server mode (Docker, `stellarator-server`), stdio MCP servers, which start commands, need
+  `STELLARATOR_ALLOW_STDIO_MCP=1`. The desktop app allows them.
+- The mock server serves an MCP server at `/mcp` and on stdio (`stellarator-mock mcp-stdio`), and
+  tool-calling models (`mock-tools`, `mock-tools-loop`, `mock-no-tools`).
+
 ## 0.4.0
 
 ### A native app
