@@ -17,7 +17,7 @@ use nsh_core::prelude::*;
 
 use super::logic::Field;
 use super::state::{Data, State};
-use super::tools::{clashes, offered, settings_summary, summary, unpickable};
+use super::tools::{clash_lines, clashes, offered, settings_summary, summary, unpickable};
 use crate::api::types::{McpStatus, ToolChoice};
 use crate::data::{Load, call};
 use crate::theme::text::{body, label, meta, mono};
@@ -81,9 +81,10 @@ fn group_title() -> impl IntoElement {
 /// The group with servers to pick from.
 fn group(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
     let on = computed(move || state.tools.with(|t| t.on));
+    // In a row as tall as a control, so it lines up with its label.
     let use_row = form_row(
         "Use tools",
-        switch_with(
+        view().h(px(32.0)).flex_row().items_center().child(switch_with(
             "",
             move || on.get(),
             move |next| {
@@ -92,7 +93,7 @@ fn group(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
             },
             || false,
             "Use tools",
-        ),
+        )),
     )
     .align_end();
     // The servers' rows come and go with the servers (their ids and whether each can be picked),
@@ -289,16 +290,9 @@ fn totals_row(state: State, data: Data) -> impl IntoElement {
             Some(e) => body(text(e)).text_color(token("negative-ink")).role(AccessibilityRole::Alert).into_element(),
             None => body(text(summary(&form, &servers))).text_color(muted_ink).tabular_nums().into_element(),
         };
-        let lines: Vec<AnyElement> = found
+        let lines: Vec<AnyElement> = clash_lines(&found)
             .into_iter()
-            .map(|c| {
-                let sent = c.sent_as().iter().map(|n| format!("`{n}`")).collect::<Vec<_>>();
-                let words = format!(
-                    "`{}` is on {}: sent as {}.",
-                    c.tool,
-                    and_list(&c.servers),
-                    and_list(&sent)
-                );
+            .map(|words| {
                 view()
                     .flex_row()
                     .items_start()
@@ -310,15 +304,6 @@ fn totals_row(state: State, data: Data) -> impl IntoElement {
             .collect();
         view().gap(px(6.0)).child(head).children(lines).into_element()
     }))
-}
-
-/// "a and b", "a, b and c".
-fn and_list(items: &[String]) -> String {
-    match items.len() {
-        0 => String::new(),
-        1 => items[0].clone(),
-        n => format!("{} and {}", items[..n - 1].join(", "), items[n - 1]),
-    }
 }
 
 /// The Tool settings group: max rounds, the timeout, a result's length, the tool choice.

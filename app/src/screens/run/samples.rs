@@ -127,8 +127,11 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
     effect(move || fetch(key()));
     {
         let run = run.clone();
+        let was_active = std::cell::Cell::new(is_active(untracked(&run).status));
         let _ = set_interval(REFRESH, move || {
-            if is_active(untracked(&run).status) {
+            let active = is_active(untracked(&run).status);
+            // While it goes, and once more as it stops (the last samples finished between reads).
+            if active || was_active.replace(active) {
                 fetch(untracked(key));
             }
         });

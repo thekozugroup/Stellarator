@@ -4924,6 +4924,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stellarator-core",
+ "stellarator-mcp",
  "tokio",
  "tokio-util",
  "tracing",

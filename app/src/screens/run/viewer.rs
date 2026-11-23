@@ -312,7 +312,7 @@ fn round_line(round: &Round, total: usize) -> AnyElement {
 fn round_cards(round: Round, total: usize) -> Vec<AnyElement> {
     let mut out = vec![round_line(&round, total)];
     if let Some(r) = round.reasoning.clone() {
-        out.push(thinking_card(r, round.reasoning_tokens, "Thinking").into_element());
+        out.push(thinking_card(r, round.reasoning_tokens, "Thinking trace").into_element());
     }
     if !round.text.trim().is_empty() {
         let words = round.text.clone();
@@ -387,6 +387,7 @@ fn facts(s: &SampleOut) -> impl IntoElement {
         ("Tokens", if tokens.is_empty() { DASH.into() } else { tokens.join(" · ") }, !tokens.is_empty(), true, false),
         ("Latency", duration(s.latency_ms.map(|m| m as f64)), s.latency_ms.is_some(), true, false),
         ("Time to first token", duration(s.ttft_ms.map(|m| m as f64)), s.ttft_ms.is_some(), true, false),
+        ("Tool calls", int(s.tool_calls), s.trace.is_some() || s.tool_calls > 0, true, false),
         ("Attempts", int(s.attempts), true, true, false),
         (
             if failed { "Failed" } else { "Completed" },
@@ -399,6 +400,8 @@ fn facts(s: &SampleOut) -> impl IntoElement {
     let rows: Vec<AnyElement> = all
         .into_iter()
         .filter(|(_, _, known, _, _)| *known || !failed)
+        // Tool calls only for a sample of a run with tools.
+        .filter(|(k, _, known, _, _)| *k != "Tool calls" || *known)
         .map(|(k, v, _, is_mono, warn)| {
             let value = if is_mono {
                 mono(text(v)).line_height(px(20.0)).into_element()

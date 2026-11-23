@@ -154,6 +154,47 @@ impl Clash {
     }
 }
 
+/// "a and b", "a, b and c".
+pub fn and_list(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        n => format!("{} and {}", items[..n - 1].join(", "), items[n - 1]),
+    }
+}
+
+/// The group's lines about shared names, one per set of servers that share them (backticks mark
+/// code): "`lookup` is on docs and local: sent as `docs__lookup` and `local__lookup`.", or for
+/// several names "`lookup`, `add` and 4 more are on docs and local: each sent as `docs__<name>` and
+/// `local__<name>`."
+pub fn clash_lines(found: &[Clash]) -> Vec<String> {
+    let mut groups: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    for c in found {
+        match groups.iter_mut().find(|(servers, _)| *servers == c.servers) {
+            Some((_, tools)) => tools.push(c.tool.clone()),
+            None => groups.push((c.servers.clone(), vec![c.tool.clone()])),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(servers, tools)| {
+            let on = and_list(&servers);
+            if tools.len() == 1 {
+                let sent: Vec<String> = servers.iter().map(|s| format!("`{s}__{}`", tools[0])).collect();
+                return format!("`{}` is on {on}: sent as {}.", tools[0], and_list(&sent));
+            }
+            let named: Vec<String> = tools.iter().take(3).map(|t| format!("`{t}`")).collect();
+            let names = if tools.len() > 3 {
+                format!("{} and {} more", named.join(", "), int(tools.len() as i64 - 3))
+            } else {
+                and_list(&named)
+            };
+            let sent: Vec<String> = servers.iter().map(|s| format!("`{s}__<name>`")).collect();
+            format!("{names} are on {on}: each sent as {}.", and_list(&sent))
+        })
+        .collect()
+}
+
 /// The names offered by more than one picked server, in the order they first appear.
 pub fn clashes(form: &ToolsForm, servers: &[Server]) -> Vec<Clash> {
     let mut by_name: Vec<(String, Vec<String>)> = Vec::new();
@@ -328,6 +369,19 @@ mod tests {
         let found = clashes(&f, &list);
         assert_eq!(found, vec![Clash { tool: "search".into(), servers: vec!["docs".into(), "github".into()] }]);
         assert_eq!(found[0].sent_as(), ["docs__search", "github__search"]);
+        assert_eq!(clash_lines(&found), ["`search` is on docs and github: sent as `docs__search` and `github__search`."]);
+        let many: Vec<Clash> = ["a", "b", "c", "d", "e"]
+            .iter()
+            .map(|t| Clash { tool: (*t).into(), servers: vec!["docs".into(), "local".into()] })
+            .chain([Clash { tool: "x".into(), servers: vec!["a".into(), "b".into(), "c".into()] }])
+            .collect();
+        assert_eq!(
+            clash_lines(&many),
+            [
+                "`a`, `b`, `c` and 2 more are on docs and local: each sent as `docs__<name>` and `local__<name>`.",
+                "`x` is on a, b and c: sent as `a__x`, `b__x` and `c__x`.",
+            ]
+        );
         // Not offered from github: no clash.
         f.set_tool(&list[1], "search", false, &list);
         assert!(clashes(&f, &list).is_empty());
