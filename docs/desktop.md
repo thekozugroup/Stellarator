@@ -483,10 +483,11 @@ Mac app with the same `APPLE_*` secrets as the Tauri workflow when they are set.
 
 It does not publish yet. To switch releases from the Tauri app to the nsh app:
 
-1. In `.github/workflows/release-nsh.yml`, set `PUBLISH: "true"`.
-2. Stop desktop.yml from publishing: delete it, or remove its `release` and `publish` jobs (its
-   release names and tags are the same, and two workflows must not publish one version).
-3. Bump the version in `Cargo.toml`, `app/Cargo.toml` and `app/nsh.json` (the first job fails if
+1. In `.github/workflows/release-nsh.yml`, set `PUBLISH: "true"`. desktop.yml reads that line:
+   from then on it builds the Tauri installers as artifacts only, and no longer compares its
+   version with the workspace's (the two workflows use the same release names and tags, and one
+   version must not be published by both).
+2. Bump the version in `Cargo.toml`, `app/Cargo.toml` and `app/nsh.json` (the first job fails if
    they differ), add the CHANGELOG section, and push to `main`.
 
 The release is made as the Tauri one is: a draft, the builds upload into it, published as the

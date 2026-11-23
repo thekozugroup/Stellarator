@@ -6,12 +6,12 @@
 #   Windows  Stellarator_<v>_x64-setup.exe (Inno Setup, made by `nsh package`), Stellarator_<v>_x64_en-US.msi (WiX)
 #   Linux    Stellarator_<v>_amd64.deb, Stellarator_<v>_amd64.AppImage
 #
-# Publishing is off until the switch from the Tauri app: set PUBLISH below to "true" (and stop
-# desktop.yml from publishing, see docs/desktop.md). Then a GitHub release tagged v<version in
-# Cargo.toml> is made as desktop.yml makes it: by a push to main whose version has no published
-# release yet, by Run workflow with "Publish a release" checked, or by a v* tag push. One draft is
-# created first, the builds upload into it, and it is published (and marked latest) only when all
-# of them succeed.
+# Publishing is off until the switch from the Tauri app: set PUBLISH below to "true". desktop.yml
+# reads that line and then stops publishing (docs/desktop.md). Then a GitHub release tagged
+# v<version in Cargo.toml> is made as desktop.yml makes it: by a push to main whose version has no
+# published release yet, by Run workflow with "Publish a release" checked, or by a v* tag push.
+# One draft is created first, the builds upload into it, and it is published (and marked latest)
+# only when all of them succeed.
 #
 # macOS signing and notarization are optional, with the secrets desktop.yml reads (all of them):
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY  Developer ID signing
@@ -45,7 +45,8 @@ on:
         default: false
 
 env:
-  # The switch: "false" builds the installers only; "true" also publishes releases.
+  # The switch: "false" builds the installers only; "true" also publishes releases, and stops
+  # desktop.yml publishing (it greps this line: keep it on one line, indented two spaces).
   PUBLISH: "false"
   CARGO_TERM_COLOR: always
   CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
