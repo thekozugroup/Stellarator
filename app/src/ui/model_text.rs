@@ -9,7 +9,8 @@
 //! Raw text keeps its line breaks and wraps anywhere. Links report their presses and open nothing,
 //! and images show as their alt text, as model output is untrusted.
 
-use nsh_base::{TextViewPart, TextViewParts, text_view, theme};
+use nsh_base::{TextViewClasses, TextViewPart, TextViewParts, text_view, theme};
+use nsh_core::element::StyleRefinement;
 use nsh_core::prelude::*;
 use nsh_core::storage::Storage;
 
@@ -106,11 +107,23 @@ fn reading_parts() -> TextViewParts {
 fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
     let (size, line) = (style.size, style.line_height);
     let color = std::rc::Rc::new(style.color());
+    // The blocks take the color as well as the root: the text view's own ink on its root can win
+    // over the root part's color, and the blocks' text inherits from the nearest color.
+    let tinted = |color: std::rc::Rc<dyn Fn() -> AdaptiveColor>| {
+        move |s: StyleRefinement| {
+            let color = color.clone();
+            s.text_color(move || color())
+        }
+    };
+    let c: std::rc::Rc<dyn Fn() -> AdaptiveColor> = color.clone();
     TextViewParts::new()
         .part(TextViewPart::Root, move |s| {
             let color = color.clone();
             s.text_size(px(size)).line_height(px(line)).text_color(move || color()).max_w(px(640.0)).gap(px(size * 0.75))
         })
+        .part(TextViewPart::Paragraph, tinted(c.clone()))
+        .part(TextViewPart::Heading, tinted(c.clone()))
+        .part(TextViewPart::List, tinted(c))
         .part(TextViewPart::Heading, |s| s.text_size(px(15.0)).line_height(px(21.0)).font_weight(FontWeight::SEMIBOLD).mt(px(8.0)))
         .part(TextViewPart::Heading4, |s| s.text_size(px(14.0)))
         .part(TextViewPart::Heading5, |s| s.text_size(px(14.0)))
@@ -157,7 +170,16 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
                 .into_element(),
             TextMode::Rendered => {
                 provide_context(reading_parts_with(&style));
+                // The size, line height and color also as the root's classes: the parts given as a
+                // context do not reach a text view made in a `dynamic` (its component runs under
+                // the dynamic's own owner), and the classes win over the view's defaults.
+                let muted = (style.muted)();
+                let classes = TextViewClasses {
+                    root: Some(root_classes(style.size, style.line_height, muted).into()),
+                    ..TextViewClasses::default()
+                };
                 text_view()
+                    .classes(classes)
                     .markdown(move || Some(SharedString::from(normalize_math(&source()))))
                     .selectable(true)
                     .render_image(|image: &nsh_base::text_view::Image| {
@@ -170,12 +192,18 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
     })
 }
 
+/// The root's classes at `size` on `line` points, in muted ink or ink.
+fn root_classes(size: f32, line: f32, muted: bool) -> String {
+    format!("text-[{size}px] leading-[{line}px] {}", if muted { "text-muted-foreground" } else { "text-foreground" })
+}
+
 /// Models write math as `\( … \)`, `\[ … \]`, `$$ … $$` and sometimes `$ … $`. As the web UI
 /// (lib/math.ts): `\( x \)` becomes inline `$$x$$`, `\[ x \]` a display block, and a line that
 /// holds only `$$ x $$` a display block too. Code spans and fenced code are left alone. Single
-/// dollars stay text (prompts are full of prices).
+/// dollars stay text (prompts are full of prices): they are escaped, as the text view would read
+/// `$x$` as a formula.
 pub fn normalize_math(text: &str) -> String {
-    if !text.contains("\\(") && !text.contains("\\[") && !text.contains("$$") {
+    if !text.contains('$') && !text.contains("\\(") && !text.contains("\\[") {
         return text.to_owned();
     }
     let mut out = String::with_capacity(text.len() + 16);
@@ -186,8 +214,23 @@ pub fn normalize_math(text: &str) -> String {
             let a = replace_delimited(part, "\\[", "\\]", |body| format!("\n$$\n{}\n$$\n", body.trim()));
             let b = display_lines(&a);
             let c = replace_delimited(&b, "\\(", "\\)", |body| format!("$${}$$", body.trim()));
-            out.push_str(&c);
+            out.push_str(&escape_single_dollars(&c));
         }
+    }
+    out
+}
+
+/// Each `$` that is not half of `$$` (and not escaped already) written `\$`, so it stays text.
+fn escape_single_dollars(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    for (i, &c) in chars.iter().enumerate() {
+        let prev = i.checked_sub(1).map(|j| chars[j]);
+        let next = chars.get(i + 1).copied();
+        if c == '$' && prev != Some('$') && next != Some('$') && prev != Some('\\') {
+            out.push('\\');
+        }
+        out.push(c);
     }
     out
 }
@@ -281,12 +324,21 @@ mod tests {
     use super::normalize_math;
 
     #[test]
+    fn the_root_classes_carry_the_size_and_color() {
+        assert_eq!(super::root_classes(13.0, 20.8, true), "text-[13px] leading-[20.8px] text-muted-foreground");
+        assert_eq!(super::root_classes(14.0, 22.4, false), "text-[14px] leading-[22.4px] text-foreground");
+    }
+
+    #[test]
     fn math_delimiters_become_dollars() {
         assert_eq!(normalize_math("a \\( x^2 \\) b"), "a $$x^2$$ b");
         assert_eq!(normalize_math("\\[ x \\]"), "\n$$\nx\n$$\n");
         assert_eq!(normalize_math("  $$ e = mc^2 $$"), "  $$\n  e = mc^2\n  $$");
-        // Prices and code stay as written.
-        assert_eq!(normalize_math("costs $12 and $15"), "costs $12 and $15");
+        // Prices and single-dollar formulas stay text (escaped for the text view); code stays as
+        // written.
+        assert_eq!(normalize_math("costs $12 and $15"), "costs \\$12 and \\$15");
+        assert_eq!(normalize_math("Suppose $p$ and $$q$$"), "Suppose \\$p\\$ and $$q$$");
+        assert_eq!(normalize_math("already \\$5"), "already \\$5");
         assert_eq!(normalize_math("`\\( x \\)` and $$y$$"), "`\\( x \\)` and $$y$$");
         assert_eq!(normalize_math("```\n\\[ x \\]\n```"), "```\n\\[ x \\]\n```");
     }

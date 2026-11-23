@@ -234,6 +234,29 @@ pub fn time(t: DateTime<Utc>) -> String {
     clock(d.hour(), d.minute(), Some(d.second()), style())
 }
 
+/// "9:14 PM": the time without seconds (a chart's axis).
+pub fn time_hm(t: DateTime<Utc>) -> String {
+    let d = local(t);
+    clock(d.hour(), d.minute(), None, style())
+}
+
+/// "Nov 16": the date without the year (a chart's axis).
+pub fn month_day(t: DateTime<Utc>) -> String {
+    let d = local(t);
+    format!("{} {}", MONTHS[d.month0() as usize], d.day())
+}
+
+/// "Nov 16, 9:14:05 PM" (a chart's readout across days).
+pub fn date_time_seconds(t: DateTime<Utc>) -> String {
+    let d = local(t);
+    format!("{} {}, {}", MONTHS[d.month0() as usize], d.day(), clock(d.hour(), d.minute(), Some(d.second()), style()))
+}
+
+/// The calendar day `t` falls on where dates are shown, to tell whether two times are on one day.
+pub fn local_day(t: DateTime<Utc>) -> chrono::NaiveDate {
+    local(t).date()
+}
+
 /// "9:14 PM" or "21:14", with seconds when given.
 fn clock(hour: u32, minute: u32, second: Option<u32>, s: Style) -> String {
     let seconds = second.map(|v| format!(":{v:02}")).unwrap_or_default();

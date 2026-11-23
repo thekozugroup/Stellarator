@@ -4,7 +4,7 @@
 //!
 //! | Overlay | Corners | Padding | Width | Notes |
 //! | --- | --- | --- | --- | --- |
-//! | [`Dialog`] | 26 px | 16 px | 384 px ([`DialogWidth::Sm`]), 576 px ([`DialogWidth::Xl`]) or 896 px ([`DialogWidth::FourXl`], the export dialogs), at most the window less 32 px | holds 10 px cards (26 - 16) |
+//! | [`Dialog`] | 26 px | 16 px | 384 px ([`DialogWidth::Sm`]), 448 px ([`DialogWidth::Md`]), 576 px ([`DialogWidth::Xl`]) or 896 px ([`DialogWidth::FourXl`], the export dialogs), at most the window less 32 px | holds 10 px cards (26 - 16) |
 //! | [`alert`] | 26 px | 16 px | 320 px, 384 px from 640 px | title, description, Cancel and the action |
 //! | [`side_sheet`] | the panel radius | 0 | 448 px ([`side_sheet_width`]: another width), the whole window below 640 px | 8 px inside the window from 640 px, as the sidebar |
 //! | [`toast_success`] and the others | 14 px | 16 px | 356 px, bottom right, 24 px from the edges | 4 s, then gone |
@@ -40,7 +40,7 @@ pub enum DialogWidth {
     /// 384 px (`max-w-sm`), the default.
     #[default]
     Sm,
-    /// 448 px (`max-w-md`): short forms (Auto-pair by run).
+    /// 448 px (`max-w-md`): short forms (Auto-pair by run, Rename run).
     Md,
     /// 576 px (`max-w-xl`): forms.
     Xl,

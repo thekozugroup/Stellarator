@@ -7,12 +7,12 @@
 
 pub mod endpoints;
 /// The export dialogs' shared layout and the run's export (the preference export uses the same).
-#[allow(dead_code, reason = "Run detail and the preference export open these; they land next")]
 pub mod export;
 pub mod new_run;
 mod gallery;
 mod placeholder;
 mod preferences;
+mod run;
 mod runs;
 mod settings;
 
@@ -31,7 +31,7 @@ pub fn view(route: Route) -> AnyElement {
         Route::NewRun => new_run::screen().into_element(),
         Route::PromptSets => placeholder::screen("Prompt sets", "Prompt sets").into_element(),
         Route::Preferences => preferences::list_screen().into_element(),
-        Route::Run { .. } => placeholder::screen("Run", "The run's samples").into_element(),
+        Route::Run { id } => run::screen(id).into_element(),
         Route::PromptSet { .. } => placeholder::screen("Prompt set", "The prompt set").into_element(),
         Route::Import => placeholder::screen("Import prompts", "Importing prompts").into_element(),
         Route::PreferenceSet { id } => preferences::review_screen(id).into_element(),
