@@ -170,7 +170,7 @@ async fn delete_is_refused_while_a_run_uses_the_endpoint() {
     assert_eq!(env.delete(&format!("/api/endpoints/{ep}")).await.0, StatusCode::NO_CONTENT);
 
     // A run the engine reports as active counts too (the database row may lag behind).
-    let probe = std::sync::Arc::new(ActiveRuns(vec![ActiveRun { run_id: 1, endpoint_id: Some(1), prompt_set_id: 1 }]));
+    let probe = std::sync::Arc::new(ActiveRuns(vec![ActiveRun { run_id: 1, endpoint_id: Some(1), prompt_set_id: 1, mcp_server_ids: Vec::new() }]));
     let env2 = env_with(probe, std::sync::Arc::new(stellarator_core::probes::Idle)).await;
     assert_eq!(env2.endpoint("Busy 2").await, 1);
     assert_eq!(env2.delete("/api/endpoints/1").await.0, StatusCode::CONFLICT);

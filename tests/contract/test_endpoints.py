@@ -11,11 +11,14 @@ from support import assert_error, assert_no_content
 
 MOCK_MODELS = [
     "mock-flaky",
+    "mock-no-tools",
     "mock-open-think",
     "mock-plain",
     "mock-reasoning",
     "mock-reasoning-content",
     "mock-think-tags",
+    "mock-tools",
+    "mock-tools-loop",
     "mock-truncating",
 ]
 UNREACHABLE = "http://127.0.0.1:1/v1"

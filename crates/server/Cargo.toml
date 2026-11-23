@@ -23,6 +23,7 @@ stellarator-core = { version = "0.4.0", path = "../core" }
 stellarator-engine = { version = "0.4.0", path = "../engine" }
 stellarator-export = { version = "0.4.0", path = "../export" }
 stellarator-import = { version = "0.4.0", path = "../import" }
+stellarator-mcp = { version = "0.4.0", path = "../mcp" }
 tokio = { version = "1.53.3", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["trace", "compression-gzip"] }
 tracing = "0.1.44"

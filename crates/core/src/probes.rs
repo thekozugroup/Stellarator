@@ -9,6 +9,8 @@ pub struct ActiveRun {
     pub run_id: i64,
     pub endpoint_id: Option<i64>,
     pub prompt_set_id: i64,
+    /// The MCP servers whose tools the run calls.
+    pub mcp_server_ids: Vec<i64>,
 }
 
 pub trait RunsProbe: Send + Sync {

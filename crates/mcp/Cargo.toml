@@ -1,0 +1,23 @@
+[package]
+name = "stellarator-mcp"
+description = "Stellarator's MCP client: connecting to MCP servers, listing and calling their tools, and reading pasted server configurations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["serde"] }
+futures = "0.3.34"
+parking_lot = "0.12.5"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "system-proxy"] }
+# The official Rust MCP SDK: the client, with the stdio child-process and streamable HTTP transports.
+rmcp = { version = "3.11.0", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "which-command"] }
+serde = { version = "1.0.229", features = ["derive"] }
+# `preserve_order`: pasted servers are imported in the order they were pasted.
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "json"] }
+stellarator-core = { version = "0.4.0", path = "../core" }
+tokio = { version = "1.53.3", features = ["full"] }
+tracing = "0.1.44"

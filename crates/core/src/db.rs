@@ -154,6 +154,36 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE prompt_sets ADD COLUMN rows_read INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE prompt_sets ADD COLUMN rows_total INTEGER;
     "#,
+    // v3: MCP tools. Saved MCP servers (env and header values are secrets, returned as hints
+    // only), the tool snapshot a run sends (runs.tools, null without tools), each sample's trace
+    // (the messages after the prompt: assistant turns with their tool calls, tool results, the
+    // final answer) and tool call counts.
+    r#"
+    CREATE TABLE IF NOT EXISTS mcp_servers (
+        id INTEGER NOT NULL,
+        name VARCHAR(64) NOT NULL COLLATE NOCASE,
+        transport VARCHAR(10) NOT NULL,
+        command TEXT,
+        args JSON NOT NULL DEFAULT '[]',
+        env JSON NOT NULL DEFAULT '{}',
+        url TEXT,
+        headers JSON NOT NULL DEFAULT '{}',
+        enabled BOOLEAN NOT NULL DEFAULT 1,
+        status VARCHAR(10) NOT NULL DEFAULT 'unchecked',
+        last_error TEXT,
+        checked_at DATETIME,
+        server_info TEXT,
+        tools JSON NOT NULL DEFAULT '[]',
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        CONSTRAINT uq_mcp_server_name UNIQUE (name)
+    );
+    ALTER TABLE runs ADD COLUMN tools JSON;
+    ALTER TABLE runs ADD COLUMN tool_calls INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE samples ADD COLUMN trace JSON;
+    ALTER TABLE samples ADD COLUMN tool_calls INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// Indexes on foreign keys the Python schema left without one. Without them, every row removed by
@@ -242,6 +272,43 @@ mod tests {
             .unwrap();
         assert!(cols.contains(&"status".to_string()) && cols.contains(&"rows_total".to_string()));
         // Running again is a no-op.
+        migrate(&pool).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn v2_database_gains_the_tool_columns() {
+        // A database at version 2 (0.4.0) with a run and a sample: the v3 step adds the MCP table
+        // and the tool columns, and the rows keep their values with the new columns' defaults.
+        let options = SqliteConnectOptions::from_str("sqlite::memory:").unwrap();
+        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options).await.unwrap();
+        sqlx::raw_sql(SCHEMA_V1).execute(&pool).await.unwrap();
+        sqlx::raw_sql(MIGRATIONS[0]).execute(&pool).await.unwrap();
+        sqlx::raw_sql("PRAGMA user_version = 2").execute(&pool).await.unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO prompt_sets (id, name, source_kind, source, prompt_count, created_at) VALUES (1, 's', 'paste', '{}', 1, '2026-01-01 00:00:00');
+             INSERT INTO prompts (id, prompt_set_id, idx, messages, meta) VALUES (1, 1, 0, '[]', '{}');
+             INSERT INTO runs (id, name, endpoint_name, model, prompt_set_id, params, concurrency, status, total, done, failed,
+               truncated, prompt_tokens, completion_tokens, reasoning_tokens, active_seconds, created_at)
+               VALUES (1, 'r', 'e', 'm', 1, '{}', 1, 'completed', 1, 1, 0, 0, 0, 0, 0, 0.0, '2026-01-01 00:00:00');
+             INSERT INTO samples (id, run_id, prompt_id, prompt_idx, sample_idx, status, response, attempts)
+               VALUES (1, 1, 1, 0, 0, 'done', 'hi', 1);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        migrate(&pool).await.unwrap();
+        let v: i64 = sqlx::query_scalar("PRAGMA user_version").fetch_one(&pool).await.unwrap();
+        assert_eq!(v, SCHEMA_VERSION);
+        let (trace, calls, response): (Option<String>, i64, String) =
+            sqlx::query_as("SELECT trace, tool_calls, response FROM samples WHERE id = 1").fetch_one(&pool).await.unwrap();
+        assert_eq!((trace, calls, response.as_str()), (None, 0, "hi"));
+        let (tools, run_calls): (Option<String>, i64) =
+            sqlx::query_as("SELECT tools, tool_calls FROM runs WHERE id = 1").fetch_one(&pool).await.unwrap();
+        assert_eq!((tools, run_calls), (None, 0));
+        // Server names are unique ignoring case.
+        let insert = "INSERT INTO mcp_servers (name, transport, created_at, updated_at) VALUES (?, 'http', '', '')";
+        sqlx::query(insert).bind("GitHub").execute(&pool).await.unwrap();
+        assert!(sqlx::query(insert).bind("github").execute(&pool).await.is_err());
         migrate(&pool).await.unwrap();
     }
 }

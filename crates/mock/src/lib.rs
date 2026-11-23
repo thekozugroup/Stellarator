@@ -12,6 +12,12 @@
 //! | `mock-plain` | no thinking at all |
 //! | `mock-flaky` | like `mock-reasoning-content`, but 20% of requests fail with 500 or 429 |
 //! | `mock-truncating` | stops with finish_reason "length" |
+//! | `mock-tools` | calls a tool from the request's `tools`, then answers using the results ([`toolmodel`]) |
+//! | `mock-tools-loop` | calls a tool on every request and never answers |
+//! | `mock-no-tools` | answers 400 to requests with `tools`, as vLLM without a tool parser |
+//!
+//! The same port also serves a small MCP server over streamable HTTP at `/mcp` ([`mcp`]), and
+//! `stellarator-mock mcp-stdio` serves it on stdin and stdout.
 //!
 //! Speed: `tps` tokens per second per sequence. Failures and delays are random.
 //!
@@ -36,7 +42,10 @@ use serde_json::{json, Map, Value};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-pub const MODELS: [&str; 7] = [
+pub mod mcp;
+pub mod toolmodel;
+
+pub const MODELS: [&str; 10] = [
     "mock-reasoning-content",
     "mock-reasoning",
     "mock-think-tags",
@@ -44,6 +53,9 @@ pub const MODELS: [&str; 7] = [
     "mock-plain",
     "mock-flaky",
     "mock-truncating",
+    "mock-tools",
+    "mock-tools-loop",
+    "mock-no-tools",
 ];
 
 const STEPS: [&str; 6] = [
@@ -59,13 +71,14 @@ struct MockState {
     tps: f64,
 }
 
-/// The mock's routes: `GET /v1/models` and `POST /v1/chat/completions`.
+/// The mock's routes: `GET /v1/models`, `POST /v1/chat/completions`, and the MCP server at `/mcp`.
 pub fn router(tps: f64) -> Router {
     let tps = if tps.is_finite() && tps > 0.0 { tps } else { 60.0 };
     Router::new()
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat))
         .with_state(Arc::new(MockState { tps }))
+        .nest_service("/mcp", mcp::http_service())
 }
 
 /// The routes of [`router`] behind a key: a request without `Authorization: Bearer <api_key>` gets
@@ -196,6 +209,9 @@ async fn chat(State(state): State<Arc<MockState>>, raw: Bytes) -> Response {
         return error(StatusCode::NOT_FOUND, &format!("The model `{model}` does not exist."));
     }
     let mut rng = fastrand::Rng::new();
+    if toolmodel::TOOL_MODELS.contains(&model.as_str()) {
+        return tool_chat(&state, &model, &body, rng).await;
+    }
     if model == "mock-flaky" && rng.f64() < 0.2 {
         if rng.f64() < 0.5 {
             let mut r = error(StatusCode::TOO_MANY_REQUESTS, "Rate limited");
@@ -294,6 +310,100 @@ async fn chat(State(state): State<Arc<MockState>>, raw: Bytes) -> Response {
             let mut delta = Map::new();
             delta.insert(f.into(), Value::String(t));
             if tx.send(chunk(&model, Value::Object(delta), None, None)).await.is_err() {
+                return;
+            }
+        }
+        if tx.send(chunk(&model, json!({}), Some(finish), None)).await.is_err() {
+            return;
+        }
+        if include_usage && tx.send(chunk(&model, json!({}), None, Some(&usage))).await.is_err() {
+            return;
+        }
+        let _ = tx.send(Bytes::from_static(b"data: [DONE]\n\n")).await;
+    });
+    let stream = futures::stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|b| (Ok::<_, Infallible>(b), rx))
+    });
+    let mut resp = Body::from_stream(stream).into_response();
+    resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
+    resp.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    resp
+}
+
+/// A tool-calling model's answer: a thinking trace in `reasoning`, then tool calls (each call's
+/// arguments in pieces of 5 characters) or content, streamed at `tps` or sent whole.
+async fn tool_chat(state: &MockState, model: &str, body: &Value, mut rng: fastrand::Rng) -> Response {
+    let plan = toolmodel::plan(model, body, &mut rng);
+    let (reasoning, calls, content) = match plan {
+        toolmodel::Plan::Reject(message) => return error(StatusCode::BAD_REQUEST, &message),
+        toolmodel::Plan::Calls { reasoning, calls } => (reasoning, calls, String::new()),
+        toolmodel::Plan::Answer { reasoning, content } => (reasoning, Vec::new(), content),
+    };
+    let model = model.to_string();
+    let finish = if calls.is_empty() { "stop" } else { "tool_calls" };
+    // The deltas, in order: reasoning words, then the calls or the content words.
+    let mut deltas: Vec<Value> = reasoning.split(' ').map(|w| json!({"reasoning": format!("{w} ")})).collect();
+    for (index, call) in calls.iter().enumerate() {
+        deltas.push(json!({"tool_calls": [{"index": index, "id": call.id, "type": "function",
+                                            "function": {"name": call.name, "arguments": ""}}]}));
+        let chars: Vec<char> = call.arguments.chars().collect();
+        for piece in chars.chunks(5) {
+            let piece: String = piece.iter().collect();
+            deltas.push(json!({"tool_calls": [{"index": index, "function": {"arguments": piece}}]}));
+        }
+    }
+    let words: Vec<&str> = if content.is_empty() { Vec::new() } else { content.split(' ').collect() };
+    let last = words.len().saturating_sub(1);
+    for (i, w) in words.iter().enumerate() {
+        deltas.push(json!({"content": if i == last { w.to_string() } else { format!("{w} ") }}));
+    }
+    let prompt_tokens: usize = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|m| m.iter().map(|x| x.to_string().split_whitespace().count()).sum())
+        .unwrap_or(0)
+        .max(1);
+    let reasoning_tokens = reasoning.split(' ').count();
+    let usage = json!({
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": deltas.len(),
+        "total_tokens": prompt_tokens + deltas.len(),
+        "completion_tokens_details": {"reasoning_tokens": reasoning_tokens},
+    });
+    tokio::time::sleep(Duration::from_secs_f64(0.02 + rng.f64() * 0.08)).await;
+    if !truthy(body.get("stream")) {
+        tokio::time::sleep(Duration::from_secs_f64(deltas.len() as f64 / state.tps)).await;
+        let mut msg = Map::new();
+        msg.insert("role".into(), json!("assistant"));
+        msg.insert("content".into(), if content.is_empty() && !calls.is_empty() { Value::Null } else { json!(content) });
+        msg.insert("reasoning".into(), json!(reasoning));
+        if !calls.is_empty() {
+            let list: Vec<Value> = calls
+                .iter()
+                .map(|c| json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}))
+                .collect();
+            msg.insert("tool_calls".into(), Value::Array(list));
+        }
+        return Json(json!({
+            "id": "chatcmpl-mock", "object": "chat.completion", "created": now_secs(), "model": model,
+            "choices": [{"index": 0, "message": msg, "finish_reason": finish}], "usage": usage,
+        }))
+        .into_response();
+    }
+    let include_usage = body.get("stream_options").and_then(|o| o.get("include_usage")).is_some_and(|v| truthy(Some(v)));
+    let tps = state.tps;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(32);
+    tokio::spawn(async move {
+        if tx.send(chunk(&model, json!({"role": "assistant", "content": ""}), None, None)).await.is_err() {
+            return;
+        }
+        let mut next = Instant::now();
+        for delta in deltas {
+            next += Duration::from_secs_f64(expovariate(&mut rng, tps));
+            if next > Instant::now() {
+                tokio::time::sleep_until(next).await;
+            }
+            if tx.send(chunk(&model, delta, None, None)).await.is_err() {
                 return;
             }
         }

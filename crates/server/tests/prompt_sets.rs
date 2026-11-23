@@ -132,7 +132,7 @@ async fn delete_cascades_to_runs_samples_and_preferences() {
 
 #[tokio::test]
 async fn delete_is_refused_while_a_run_is_active() {
-    let probe = Arc::new(ActiveRuns(vec![ActiveRun { run_id: 1, endpoint_id: None, prompt_set_id: 1 }]));
+    let probe = Arc::new(ActiveRuns(vec![ActiveRun { run_id: 1, endpoint_id: None, prompt_set_id: 1, mcp_server_ids: Vec::new() }]));
     let env = env_with(probe, Arc::new(Idle)).await;
     let (id, _) = env.prompt_set("Busy", 1).await;
     assert_eq!(id, 1);

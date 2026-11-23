@@ -1577,7 +1577,12 @@ impl RunsProbe for Engine {
         self.tasks
             .lock()
             .values()
-            .map(|t| ActiveRun { run_id: t.run_id, endpoint_id: t.endpoint_id, prompt_set_id: t.prompt_set_id })
+            .map(|t| ActiveRun {
+                run_id: t.run_id,
+                endpoint_id: t.endpoint_id,
+                prompt_set_id: t.prompt_set_id,
+                mcp_server_ids: Vec::new(),
+            })
             .collect()
     }
 }

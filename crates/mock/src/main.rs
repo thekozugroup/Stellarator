@@ -4,12 +4,25 @@
 //!
 //! Then add an endpoint with base URL http://localhost:9100/v1. See the library docs for the models.
 //! With `--api-key`, requests without `Authorization: Bearer <key>` get 401 (a rejected key).
+//!
+//! The same port serves a small MCP server at http://localhost:9100/mcp (streamable HTTP; behind
+//! the key too when one is set). `stellarator-mock mcp-stdio` serves its tools on stdin and stdout
+//! instead, as a stdio MCP server.
 
 use std::net::{IpAddr, SocketAddr};
 
-const USAGE: &str = "Usage: stellarator-mock [--host 0.0.0.0] [--port 9100] [--tps 60] [--api-key KEY]";
+const USAGE: &str =
+    "Usage: stellarator-mock [--host 0.0.0.0] [--port 9100] [--tps 60] [--api-key KEY]\n       stellarator-mock mcp-stdio";
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("mcp-stdio") {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        if let Err(e) = runtime.block_on(stellarator_mock::mcp::serve_stdio()) {
+            eprintln!("The MCP server stopped: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let mut host: IpAddr = IpAddr::from([0, 0, 0, 0]);
     let mut port: u16 = 9100;
     let mut tps: f64 = 60.0;
@@ -53,6 +66,7 @@ fn main() {
             Ok((addr, join)) => {
                 let key = if keyed { ", requests need the API key" } else { "" };
                 eprintln!("Mock OpenAI-compatible server on http://{addr}/v1 ({tps} tokens/s per sequence{key})");
+                eprintln!("Mock MCP server on http://{addr}/mcp");
                 tokio::select! {
                     _ = join => {}
                     _ = tokio::signal::ctrl_c() => {}
