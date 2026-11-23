@@ -278,6 +278,40 @@ pub fn checkbox_with(
         .child(body(text(label)))
 }
 
+/// A checkbox whose label is any element (a name over its description): the box at the top of the
+/// first line, the whole row taking the press.
+pub fn checkbox_content(
+    checked: impl Fn() -> bool + Clone + 'static,
+    on_change: impl Fn(bool) + 'static,
+    content: impl IntoElement,
+    accessibility: impl Into<SharedString>,
+) -> impl IntoElement {
+    let c1 = checked.clone();
+    base_checkbox()
+        .checked(move || checked())
+        .on_change(move |next: &bool| on_change(*next))
+        .accessibility_label(accessibility.into())
+        .flex_row()
+        .items_start()
+        .gap(px(10.0))
+        .cursor(Cursor::Pointer)
+        .indicator_style(|s| {
+            s.mt(px(1.0))
+                .w(px(16.0))
+                .h(px(16.0))
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .rounded(px(radius::XS))
+                .border_1()
+                .border_color(move || theme().input)
+                .bg(move || theme().background)
+                .checked(|s| s.bg(move || theme().primary).border_color(move || theme().primary))
+        })
+        .indicator(view().opacity(move || if c1() { 1.0_f32 } else { 0.0 }).child(icon(icon::CHECK, 14.0, move || theme().primary_foreground)))
+        .child(view().flex_1().min_w(px(0.0)).child(content))
+}
+
 /// Radio buttons choosing one of `options` (value, label) into `value`, 8 px apart.
 pub fn radio_group<V: Clone + PartialEq + 'static>(options: Vec<(V, &'static str)>, value: Signal<V>) -> impl IntoElement {
     let items = options.into_iter().map(move |(v, label)| {
@@ -317,14 +351,33 @@ pub fn radio_group<V: Clone + PartialEq + 'static>(options: Vec<(V, &'static str
 
 /// A switch and its label: a 32 × 18 track, the ink fill when on.
 pub fn switch(label: impl Into<SharedString>, on: Signal<bool>) -> impl IntoElement {
+    let label = label.into();
+    switch_with(label.clone(), move || on.get(), move |next| on.set(next), || false, label)
+}
+
+/// A switch whose state is read with `on` and changed with `set`; while `disabled` holds it takes
+/// no presses and shows at half strength. `label` follows it (empty when the row names it);
+/// `accessibility` names it.
+pub fn switch_with(
+    label: impl Into<SharedString>,
+    on: impl Fn() -> bool + 'static,
+    set: impl Fn(bool) + 'static,
+    disabled: impl Fn() -> bool + Clone + 'static,
+    accessibility: impl Into<SharedString>,
+) -> impl IntoElement {
+    let label = label.into();
+    let d1 = disabled.clone();
     base_switch()
-        .checked(move || on.get())
-        .on_change(move |next: &bool| on.set(*next))
+        .checked(on)
+        .disabled(move || d1())
+        .on_change(move |next: &bool| set(*next))
+        .accessibility_label(accessibility.into())
         .flex_row()
         .items_center()
         .gap(px(8.0))
         .self_start()
         .cursor(Cursor::Pointer)
+        .opacity(move || if disabled() { 0.5_f32 } else { 1.0 })
         .track_style(|s| {
             s.w(px(32.0))
                 .h(px(18.0))
@@ -342,5 +395,5 @@ pub fn switch(label: impl Into<SharedString>, on: Signal<bool>) -> impl IntoElem
                 .transition_transform()
                 .checked(|s| s.translate_x(px(14.0)))
         })
-        .child(body(text(label.into())))
+        .child((!label.is_empty()).then(|| body(text(label))))
 }

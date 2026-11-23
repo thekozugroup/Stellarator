@@ -2,6 +2,12 @@
 //! sample-viewer.tsx): the prompt, the thinking trace (open when short), the response and the
 //! details, each a card with its copy button; the ‹ › pair and J and K step through the rows of
 //! the table's page; Rendered | Raw at the header's end.
+//!
+//! A sample of a run with tools shows its trace in order between the prompt and the response: for
+//! each request that called tools, a line naming it ("Request 1 of 3 · 2.1 s"), its thinking
+//! (folded unless short), what the model wrote, and a card per tool call with its result
+//! (`ui::trace`); then the last request's thinking and the response. A sample cut off by its rounds
+//! of tool calls says it has no answer.
 
 use std::rc::Rc;
 
@@ -24,6 +30,7 @@ use crate::ui::overlay::{sheet_close, side_sheet_width};
 use crate::ui::page::window_width;
 use crate::ui::status::{Tone, status_badge};
 use crate::ui::tooltip::copy_button;
+use crate::ui::trace::{Round, split_final, tool_call_card, trace_rounds};
 
 /// A thinking trace shorter than this opens by itself.
 const SHORT_TRACE: usize = 1500;
@@ -155,7 +162,7 @@ pub fn sample_viewer(
 
 /// The sample's status in the header: a capsule in its state's tint.
 fn sample_badge(s: &SampleOut) -> View {
-    if s.status == SampleStatus::Done && s.finish_reason.as_deref() == Some("length") {
+    if s.status == SampleStatus::Done && crate::ui::status::is_truncated(s.finish_reason.as_deref()) {
         return status_badge(Tone::Attention, None, "Truncated");
     }
     match s.status {
@@ -241,7 +248,22 @@ fn sample_body(s: SampleOut) -> impl IntoElement {
         .child(card_header(card_title("Prompt", None), Some((prompt_text(&s.messages), "Copy prompt"))))
         .child(well().gap(px(12.0)).children(messages));
 
-    let thinking = s.reasoning.clone().filter(|r| !r.is_empty()).map(|r| thinking_card(&s, r));
+    let mut thinking = s.reasoning.clone().filter(|r| !r.is_empty()).map(|r| thinking_card(r, s.reasoning_tokens, "Thinking trace").into_element());
+
+    // A run with tools: the requests that called tools, then the last one's line before its
+    // thinking. A sample cut off by its rounds has no last request of its own.
+    let mut steps: Vec<AnyElement> = Vec::new();
+    let mut request_line = None;
+    if let Some(trace) = s.trace.as_ref().filter(|t| t.iter().any(|m| matches!(m, crate::api::types::TraceMessage::Tool(_)))) {
+        let (rounds, last) = split_final(trace_rounds(trace));
+        let total = rounds.len() + usize::from(last.is_some());
+        steps = rounds.into_iter().flat_map(|r| round_cards(r, total)).collect();
+        match last {
+            Some(last) => request_line = Some(round_line(&last, total)),
+            None => thinking = None,
+        }
+    }
+    let cut_by_rounds = s.finish_reason.as_deref() == Some("tool_rounds");
 
     let response = s.response.clone().filter(|r| !r.is_empty());
     let response_body: AnyElement = match &response {
@@ -254,6 +276,9 @@ fn sample_body(s: SampleOut) -> impl IntoElement {
         None if s.status == SampleStatus::Done && s.finish_reason.as_deref() == Some("length") => {
             body(text("No answer: max tokens hit while thinking.")).text_color(token("coral-ink")).into_element()
         }
+        None if s.status == SampleStatus::Done && cut_by_rounds => {
+            body(text("No answer: the sample used all its rounds of tool calls.")).text_color(token("coral-ink")).into_element()
+        }
         None if s.status == SampleStatus::Done => body(text("The model returned an empty response.")).text_color(muted_ink).into_element(),
         None => body(text("Not finished yet.")).text_color(muted_ink).into_element(),
     };
@@ -263,13 +288,52 @@ fn sample_body(s: SampleOut) -> impl IntoElement {
 
     let details = card().child(card_header(card_title("Details", None), None)).child(facts(&s));
 
-    view().gap(px(8.0)).child(prompt).child(thinking).child(response_card).child(details)
+    view()
+        .gap(px(8.0))
+        .child(prompt)
+        .children(steps)
+        .child(request_line)
+        .child(thinking)
+        .child(response_card)
+        .child(details)
 }
 
-/// The thinking trace: a card that opens and closes, open by itself when short.
-fn thinking_card(s: &SampleOut, trace: String) -> impl IntoElement {
+/// The line over a request's cards: "Request 2 of 3 · 1.4 s · 212 tokens", 12 px muted.
+fn round_line(round: &Round, total: usize) -> AnyElement {
+    let mut facts = vec![format!("Request {} of {}", int(round.n as i64), int(total as i64)), duration(Some(round.latency_ms as f64))];
+    if let Some(t) = round.completion_tokens {
+        facts.push(count(t, "token", "tokens"));
+    }
+    meta(text(facts.join(" · "))).tabular_nums().px(px(8.0)).pt(px(if round.n > 1 { 8.0 } else { 4.0 })).into_element()
+}
+
+/// One request that called tools: the line that names it, its thinking, what the model wrote, and
+/// a card per call with its result.
+fn round_cards(round: Round, total: usize) -> Vec<AnyElement> {
+    let mut out = vec![round_line(&round, total)];
+    if let Some(r) = round.reasoning.clone() {
+        out.push(thinking_card(r, round.reasoning_tokens, "Thinking").into_element());
+    }
+    if !round.text.trim().is_empty() {
+        let words = round.text.clone();
+        out.push(
+            card()
+                .child(card_header(card_title("Assistant", None), Some((words.clone(), "Copy text"))))
+                .child(well().child(sheet_text(words, false)))
+                .into_element(),
+        );
+    }
+    // Many calls in a request open folded, so a long trace stays short to scroll.
+    let open = round.calls.len() <= 4;
+    out.extend(round.calls.into_iter().map(|c| tool_call_card(c, open).into_element()));
+    out
+}
+
+/// The thinking trace: a card that opens and closes, open by itself when short. `tokens` sizes it
+/// (its characters without them); `heading` names it.
+fn thinking_card(trace: String, tokens: Option<i64>, heading: &'static str) -> impl IntoElement {
     let open = signal(trace.chars().count() < SHORT_TRACE);
-    let words = match s.reasoning_tokens {
+    let words = match tokens {
         Some(n) => count(n, "token", "tokens"),
         None => format!("{} characters", int(trace.chars().count() as i64)),
     };
@@ -281,14 +345,14 @@ fn thinking_card(s: &SampleOut, trace: String) -> impl IntoElement {
         .px(px(4.0))
         .rounded(px(radius::XS))
         .role(AccessibilityRole::Button)
-        .label("Thinking trace")
+        .label(heading)
         .accessibility_state(move || AccessibilityState { expanded: Some(open.get()), ..AccessibilityState::default() })
         .focusable(true)
         .focus_visible(|st| st.ring(px(2.0)).ring_color(token("ring")))
         .cursor(Cursor::Pointer)
         .on_press(move || open.update(|o| *o = !*o))
         .child(icon(icon::CHEVRON_RIGHT, 16.0, move || theme().muted_foreground).rotate(move || if open.get() { 90.0_f32.to_radians() } else { 0.0 }))
-        .child(body(text("Thinking trace")).font_weight(FontWeight::SEMIBOLD))
+        .child(body(text(heading)).font_weight(FontWeight::SEMIBOLD))
         .child(mono(text(words)).text_color(muted_ink));
     let copy = trace.clone();
     card()

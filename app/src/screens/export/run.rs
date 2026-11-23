@@ -1,13 +1,17 @@
 //! Export a run as a training dataset (frontend/src/components/runs/export-dialog.tsx): the format,
 //! where the thinking trace goes, which samples, the file type. Each change reads the preview again
 //! after 250 ms.
+//!
+//! A run with tools exports its traces (each record holds the tool definitions, the calls and their
+//! results), so only the conversational formats are offered: Alpaca and Prompt-completion show why
+//! they are off, and a note above the options says what the records include.
 
 use std::rc::Rc;
 use std::time::Duration;
 
 use nsh_core::prelude::*;
 
-use super::{Choice, ExportSpec, check_option, choice_group, export_dialog, file_type_group, option_group, placement_label};
+use super::{Choice, ExportSpec, check_option, choice_group, choice_group_gated, export_dialog, file_type_group, option_group, options_note, placement_label};
 use crate::api::types::{ExportOptions, FileType, ReasoningPlacement, SftFormat};
 
 const FORMATS: [Choice<SftFormat>; 5] = [
@@ -52,9 +56,18 @@ fn default_options() -> ExportOptions {
     }
 }
 
+/// Why `format` cannot export a run with tools (the server answers 422 for it), or `None`.
+pub fn off_with_tools(format: SftFormat) -> Option<&'static str> {
+    match format {
+        SftFormat::Alpaca | SftFormat::PromptCompletion => Some("Not for runs with tools: it has no place for tool calls."),
+        _ => None,
+    }
+}
+
 /// The export dialog of run `run_id`, shown while `open` holds. A run that takes one sample per
-/// prompt (`single_sample`) has no others to leave out, so that option is not offered.
-pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool) -> impl IntoElement {
+/// prompt (`single_sample`) has no others to leave out, so that option is not offered. A run with
+/// tools (`with_tools`) offers the conversational formats only.
+pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool, with_tools: bool) -> impl IntoElement {
     let options = signal(default_options());
     let spec = ExportSpec {
         title: "Export dataset",
@@ -85,13 +98,41 @@ pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool) -
         samples.push(check_option("Include system prompt", None, move || options.with(|o| o.include_system), move |v| {
             options.update(|o| o.include_system = v)
         }));
-        vec![
-            choice_group("Format", FORMATS.to_vec(), move || options.with(|o| o.format), move |v| options.update(|o| o.format = v)),
+        // A format the run cannot export (chosen before it had tools) goes back to the default.
+        if with_tools && off_with_tools(options.with_untracked(|o| o.format)).is_some() {
+            options.update(|o| o.format = SftFormat::Messages);
+        }
+        let format = if with_tools {
+            choice_group_gated("Format", FORMATS.to_vec(), off_with_tools, move || options.with(|o| o.format), move |v| options.update(|o| o.format = v))
+        } else {
+            choice_group("Format", FORMATS.to_vec(), move || options.with(|o| o.format), move |v| options.update(|o| o.format = v))
+        };
+        let mut groups = Vec::new();
+        if with_tools {
+            groups.push(options_note("This run used tools: each record includes the tool definitions, the calls and their results."));
+        }
+        groups.extend([
+            format,
             choice_group("Thinking trace", placements(), move || options.with(|o| o.reasoning), move |v| {
                 options.update(|o| o.reasoning = v)
             }),
             option_group("Samples", samples),
             file_type_group(move || options.with(|o| o.file_type), move |v| options.update(|o| o.file_type = v)),
-        ]
+        ]);
+        groups
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_with_tools_export_conversations_only() {
+        assert!(off_with_tools(SftFormat::Alpaca).is_some());
+        assert!(off_with_tools(SftFormat::PromptCompletion).is_some());
+        assert_eq!(off_with_tools(SftFormat::Messages), None);
+        assert_eq!(off_with_tools(SftFormat::Sharegpt), None);
+        assert_eq!(off_with_tools(SftFormat::Raw), None);
+    }
 }

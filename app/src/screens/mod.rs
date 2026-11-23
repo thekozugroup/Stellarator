@@ -15,6 +15,8 @@ mod prompts;
 mod run;
 mod runs;
 mod settings;
+/// MCP servers: the tools runs can call.
+pub mod tools;
 
 use nsh_core::prelude::*;
 
@@ -27,6 +29,7 @@ pub fn view(route: Route) -> AnyElement {
     match route {
         Route::Runs => runs::screen().into_element(),
         Route::Endpoints => endpoints::screen().into_element(),
+        Route::Tools => tools::screen().into_element(),
         Route::Settings => settings::screen().into_element(),
         Route::NewRun => new_run::screen().into_element(),
         Route::PromptSets => prompts::list().into_element(),

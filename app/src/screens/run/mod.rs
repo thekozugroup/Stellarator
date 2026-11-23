@@ -16,6 +16,7 @@ mod progress;
 mod samples;
 mod seqs;
 mod step_pair;
+mod tools_chip;
 mod viewer;
 
 use std::rc::Rc;
@@ -232,7 +233,19 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
     // The chips: status, model, endpoint, prompt set, when it was made.
     let chip_facts = computed(move || {
         run.with(|r| {
-            r.as_ref().map(|r| (r.id, r.status, r.model.clone(), r.endpoint_id, r.endpoint_name.clone(), r.prompt_set_id, r.prompt_set_name.clone(), r.created_at))
+            r.as_ref().map(|r| {
+                (
+                    r.id,
+                    r.status,
+                    r.model.clone(),
+                    r.endpoint_id,
+                    r.endpoint_name.clone(),
+                    r.prompt_set_id,
+                    r.prompt_set_name.clone(),
+                    r.created_at,
+                    r.tools.clone(),
+                )
+            })
         })
     });
     // What the actions depend on: only the fields their buttons read, so a running run's counts
@@ -331,8 +344,13 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
         })
     };
 
-    let single = computed(move || run.with(|r| r.as_ref().map(|r| r.params.samples_per_prompt == 1).unwrap_or(true)));
-    let export = dynamic(move || run_export_dialog(export_open, id, single.get()).into_element());
+    let shape = computed(move || {
+        run.with(|r| r.as_ref().map(|r| (r.params.samples_per_prompt == 1, r.tools.is_some())).unwrap_or((true, false)))
+    });
+    let export = dynamic(move || {
+        let (single, tools) = shape.get();
+        run_export_dialog(export_open, id, single, tools).into_element()
+    });
 
     frame = frame
         .child(lost)
@@ -389,10 +407,11 @@ fn notice(problem: bool, words: String, action: Option<AnyElement>) -> AnyElemen
 }
 
 /// The chips under the title: the status badge, the model (mono), the endpoint and the prompt set
-/// (each a link with its pixel tile), then when the run was made, as plain text.
+/// (each a link with its pixel tile), the tools (a popover), then when the run was made, as plain
+/// text.
 #[allow(clippy::type_complexity)]
 fn run_chips(
-    (run_id, status, model, endpoint_id, endpoint_name, prompt_set_id, prompt_set_name, created): (
+    (run_id, status, model, endpoint_id, endpoint_name, prompt_set_id, prompt_set_name, created, tools): (
         i64,
         RunStatus,
         String,
@@ -401,6 +420,7 @@ fn run_chips(
         i64,
         String,
         chrono::DateTime<chrono::Utc>,
+        Option<crate::api::types::ToolSnapshot>,
     ),
 ) -> impl IntoElement {
     let _ = run_id;
@@ -416,7 +436,7 @@ fn run_chips(
         None => with_tip(chip(endpoint_name.clone()).into_element(), "Endpoint (deleted)".into()),
     };
     let set_name = prompt_set_name.clone();
-    chip_row(vec![
+    let mut chips = vec![
         run_status_badge(status).into_element(),
         with_tip(chip(model).mono().into_element(), "Model".into()),
         endpoint_chip,
@@ -427,11 +447,17 @@ fn run_chips(
                 .into_element(),
             format!("Prompt set: {prompt_set_name}"),
         ),
+    ];
+    if let Some(snapshot) = tools {
+        chips.push(tools_chip::tools_chip(snapshot).into_element());
+    }
+    chips.push(
         view()
             .tooltip(tooltip_bubble(date_time(created)))
             .child(body(text(format!("Created {}", relative(created, now_utc())))).text_color(muted_ink).number_of_lines(1))
             .into_element(),
-    ])
+    );
+    chip_row(chips)
 }
 
 /// A card (`Panel`) whose body has `body_top` points above it: a 15 px title (or any heading), a

@@ -155,9 +155,16 @@ pub fn run_status_badge(status: RunStatus) -> View {
     }
 }
 
-/// A sample's status in lists; a finished sample cut off by max tokens reads "Truncated".
+/// Whether a finish reason means the sample was cut off: by max tokens ("length"), or by the run's
+/// rounds of tool calls ("tool_rounds").
+pub fn is_truncated(finish_reason: Option<&str>) -> bool {
+    matches!(finish_reason, Some("length" | "tool_rounds"))
+}
+
+/// A sample's status in lists; a finished sample cut off (max tokens, tool rounds) reads
+/// "Truncated".
 pub fn sample_status_pill(status: SampleStatus, finish_reason: Option<&str>) -> View {
-    if status == SampleStatus::Done && finish_reason == Some("length") {
+    if status == SampleStatus::Done && is_truncated(finish_reason) {
         return pill(Tone::Attention, "Truncated");
     }
     let (tone, word) = match status {

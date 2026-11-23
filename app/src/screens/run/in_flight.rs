@@ -3,6 +3,10 @@
 //! color, then the prompt. Under it, in muted text, the newest words the model streamed (two lines
 //! at most) and a retry's attempt. The rows share columns: each as wide as its widest entry. From a
 //! 384 px panel the token count sits at the end of each row; in a narrower one, under it.
+//!
+//! A run with tools: while a sample's tools run its state word is "tool" (in ink) and the line
+//! under it says which ("calling lookup…") and which request of the sample it is ("round 2"); a
+//! later request that thinks or answers says its round too.
 
 use nsh_core::prelude::*;
 
@@ -24,7 +28,8 @@ fn phase_color(phase: Phase) -> fn() -> AdaptiveColor {
     match phase {
         Phase::Thinking => || token("periwinkle-ink")(),
         Phase::Answering => || token("positive-ink")(),
-        Phase::Waiting | Phase::Tool => muted_ink,
+        Phase::Tool => ink,
+        Phase::Waiting => muted_ink,
     }
 }
 
@@ -33,8 +38,22 @@ fn phase_word(phase: Phase) -> &'static str {
         Phase::Thinking => "thinking",
         Phase::Answering => "answering",
         Phase::Waiting => "waiting",
-        Phase::Tool => "calling tool",
+        Phase::Tool => "tool",
     }
+}
+
+/// The tool line under a row: "calling lookup, search… · round 2" while its tools run, "round 2"
+/// for a later request; nothing for a sample's first request.
+pub fn tool_line(s: &LiveSequence) -> Option<String> {
+    let round = (s.round > 1).then(|| format!("round {}", int(s.round)));
+    if s.phase == Phase::Tool {
+        let calling = if s.tools.is_empty() { "calling tools…".to_owned() } else { format!("calling {}…", s.tools.join(", ")) };
+        return Some(match round {
+            Some(r) => format!("{calling} · {r}"),
+            None => calling,
+        });
+    }
+    round
 }
 
 fn mono_text(words: impl Into<SharedString>) -> Text {
@@ -80,10 +99,14 @@ pub fn in_flight_list(sequences: Vec<LiveSequence>, in_flight: i64, samples_per_
                 .child(wide.then(|| mono_text(tokens.clone()).text_color(muted_ink).text_right().flex_none()));
             // Under the row: in a narrow panel the token count, a retry's attempt, and the newest
             // two lines streamed (older text leaves through the top edge).
-            let facts = (!wide || s.attempt > 1).then(|| {
+            let tool = tool_line(&s);
+            let facts = (!wide || s.attempt > 1 || tool.is_some()).then(|| {
+                let in_tool = s.phase == Phase::Tool;
                 view()
                     .flex_row()
                     .gap(px(COLUMN_GAP))
+                    .min_w(px(0.0))
+                    .child(tool.map(|t| mono_text(t).text_color(move || if in_tool { ink() } else { muted_ink() }).flex_shrink(1.0).min_w(px(0.0))))
                     .child((!wide).then(|| mono_text(tokens.clone()).text_color(muted_ink)))
                     .child((s.attempt > 1).then(|| mono_text(format!("attempt {}", int(s.attempt))).text_color(token("coral-ink"))))
             });
@@ -114,4 +137,26 @@ pub fn in_flight_list(sequences: Vec<LiveSequence>, in_flight: i64, samples_per_
             meta(text(format!("Showing the {} oldest of {} in flight.", int(shown), int(in_flight)))).tabular_nums().mt(px(8.0))
         }))
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seq(phase: Phase, round: i64, tools: &[&str]) -> LiveSequence {
+        serde_json::from_value(serde_json::json!({
+            "sample_id": 1, "prompt_idx": 0, "sample_idx": 0, "phase": phase, "prompt_preview": "p", "tokens": 0,
+            "tail": "", "elapsed_ms": 0, "attempt": 1, "round": round, "tools": tools
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_tool_phase_names_its_tools_and_round() {
+        assert_eq!(tool_line(&seq(Phase::Tool, 2, &["lookup"])).as_deref(), Some("calling lookup… · round 2"));
+        assert_eq!(tool_line(&seq(Phase::Tool, 1, &["lookup", "fetch"])).as_deref(), Some("calling lookup, fetch…"));
+        assert_eq!(tool_line(&seq(Phase::Thinking, 3, &[])).as_deref(), Some("round 3"));
+        assert_eq!(tool_line(&seq(Phase::Answering, 1, &[])), None);
+        assert_eq!(phase_word(Phase::Tool), "tool");
+    }
 }

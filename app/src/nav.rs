@@ -33,14 +33,22 @@ pub enum Destination {
     Runs,
     PromptSets,
     Endpoints,
+    /// MCP servers: the tools runs can call.
+    Tools,
     Preferences,
     Settings,
 }
 
 impl Destination {
     /// Every destination, in sidebar order.
-    pub const ALL: [Destination; 5] =
-        [Destination::Runs, Destination::PromptSets, Destination::Endpoints, Destination::Preferences, Destination::Settings];
+    pub const ALL: [Destination; 6] = [
+        Destination::Runs,
+        Destination::PromptSets,
+        Destination::Endpoints,
+        Destination::Tools,
+        Destination::Preferences,
+        Destination::Settings,
+    ];
 
     /// The destination's root screen.
     pub fn root(self) -> Route {
@@ -48,6 +56,7 @@ impl Destination {
             Destination::Runs => Route::Runs,
             Destination::PromptSets => Route::PromptSets,
             Destination::Endpoints => Route::Endpoints,
+            Destination::Tools => Route::Tools,
             Destination::Preferences => Route::Preferences,
             Destination::Settings => Route::Settings,
         }
@@ -66,6 +75,7 @@ pub enum Route {
     Runs,
     PromptSets,
     Endpoints,
+    Tools,
     Preferences,
     Settings,
     // Detail screens, pushed on a destination's stack.
@@ -85,6 +95,7 @@ impl Route {
             Route::Runs | Route::NewRun | Route::Run { .. } => Destination::Runs,
             Route::PromptSets | Route::PromptSet { .. } | Route::Import => Destination::PromptSets,
             Route::Endpoints => Destination::Endpoints,
+            Route::Tools => Destination::Tools,
             Route::Preferences | Route::PreferenceSet { .. } => Destination::Preferences,
             Route::Settings | Route::Gallery => Destination::Settings,
         }
@@ -102,6 +113,7 @@ impl Route {
             Route::Runs => "Runs".into(),
             Route::PromptSets => "Prompt sets".into(),
             Route::Endpoints => "Endpoints".into(),
+            Route::Tools => "Tools".into(),
             Route::Preferences => "Preferences".into(),
             Route::Settings => "Settings".into(),
             Route::NewRun => "New run".into(),
@@ -125,6 +137,7 @@ impl Route {
             Route::Import => "/prompts/import".into(),
             Route::PromptSet { id } => format!("/prompts/{id}"),
             Route::Endpoints => "/endpoints".into(),
+            Route::Tools => "/tools".into(),
             Route::Preferences => "/preferences".into(),
             Route::PreferenceSet { id } => format!("/preferences/{id}"),
             Route::Settings => "/settings".into(),
@@ -149,6 +162,7 @@ impl Route {
             ["prompts", "import"] => Route::Import,
             ["prompts", n] => Route::PromptSet { id: id(n)? },
             ["endpoints"] => Route::Endpoints,
+            ["tools"] => Route::Tools,
             ["preferences"] => Route::Preferences,
             ["preferences", n] => Route::PreferenceSet { id: id(n)? },
             ["settings"] => Route::Settings,
@@ -186,7 +200,7 @@ pub struct Entry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Router {
     pub destination: Destination,
-    stacks: [Vec<Entry>; 5],
+    stacks: [Vec<Entry>; 6],
     next_id: u64,
 }
 
@@ -525,6 +539,7 @@ mod tests {
             (Route::Import, "/prompts/import"),
             (Route::PromptSet { id: 12 }, "/prompts/12"),
             (Route::Endpoints, "/endpoints"),
+            (Route::Tools, "/tools"),
             (Route::Preferences, "/preferences"),
             (Route::PreferenceSet { id: 3 }, "/preferences/3"),
             (Route::Settings, "/settings"),

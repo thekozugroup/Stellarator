@@ -761,7 +761,7 @@ impl Review {
                 r.invalidate();
                 r.refresh_set();
             })))
-            .child(export_dialog(r.id, r.export_open))
+            .child(export_dialog(r.id, r.export_open, Rc::new(move || untracked(set).map(|s| s.run_ids).unwrap_or_default())))
             .child(delete_alert(Rc::new(set), r.delete_open))
     }
 

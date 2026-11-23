@@ -31,6 +31,7 @@ pub fn finish_reason_text(reason: Option<&str>) -> Option<(String, bool)> {
     let reason = reason.filter(|r| !r.is_empty())?;
     Some(match reason {
         "length" => ("Truncated (max tokens)".into(), true),
+        "tool_rounds" => ("Truncated (tool rounds used up)".into(), true),
         "stop" => ("Stop".into(), false),
         "content_filter" => ("Stopped by the provider's content filter.".into(), true),
         "tool_calls" => ("Stopped to call a tool.".into(), false),
@@ -142,7 +143,7 @@ fn encode(s: &str) -> String {
 
 /// The status word a row shows: Truncated for a done sample cut off at max tokens.
 pub fn status_word(s: &SampleSummary) -> &'static str {
-    if s.status == SampleStatus::Done && s.finish_reason.as_deref() == Some("length") {
+    if s.status == SampleStatus::Done && crate::ui::status::is_truncated(s.finish_reason.as_deref()) {
         return SampleFilter::Truncated.label();
     }
     match s.status {
@@ -396,6 +397,7 @@ mod tests {
         assert_eq!(sample_label(11, 0, 1), "#12");
         assert_eq!(sample_label(11, 1, 4), "#12.2");
         assert_eq!(finish_reason_text(Some("length")), Some(("Truncated (max tokens)".into(), true)));
+        assert_eq!(finish_reason_text(Some("tool_rounds")), Some(("Truncated (tool rounds used up)".into(), true)));
         assert_eq!(finish_reason_text(Some("eos")), Some(("Stopped with reason “eos”.".into(), false)));
         assert_eq!(finish_reason_text(None), None);
         assert_eq!(clock(42_900), "0:42");

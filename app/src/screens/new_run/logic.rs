@@ -7,8 +7,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use super::tools::{ToolsForm, dropped_note, from_run_tools, to_run_tools};
 use crate::api::types::{
-    EndpointOut as Endpoint, MaxTokensField, PromptSetOut as PromptSet, PromptSetStatus, RunCreate, RunOut as Run, RunParams,
+    EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet, PromptSetStatus, RunCreate, RunOut as Run,
+    RunParams, RunTools,
 };
 use crate::format::{count, date_time, duration, int};
 use crate::ui::stepper::parse_int;
@@ -26,6 +28,11 @@ pub enum Field {
     TopP,
     MaxTokens,
     Seed,
+    /// The Tools group's picks (its value is unused; the picks are `Form::tools`).
+    Tools,
+    MaxRounds,
+    ToolTimeout,
+    MaxResultChars,
     SystemPrompt,
     UserTemplate,
     ExtraBody,
@@ -39,7 +46,7 @@ pub enum Field {
 
 impl Field {
     /// The fields in the order they are on screen: the first with an error gets the focus.
-    pub const ALL: [Field; 18] = [
+    pub const ALL: [Field; 22] = [
         Field::Endpoint,
         Field::Model,
         Field::PromptSet,
@@ -49,6 +56,10 @@ impl Field {
         Field::TopP,
         Field::MaxTokens,
         Field::Seed,
+        Field::Tools,
+        Field::MaxRounds,
+        Field::ToolTimeout,
+        Field::MaxResultChars,
         Field::SystemPrompt,
         Field::UserTemplate,
         Field::ExtraBody,
@@ -78,6 +89,11 @@ impl Field {
         )
     }
 
+    /// In the Tool settings group, which opens to show an error.
+    pub fn in_tool_settings(self) -> bool {
+        matches!(self, Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars)
+    }
+
     /// The field a server message names (a path of `RunCreate`).
     pub fn from_server(path: &str) -> Option<Field> {
         Some(match path {
@@ -99,6 +115,10 @@ impl Field {
             "params.max_attempts" => Field::MaxAttempts,
             "params.request_timeout_s" => Field::Timeout,
             "params.pause_after_failures" => Field::PauseAfter,
+            "params.tools.max_rounds" => Field::MaxRounds,
+            "params.tools.tool_timeout_s" => Field::ToolTimeout,
+            "params.tools.max_result_chars" => Field::MaxResultChars,
+            p if p == "params.tools" || p.starts_with("params.tools.") => Field::Tools,
             _ => return None,
         })
     }
@@ -107,15 +127,18 @@ impl Field {
 /// The form's values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Form {
-    values: [String; 18],
+    values: [String; 22],
     pub max_tokens_field: MaxTokensField,
     pub stream: bool,
+    /// "Use tools" and the servers and tools picked.
+    pub tools: ToolsForm,
 }
 
 impl Default for Form {
     /// The defaults of a run with nothing chosen yet.
     fn default() -> Self {
-        let mut form = Form { values: Default::default(), max_tokens_field: MaxTokensField::MaxTokens, stream: true };
+        let mut form =
+            Form { values: Default::default(), max_tokens_field: MaxTokensField::MaxTokens, stream: true, tools: ToolsForm::default() };
         for (field, value) in [
             (Field::Concurrency, "16"),
             (Field::Samples, "1"),
@@ -126,6 +149,9 @@ impl Default for Form {
             (Field::MaxAttempts, "4"),
             (Field::Timeout, "1800"),
             (Field::PauseAfter, "10"),
+            (Field::MaxRounds, "8"),
+            (Field::ToolTimeout, "60"),
+            (Field::MaxResultChars, "20000"),
         ] {
             form.set(field, value);
         }
@@ -226,8 +252,26 @@ pub fn check(field: Field, form: &Form) -> Option<String> {
         Field::MaxAttempts => int_in(1, 20, "Attempts"),
         Field::Timeout => (num.is_nan() || v.is_empty() || num < 10.0).then(|| "The timeout must be at least 10 seconds.".to_owned()),
         Field::PauseAfter => (!is_int(v) || num < 0.0).then(|| "Enter 0 or a whole number of failures.".to_owned()),
+        // The tools' fields count only while "Use tools" is on.
+        _ if field_of_tools(field) && !form.tools.on => None,
+        Field::Tools => form
+            .tools
+            .picks
+            .iter()
+            .all(|p| p.tools.as_ref().is_some_and(Vec::is_empty))
+            .then(|| "Pick at least one server, or turn off Use tools.".to_owned()),
+        Field::MaxRounds => int_in(1, 32, "Max rounds"),
+        Field::ToolTimeout => {
+            (num.is_nan() || v.is_empty() || !(1.0..=3600.0).contains(&num)).then(|| "The tool timeout must be from 1 to 3,600 seconds.".to_owned())
+        }
+        Field::MaxResultChars => int_in(1000, 1_000_000, "Max result characters"),
         Field::SystemPrompt | Field::Name => None,
     }
+}
+
+/// A field of the Tools group.
+fn field_of_tools(field: Field) -> bool {
+    matches!(field, Field::Tools | Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars)
 }
 
 /// Every field's message, for the fields that have one, in screen order.
@@ -254,8 +298,19 @@ pub fn server_errors(fields: &BTreeMap<String, String>) -> (Vec<(Field, String)>
     (mapped, other)
 }
 
-/// The request for a valid `form`.
-pub fn to_body(form: &Form) -> Result<RunCreate, String> {
+/// The run's `params.tools` for a valid `form`, the picks of servers in `servers` only.
+pub fn tools_param(form: &Form, servers: &[Server]) -> Option<RunTools> {
+    to_run_tools(
+        &form.tools,
+        servers,
+        js_number(form.get(Field::MaxRounds)) as i64,
+        js_number(form.get(Field::ToolTimeout)),
+        js_number(form.get(Field::MaxResultChars)) as i64,
+    )
+}
+
+/// The request for a valid `form`; `servers` are the MCP servers the Tools group lists.
+pub fn to_body(form: &Form, servers: &[Server]) -> Result<RunCreate, String> {
     let number = |f: Field| -> Option<f64> {
         let v = form.get(f);
         (!v.trim().is_empty()).then(|| js_number(v))
@@ -295,7 +350,7 @@ pub fn to_body(form: &Form) -> Result<RunCreate, String> {
             max_attempts: id(Field::MaxAttempts),
             request_timeout_s: js_number(form.get(Field::Timeout)),
             pause_after_failures: id(Field::PauseAfter),
-            tools: None,
+            tools: tools_param(form, servers),
         },
     })
 }
@@ -316,6 +371,10 @@ pub struct Initial {
     pub form: Form,
     pub prompt_open: bool,
     pub advanced_open: bool,
+    /// The Tool settings group: open when the copied run changed them.
+    pub tools_open: bool,
+    /// What Run again could not copy of the run's tools.
+    pub tools_note: Option<String>,
 }
 
 /// A number as the field shows it (`String(n)`).
@@ -349,6 +408,11 @@ fn from_run(run: &Run) -> Form {
     f.set(Field::MaxAttempts, p.max_attempts.to_string());
     f.set(Field::Timeout, p.request_timeout_s.to_string());
     f.set(Field::PauseAfter, p.pause_after_failures.to_string());
+    if let Some(t) = &p.tools {
+        f.set(Field::MaxRounds, t.max_rounds.to_string());
+        f.set(Field::ToolTimeout, t.tool_timeout_s.to_string());
+        f.set(Field::MaxResultChars, t.max_result_chars.to_string());
+    }
     f
 }
 
@@ -366,11 +430,21 @@ pub fn suggested_model(endpoint: &Endpoint, runs: Option<&[Run]>) -> String {
 }
 
 /// The form's first values: a previous run's settings (Run again), or the prefills and sensible
-/// picks (the only endpoint, the only prompt set, the endpoint's default seqs and model).
-pub fn initial_state(endpoints: &[Endpoint], sets: &[PromptSet], runs: Option<&[Run]>, source: Option<&Run>, prefill: Prefill) -> Initial {
+/// picks (the only endpoint, the only prompt set, the endpoint's default seqs and model). A copied
+/// run's tools are checked against `servers` (`None`: they could not be read).
+pub fn initial_state(
+    endpoints: &[Endpoint],
+    sets: &[PromptSet],
+    runs: Option<&[Run]>,
+    source: Option<&Run>,
+    servers: Option<&[Server]>,
+    prefill: Prefill,
+) -> Initial {
     let mut form = Form::default();
     let mut prompt_open = false;
     let mut advanced_open = false;
+    let mut tools_open = false;
+    let mut tools_note = None;
     if let Some(source) = source {
         form = from_run(source);
         if !endpoints.iter().any(|e| e.id.to_string() == form.get(Field::Endpoint)) {
@@ -387,6 +461,18 @@ pub fn initial_state(endpoints: &[Endpoint], sets: &[PromptSet], runs: Option<&[
             || [Field::ThinkOpen, Field::ThinkClose, Field::MaxAttempts, Field::Timeout, Field::PauseAfter]
                 .iter()
                 .any(|f| form.get(*f) != d.get(*f));
+        if let Some(tools) = &p.tools {
+            match servers {
+                Some(servers) => {
+                    let (picks, dropped) = from_run_tools(tools, source.tools.as_ref(), servers);
+                    form.tools = picks;
+                    tools_note = dropped_note(&dropped);
+                }
+                None => tools_note = Some("Couldn't read the MCP servers, so the run's tools were not copied.".to_owned()),
+            }
+            tools_open = [Field::MaxRounds, Field::ToolTimeout, Field::MaxResultChars].iter().any(|f| form.get(*f) != d.get(*f))
+                || form.tools.choice != Default::default();
+        }
     } else {
         let picked = prefill.endpoint.and_then(|id| endpoints.iter().find(|e| e.id == id)).or(if endpoints.len() == 1 { endpoints.first() } else { None });
         if let Some(ep) = picked {
@@ -399,7 +485,7 @@ pub fn initial_state(endpoints: &[Endpoint], sets: &[PromptSet], runs: Option<&[
             form.set(Field::PromptSet, set.id.to_string());
         }
     }
-    Initial { form, prompt_open, advanced_open }
+    Initial { form, prompt_open, advanced_open, tools_open, tools_note }
 }
 
 /// The model after choosing endpoint `endpoint`: the one already there when the new endpoint also
@@ -668,7 +754,7 @@ mod tests {
         ]);
         f.max_tokens_field = MaxTokensField::MaxCompletionTokens;
         f.stream = false;
-        let body = to_body(&f).unwrap();
+        let body = to_body(&f, &[]).unwrap();
         assert_eq!(body.name.as_deref(), Some("Round 2"));
         assert_eq!((body.endpoint_id, body.model.as_str(), body.prompt_set_id, body.concurrency), (3, "m", 5, 32));
         let p = body.params;
@@ -685,7 +771,7 @@ mod tests {
         assert_eq!((p.think_open.as_str(), p.think_close.as_str()), ("<think>", "</think>"));
         assert_eq!((p.max_attempts, p.request_timeout_s, p.pause_after_failures), (4, 1800.0, 10));
         // No name, no extra body.
-        let plain = to_body(&with(&[(Field::Endpoint, "1"), (Field::PromptSet, "1")])).unwrap();
+        let plain = to_body(&with(&[(Field::Endpoint, "1"), (Field::PromptSet, "1")]), &[]).unwrap();
         assert_eq!(plain.name, None);
         assert!(plain.params.extra_body.is_empty());
     }
@@ -694,7 +780,7 @@ mod tests {
     fn the_only_endpoint_and_prompt_set_are_chosen_with_their_defaults() {
         let eps = [endpoint(1, &["a"], 64, Some(true))];
         let sets = [set(2, "gsm8k", 100, "ready")];
-        let first = initial_state(&eps, &sets, None, None, Prefill::default());
+        let first = initial_state(&eps, &sets, None, None, None, Prefill::default());
         assert_eq!(first.form.get(Field::Endpoint), "1");
         assert_eq!(first.form.get(Field::Concurrency), "64");
         assert_eq!(first.form.get(Field::Model), "a");
@@ -706,17 +792,17 @@ mod tests {
     fn with_several_nothing_is_guessed_but_the_prefills_are_used() {
         let eps = [endpoint(1, &["a", "b"], 16, None), endpoint(2, &["c", "d"], 8, None)];
         let sets = [set(5, "one", 10, "ready"), set(6, "two", 20, "importing"), set(7, "three", 30, "ready")];
-        let none = initial_state(&eps, &sets, None, None, Prefill::default());
+        let none = initial_state(&eps, &sets, None, None, None, Prefill::default());
         assert_eq!(none.form.get(Field::Endpoint), "");
         assert_eq!(none.form.get(Field::PromptSet), "");
-        let some = initial_state(&eps, &sets, None, None, Prefill { from: None, endpoint: Some(2), prompt_set: Some(7) });
+        let some = initial_state(&eps, &sets, None, None, None, Prefill { from: None, endpoint: Some(2), prompt_set: Some(7) });
         assert_eq!(some.form.get(Field::Endpoint), "2");
         assert_eq!(some.form.get(Field::Concurrency), "8");
         // Two listed models: a guess is never made.
         assert_eq!(some.form.get(Field::Model), "");
         assert_eq!(some.form.get(Field::PromptSet), "7");
         // A prompt set still importing cannot be started from.
-        let importing = initial_state(&eps, &sets, None, None, Prefill { from: None, endpoint: None, prompt_set: Some(6) });
+        let importing = initial_state(&eps, &sets, None, None, None, Prefill { from: None, endpoint: None, prompt_set: Some(6) });
         assert_eq!(importing.form.get(Field::PromptSet), "");
     }
 
@@ -757,7 +843,7 @@ mod tests {
             "think_close": "</t>", "max_attempts": 2, "request_timeout_s": 90.0, "pause_after_failures": 0
         });
         let source = run(1, "a", params);
-        let first = initial_state(&eps, &sets, None, Some(&source), Prefill { from: Some(7), ..Prefill::default() });
+        let first = initial_state(&eps, &sets, None, Some(&source), None, Prefill { from: Some(7), ..Prefill::default() });
         let f = &first.form;
         assert_eq!(f.get(Field::Endpoint), "1");
         assert_eq!(f.get(Field::PromptSet), "2");
@@ -774,12 +860,12 @@ mod tests {
         assert!(!f.stream);
         assert!(first.prompt_open && first.advanced_open);
         // An endpoint that was deleted, or a set that is not ready, is left for the user to choose.
-        let gone = initial_state(&[], &[set(2, "gsm8k", 100, "failed")], None, Some(&source), Prefill::default());
+        let gone = initial_state(&[], &[set(2, "gsm8k", 100, "failed")], None, Some(&source), None, Prefill::default());
         assert_eq!(gone.form.get(Field::Endpoint), "");
         assert_eq!(gone.form.get(Field::PromptSet), "");
         // A run with the default settings opens neither group.
         let plain = run(1, "a", json!({}));
-        let calm = initial_state(&eps, &sets, None, Some(&plain), Prefill::default());
+        let calm = initial_state(&eps, &sets, None, Some(&plain), None, Prefill::default());
         assert!(!calm.prompt_open && !calm.advanced_open);
     }
 

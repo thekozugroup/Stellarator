@@ -55,14 +55,14 @@ pub fn cell(column: Column, content: impl IntoElement) -> impl IntoElement {
 }
 
 /// The header band.
-pub fn header(columns: &'static [Column]) -> impl IntoElement {
+pub fn header(columns: &[Column]) -> impl IntoElement {
     view()
         .flex_row()
         .items_center()
         .h(px(TABLE_HEADER))
         .rounded(px(radius::MD))
         .bg(move || theme().muted)
-        .children(columns.iter().map(|&c| cell(c, meta(text(c.title)).number_of_lines(1))))
+        .children(columns.iter().map(|&c| cell(c, meta(text(c.title)).number_of_lines(1)).into_element()).collect::<Vec<_>>())
 }
 
 /// A row of cells, at least 44 px, with the hairline under it (none under the last row, while

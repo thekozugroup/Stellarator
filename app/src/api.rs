@@ -621,6 +621,41 @@ impl Api {
     }
 }
 
+// ------------------------------------------------------------------------------- MCP servers
+
+/// MCP servers: the tools a run can offer the model (crates/server/src/routes/mcp_servers.rs).
+impl Api {
+    /// `GET /api/mcp-servers`: every saved server, with its last check and its tools.
+    pub async fn mcp_servers(&self) -> Result<Vec<types::McpServerOut>, ApiError> {
+        self.get("/api/mcp-servers").await
+    }
+
+    /// `POST /api/mcp-servers`: a new server (not checked yet).
+    pub async fn create_mcp_server(&self, body: &types::McpServerIn) -> Result<types::McpServerOut, ApiError> {
+        self.post("/api/mcp-servers", body).await
+    }
+
+    /// `POST /api/mcp-servers/import`: the servers of a pasted config, each checked when `check`.
+    pub async fn import_mcp_servers(&self, body: &types::McpImportIn) -> Result<types::McpImportOut, ApiError> {
+        self.post("/api/mcp-servers/import", body).await
+    }
+
+    /// `PATCH /api/mcp-servers/{id}` (absent fields stay; `env` and `headers` are the whole set).
+    pub async fn update_mcp_server(&self, id: i64, body: &types::McpServerPatch) -> Result<types::McpServerOut, ApiError> {
+        self.patch(&format!("/api/mcp-servers/{id}"), body).await
+    }
+
+    /// `DELETE /api/mcp-servers/{id}`: 409 while a running run uses it.
+    pub async fn delete_mcp_server(&self, id: i64) -> Result<(), ApiError> {
+        self.delete(&format!("/api/mcp-servers/{id}")).await
+    }
+
+    /// `POST /api/mcp-servers/{id}/check`: connects, lists the tools and keeps them.
+    pub async fn check_mcp_server(&self, id: i64) -> Result<types::McpServerOut, ApiError> {
+        self.post(&format!("/api/mcp-servers/{id}/check"), &serde_json::json!({})).await
+    }
+}
+
 /// `GET /api/endpoint-presets`: one starting point of Add endpoint (the server's `EndpointPreset`,
 /// read back).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -647,6 +682,10 @@ pub struct Settings {
     pub version: String,
     /// "docker", "desktop" or "native".
     pub mode: String,
+    /// Stdio MCP servers can be added and run (always on the desktop; in server mode only with
+    /// STELLARATOR_ALLOW_STDIO_MCP=1).
+    #[serde(default)]
+    pub stdio_mcp_allowed: bool,
 }
 
 /// `GET /api/health`.

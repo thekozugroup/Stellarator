@@ -3,6 +3,10 @@
 //! response sit in ground wells with 8 px corners, inset 8 px from the card so the corners are
 //! concentric. The letter is the response's name on screen and its key (A is 1, B is 2).
 //!
+//! A response of a run with tools also has its tool calls, folded to one line in a ground well
+//! ("3 tool calls · lookup, search", `ui::trace::compact_calls`) between the thinking trace and the
+//! response; open, a line per call with the start of its result.
+//!
 //! The chosen response carries the accent: a 2 px periwinkle ring and a CHOSEN tag. The rejected
 //! one steps back: its text turns muted and it carries a REJECTED tag. Choose and Reject are the
 //! two segments of one control at the card's top right.
@@ -23,6 +27,7 @@ use crate::ui::model_text::{ModelTextStyle, model_text_with};
 use crate::ui::page::window_width;
 use crate::ui::status::{Tone, pill_small};
 use crate::ui::tooltip::tooltip_bubble;
+use crate::ui::trace::{all_calls, compact_calls, trace_rounds};
 
 /// What a card shows and does.
 pub struct Card {
@@ -48,7 +53,7 @@ pub fn candidate_card(card: Card) -> impl IntoElement {
     let m1 = mark.clone();
     let m2 = mark.clone();
     let rejected = Rc::new(move || m2() == Some(Mark::Rejected));
-    let truncated = c.finish_reason.as_deref() == Some("length");
+    let truncated = crate::ui::status::is_truncated(c.finish_reason.as_deref());
     let (identity, sample_note) = card_identity(&c, card.show_model, card.show_sample);
     let phone = window_width() < 640.0;
 
@@ -160,7 +165,11 @@ pub fn candidate_card(card: Card) -> impl IntoElement {
     let tokens = c.completion_tokens.map(|n| {
         meta(text(count(n, "completion token", "completion tokens"))).tabular_nums().px(px(12.0)).pt(px(2.0)).pb(px(4.0))
     });
-    let content = view().gap(px(8.0)).px(px(8.0)).pb(px(8.0)).min_w(px(0.0)).child(trace).child(response_well).child(tokens);
+    let calls = c.trace.as_ref().map(|t| all_calls(&trace_rounds(t))).filter(|calls| !calls.is_empty()).map(|calls| {
+        let r4 = rejected.clone();
+        compact_calls(calls, Rc::new(move || r4()))
+    });
+    let content = view().gap(px(8.0)).px(px(8.0)).pb(px(8.0)).min_w(px(0.0)).child(trace).child(calls).child(response_well).child(tokens);
 
     let m5 = mark.clone();
     view()

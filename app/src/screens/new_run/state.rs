@@ -4,7 +4,8 @@
 use nsh_core::prelude::*;
 
 use super::logic::{Field, Form, Initial, check};
-use crate::api::types::{EndpointOut as Endpoint, MaxTokensField, PromptSetOut as PromptSet, RunOut as Run};
+use super::tools::ToolsForm;
+use crate::api::types::{EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet, RunOut as Run};
 use crate::data::Load;
 
 /// What the screen loaded.
@@ -13,12 +14,19 @@ pub struct Data {
     pub endpoints: Signal<Load<Vec<Endpoint>>>,
     pub sets: Signal<Load<Vec<PromptSet>>>,
     pub runs: Signal<Load<Vec<Run>>>,
+    /// The MCP servers the Tools group offers.
+    pub servers: Signal<Load<Vec<Server>>>,
 }
 
 impl Data {
     /// The endpoints loaded so far (reactive).
     pub fn endpoint_list(&self) -> Vec<Endpoint> {
         self.endpoints.with(|l| l.loaded().cloned().unwrap_or_default())
+    }
+
+    /// The MCP servers loaded so far (reactive).
+    pub fn server_list(&self) -> Vec<Server> {
+        self.servers.with(|l| l.loaded().cloned().unwrap_or_default())
     }
 
     /// The prompt sets loaded so far (reactive).
@@ -43,10 +51,20 @@ impl Data {
 /// The form's signals.
 #[derive(Clone, Copy)]
 pub struct State {
-    values: [Signal<String>; 18],
-    errors: [Signal<Option<String>>; 18],
-    elements: [ElementRef; 18],
+    values: [Signal<String>; 22],
+    errors: [Signal<Option<String>>; 22],
+    elements: [ElementRef; 22],
     pub stream: Signal<bool>,
+    /// "Use tools", the picks and the tool choice.
+    pub tools: Signal<ToolsForm>,
+    /// The Tool settings group.
+    pub tools_open: Signal<bool>,
+    /// What Run again could not copy of the run's tools.
+    pub tools_note: Signal<Option<String>>,
+    /// The servers whose tools are listed (their rows opened).
+    pub expanded: Signal<Vec<i64>>,
+    /// The servers being checked from the group.
+    pub checking: Signal<Vec<i64>>,
     pub token_field: Signal<MaxTokensField>,
     pub prompt_open: Signal<bool>,
     pub advanced_open: Signal<bool>,
@@ -67,6 +85,11 @@ impl State {
             errors: std::array::from_fn(|_| signal(None)),
             elements: std::array::from_fn(|_| element_ref()),
             stream: signal(true),
+            tools: signal(ToolsForm::default()),
+            tools_open: signal(false),
+            tools_note: signal(None),
+            expanded: signal(Vec::new()),
+            checking: signal(Vec::new()),
             token_field: signal(MaxTokensField::MaxTokens),
             prompt_open: signal(false),
             advanced_open: signal(false),
@@ -88,6 +111,9 @@ impl State {
         self.token_field.set(initial.form.max_tokens_field);
         self.prompt_open.set(initial.prompt_open);
         self.advanced_open.set(initial.advanced_open);
+        self.tools.set(initial.form.tools.clone());
+        self.tools_open.set(initial.tools_open);
+        self.tools_note.set(initial.tools_note.clone());
         self.form_error.set(None);
         self.models_note.set(None);
         self.query.set(String::new());
@@ -146,6 +172,7 @@ impl State {
         }
         form.stream = self.stream.get_untracked();
         form.max_tokens_field = self.token_field.get_untracked();
+        form.tools = self.tools.get_untracked();
         form
     }
 
@@ -168,6 +195,9 @@ impl State {
         }
         if first.in_advanced() {
             self.advanced_open.set(true);
+        }
+        if first.in_tool_settings() {
+            self.tools_open.set(true);
         }
         let element = self.element(first);
         // After the commit that opened the group, so the field exists.

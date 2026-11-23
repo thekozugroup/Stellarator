@@ -14,6 +14,8 @@
 mod form;
 mod logic;
 mod state;
+mod tools;
+mod tools_view;
 
 use std::rc::Rc;
 
@@ -79,7 +81,7 @@ pub fn screen() -> impl IntoElement {
         keep_for_return(p);
     }
     let prefill = prefill.unwrap_or_default();
-    let data = Data { endpoints: signal(Load::Loading), sets: signal(Load::Loading), runs: signal(Load::Loading) };
+    let data = Data { endpoints: signal(Load::Loading), sets: signal(Load::Loading), runs: signal(Load::Loading), servers: signal(Load::Loading) };
     let source = signal(Load::<Run>::Loading);
     let state = State::new();
     let stage = signal(Stage::Loading);
@@ -89,8 +91,10 @@ pub fn screen() -> impl IntoElement {
     let settle = move || {
         let loaded = data.endpoints.with_untracked(|l| l.loaded().is_some()) && data.sets.with_untracked(|l| l.loaded().is_some());
         let failed = data.endpoints.with_untracked(|l| l.error().is_some()) || data.sets.with_untracked(|l| l.error().is_some());
-        let answered =
-            !data.runs.with_untracked(Load::is_loading) && (prefill.from.is_none() || !source.with_untracked(Load::is_loading));
+        // The MCP servers only fill the Tools group: a failure to read them does not block the form.
+        let answered = !data.runs.with_untracked(Load::is_loading)
+            && !data.servers.with_untracked(Load::is_loading)
+            && (prefill.from.is_none() || !source.with_untracked(Load::is_loading));
         let next = if loaded && answered {
             Stage::Ready
         } else if failed {
@@ -103,7 +107,8 @@ pub fn screen() -> impl IntoElement {
             let sets = data.sets.with_untracked(|l| l.loaded().cloned().unwrap_or_default());
             let runs = data.runs.with_untracked(|l| l.loaded().cloned());
             let copied = source.with_untracked(|l| l.loaded().cloned());
-            state.apply(&initial_state(&endpoints, &sets, runs.as_deref(), copied.as_ref(), prefill));
+            let servers = data.servers.with_untracked(|l| l.loaded().cloned());
+            state.apply(&initial_state(&endpoints, &sets, runs.as_deref(), copied.as_ref(), servers.as_deref(), prefill));
         }
         if stage.get_untracked() != next {
             stage.set(next);
@@ -125,6 +130,10 @@ pub fn screen() -> impl IntoElement {
     load_sets();
     call(|api| async move { api.runs().await }, move |r| {
         data.runs.set(Load::from(r));
+        settle();
+    });
+    call(|api| async move { api.mcp_servers().await }, move |r| {
+        data.servers.set(Load::from(r));
         settle();
     });
     if let Some(id) = prefill.from {
@@ -202,7 +211,6 @@ fn bar(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
 
 /// Checks every field and, when they pass, starts the run; the screen becomes the run's.
 fn start(state: State, data: Data) {
-    let _ = data;
     if state.starting.get_untracked() {
         return;
     }
@@ -214,7 +222,8 @@ fn start(state: State, data: Data) {
         return;
     }
     state.clear_errors();
-    let body = match to_body(&form) {
+    let servers = data.servers.with_untracked(|l| l.loaded().cloned().unwrap_or_default());
+    let body = match to_body(&form, &servers) {
         Ok(body) => body,
         Err(message) => {
             state.form_error.set(Some(message));

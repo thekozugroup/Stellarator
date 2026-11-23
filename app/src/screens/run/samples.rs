@@ -1,6 +1,8 @@
 //! The run's samples (frontend/src/components/runs/samples-section.tsx): a status filter with
 //! counts (line tabs from 1024 px, a pop-up button below), a search box, 50 rows a page from the
-//! server (a table from 1024 px, stacked rows below), and the sample viewer a row opens. The rows
+//! server (a table from 1024 px, stacked rows below), and the sample viewer a row opens. A run with
+//! tools has a Tools column with each sample's tool calls (on phones, "3 tool calls" in the row's
+//! first line). The rows
 //! are read again every 3 s while the run goes; the last page stays on screen at 60% while the next
 //! one comes.
 
@@ -15,7 +17,7 @@ use super::step_pair::{Step, step_pair};
 use super::viewer::sample_viewer;
 use crate::api::types::{Page, RunOut, SampleStatus, SampleSummary};
 use crate::data::call;
-use crate::format::{DASH, duration, int, int_opt};
+use crate::format::{DASH, count, duration, int, int_opt};
 use crate::shortcuts;
 use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::metrics::CONTROL;
@@ -46,10 +48,24 @@ const THINKING: Column = Column::fixed("Thinking", 88.0);
 const TOKENS: Column = Column::numeric("Tokens", 96.0);
 const LATENCY: Column = Column::numeric("Latency", 96.0);
 const STATUS: Column = Column::fixed("Status", 120.0);
-static PLAIN: [Column; 5] = [NUMBER, PROMPT, RESPONSE, TOKENS, LATENCY];
-static WITH_THINKING: [Column; 6] = [NUMBER, PROMPT, RESPONSE, THINKING, TOKENS, LATENCY];
-static WITH_STATUS: [Column; 6] = [NUMBER, PROMPT, RESPONSE, TOKENS, LATENCY, STATUS];
-static WITH_BOTH: [Column; 7] = [NUMBER, PROMPT, RESPONSE, THINKING, TOKENS, LATENCY, STATUS];
+const TOOLS: Column = Column::numeric("Tools", 72.0);
+
+/// The table's columns: the Thinking column when some row has no trace, Tools for a run with tools,
+/// Status unless the tab names it.
+fn columns(thinking: bool, tools: bool, status: bool) -> Vec<Column> {
+    let mut c = vec![NUMBER, PROMPT, RESPONSE];
+    if thinking {
+        c.push(THINKING);
+    }
+    if tools {
+        c.push(TOOLS);
+    }
+    c.extend([TOKENS, LATENCY]);
+    if status {
+        c.push(STATUS);
+    }
+    c
+}
 
 /// What the section asks the server for.
 #[derive(Debug, Clone, PartialEq)]
@@ -66,7 +82,7 @@ enum Shape {
     Failed(String),
     Loading,
     Empty { key: Key, total: i64 },
-    List { wide: bool, thinking: bool, status: bool },
+    List { wide: bool, thinking: bool, status: bool, tools: bool },
 }
 
 /// The rows shown and how they came.
@@ -185,7 +201,9 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
     let r1 = run.clone();
     let bar = filter_bar(move || r1(), filter, q, search, page, selected);
     let r2 = run.clone();
+    let r4 = run.clone();
     let shape = computed(move || {
+        let tools = untracked(&r4).tools.is_some();
         let wide = window_width() >= TABLE_FROM;
         let thinking_wide = window_width() >= THINKING_FROM;
         rows.with(|r| match (&r.data, &r.error) {
@@ -196,6 +214,7 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
                 wide,
                 thinking: wide && thinking_wide && p.items.iter().any(no_trace),
                 status: show_status(k.filter, &p.items),
+                tools,
             },
         })
     });
@@ -228,13 +247,13 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
                 let words = if past { format!("Page {} is past the last page.", int(k.page)) } else { k.filter.empty_text(&k.q) };
                 empty_block(vec![body(text(words)).text_color(muted_ink).into_element()], action).into_element()
             }
-            Shape::List { wide, thinking, status } => {
+            Shape::List { wide, thinking, status, tools } => {
                 let spp = untracked(&r2).params.samples_per_prompt;
                 let items = move || page_items.get();
                 let list = if wide {
-                    sample_table(items, spp, thinking, status, selected, open_sample).into_element()
+                    sample_table(items, spp, thinking, tools, status, selected, open_sample).into_element()
                 } else {
-                    stacked_rows(items, spp, status, selected, open_sample).into_element()
+                    stacked_rows(items, spp, tools, status, selected, open_sample).into_element()
                 };
                 view().opacity(move || if stale() { 0.6_f32 } else { 1.0 }).child(list).into_element()
             }
@@ -503,16 +522,12 @@ fn sample_table(
     items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
     thinking: bool,
+    tools: bool,
     status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
 ) -> impl IntoElement {
-    let columns: &'static [Column] = match (thinking, status) {
-        (false, false) => &PLAIN,
-        (true, false) => &WITH_THINKING,
-        (false, true) => &WITH_STATUS,
-        (true, true) => &WITH_BOTH,
-    };
+    let columns = columns(thinking, tools, status);
     let count = move || items().len();
     let rows = each(items, |s: &SampleSummary| s.id, move |s, index| {
         let (id, number) = s.with_untracked(|s| (s.id, sample_label(s.prompt_idx, s.sample_idx, spp)));
@@ -523,6 +538,17 @@ fn sample_table(
         ];
         if thinking {
             cells.push(cell(THINKING, body(text(move || if s.with(no_trace) { "None" } else { "" })).text_color(muted_ink)).into_element());
+        }
+        if tools {
+            cells.push(
+                cell(
+                    TOOLS,
+                    body(text(move || s.with(|s| if s.status == SampleStatus::Done || s.tool_calls > 0 { int(s.tool_calls) } else { DASH.to_owned() })))
+                        .tabular_nums()
+                        .text_color(move || if s.with(|s| s.tool_calls > 0) { theme().foreground } else { muted_ink() }),
+                )
+                .into_element(),
+            );
         }
         cells.push(
             cell(
@@ -550,7 +576,7 @@ fn sample_table(
             .label(prompt_label(s))
             .on_press(move || open(id))
     });
-    view().pt(px(12.0)).child(header(columns)).child(rows)
+    view().pt(px(12.0)).child(header(&columns)).child(rows)
 }
 
 /// Below 1024 px: one stacked row per sample, its facts on the first line (made once per sample,
@@ -558,6 +584,7 @@ fn sample_table(
 fn stacked_rows(
     items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
+    tools: bool,
     status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
@@ -601,6 +628,13 @@ fn stacked_rows(
                             bound(s, |s| (s.status, s.finish_reason.clone()), |s| sample_status_pill(s.status, s.finish_reason.as_deref()).into_element())
                         }))
                         .child(view().flex_1())
+                        .child(tools.then(|| {
+                            bound(s, |s| s.tool_calls, |s| {
+                                (s.tool_calls > 0)
+                                    .then(|| mono_meta(count(s.tool_calls, "tool call", "tool calls")).into_element())
+                                    .unwrap_or_else(|| view().into_element())
+                            })
+                        }))
                         .child(bound(s, |s| s.completion_tokens, |s| {
                             s.completion_tokens.map(|t| mono_meta(format!("{} tokens", int(t))).into_element()).unwrap_or_else(|| view().into_element())
                         })),

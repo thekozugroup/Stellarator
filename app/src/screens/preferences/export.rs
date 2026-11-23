@@ -2,6 +2,9 @@
 //! shared layout (`screens::export`): the format (DPO or KTO), the shape (message lists or
 //! strings), where the thinking trace goes, the system prompt, the file type. The preview is read
 //! again at once after each change. The options outlive the dialog, as the web UI's do.
+//!
+//! A set whose runs used tools compares traces: plain text has no place for tool calls, so that
+//! shape is off (the server answers 422 for it) and says why.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -9,7 +12,13 @@ use std::time::Duration;
 use nsh_core::prelude::*;
 
 use crate::api::types::{FileType, PrefExportOptions, PrefFormat, ReasoningPlacement};
-use crate::screens::export::{Choice, ExportSpec, check_option, choice_group, export_dialog as shell, file_type_group, option_group, placement_label};
+use std::rc::Rc as Shared;
+
+use crate::data::{SignalExt, call};
+use crate::screens::export::{
+    Choice, ExportSpec, check_option, choice_group, choice_group_gated, export_dialog as shell, file_type_group, option_group, options_note,
+    placement_label,
+};
 
 /// Message lists (TRL's conversational format) or plain strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,9 +56,31 @@ pub fn default_options() -> PrefExportOptions {
     }
 }
 
-/// The export dialog of preference set `set_id`, shown while `open` holds.
-pub fn export_dialog(set_id: i64, open: Signal<bool>) -> impl IntoElement {
+/// Why `shape` cannot export a set whose runs used tools, or `None`.
+fn off_with_tools(shape: Shape) -> Option<&'static str> {
+    (shape == Shape::Plain).then_some("Not for runs with tools: strings have no place for tool calls.")
+}
+
+/// The export dialog of preference set `set_id`, shown while `open` holds. `run_ids` are the set's
+/// runs: each opening reads whether any used tools.
+pub fn export_dialog(set_id: i64, open: Signal<bool>, run_ids: Shared<dyn Fn() -> Vec<i64>>) -> impl IntoElement {
     let options = signal(default_options());
+    let tools = signal(false);
+    effect(move || {
+        if !open.get() {
+            return;
+        }
+        let ids = untracked(|| run_ids());
+        call(|api| async move { api.runs().await }, move |r| {
+            if let Ok(runs) = r {
+                let used = runs.iter().any(|run| ids.contains(&run.id) && run.tools.is_some());
+                tools.try_set(used);
+                if used && !options.with_untracked(|o| o.conversational) {
+                    options.try_update(|o| o.conversational = true);
+                }
+            }
+        });
+    });
     let spec = ExportSpec {
         title: "Export pairs",
         base: format!("/api/preference-sets/{set_id}/export"),
@@ -61,13 +92,22 @@ pub fn export_dialog(set_id: i64, open: Signal<bool>) -> impl IntoElement {
     };
     shell(open, spec, move || {
         vec![
+            dynamic(move || {
+                tools.get().then(|| options_note("These runs used tools: each record’s messages include the calls and their results."))
+            })
+            .into_element(),
             choice_group("Format", FORMATS.to_vec(), move || options.with(|o| o.format), move |v| options.update(|o| o.format = v)),
-            choice_group(
-                "Shape",
-                SHAPES.to_vec(),
-                move || if options.with(|o| o.conversational) { Shape::Conversational } else { Shape::Plain },
-                move |v| options.update(|o| o.conversational = v == Shape::Conversational),
-            ),
+            dynamic(move || {
+                let gate = if tools.get() { off_with_tools } else { |_: Shape| None };
+                choice_group_gated(
+                    "Shape",
+                    SHAPES.to_vec(),
+                    gate,
+                    move || if options.with(|o| o.conversational) { Shape::Conversational } else { Shape::Plain },
+                    move |v| options.update(|o| o.conversational = v == Shape::Conversational),
+                )
+            })
+            .into_element(),
             choice_group("Thinking trace", placements(), move || options.with(|o| o.reasoning), move |v| {
                 options.update(|o| o.reasoning = v)
             }),

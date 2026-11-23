@@ -3,7 +3,7 @@
 //! - The sidebar is a panel floating [`shell_gap`] inside the window with [`panel_radius`]
 //!   corners, so it is concentric with the window; on windows with corners under 20 pt it fills
 //!   the window's left edge with a hairline instead. At its top, the mark and the name in a 32 px
-//!   row; then Runs, Prompt sets, Endpoints, Preferences; Settings at the bottom. Rows are 32 px
+//!   row; then Runs, Prompt sets, Endpoints, Tools, Preferences; Settings at the bottom. Rows are 32 px
 //!   with 10 px corners, a 16 px icon, an 8 px gap and the label in ink at 500; the selected row is
 //!   `sidebar-accent`.
 //! - On macOS the title bar is hidden and the traffic lights sit in the sidebar's top band
@@ -11,7 +11,7 @@
 //!   toolbar's empty areas move the window.
 //! - The page column shows the open screen ([`crate::nav::current`]) in its frame
 //!   ([`super::page`]).
-//! - Below 768 px (a phone, or a narrow browser window), as iOS: no sidebar; the four destinations
+//! - Below 768 px (a phone, or a narrow browser window), as iOS: no sidebar; the five destinations
 //!   in a 56 px capsule floating 12 px from the sides and the bottom, the current one a capsule of
 //!   `accent`. Settings is in each top-level screen's bar.
 //! - Toasts show over everything ([`super::overlay::toaster`]).
@@ -32,10 +32,11 @@ use crate::theme::text::{label, title};
 use crate::theme::{background, ink, muted_ink, radius, token};
 
 /// The destinations in the sidebar, in order; Settings sits apart at the bottom.
-const NAV: [(Destination, &str, ImageAsset); 4] = [
+const NAV: [(Destination, &str, ImageAsset); 5] = [
     (Destination::Runs, "Runs", icon::PLAY),
     (Destination::PromptSets, "Prompt sets", icon::FILE_TEXT),
     (Destination::Endpoints, "Endpoints", icon::CABLE),
+    (Destination::Tools, "Tools", icon::WRENCH),
     (Destination::Preferences, "Preferences", icon::GIT_COMPARE_ARROWS),
 ];
 
@@ -70,7 +71,7 @@ pub fn shell() -> impl IntoElement {
         .child(toaster())
 }
 
-/// Phones: the four destinations in a capsule floating over the content.
+/// Phones: the five destinations in a capsule floating over the content.
 fn tab_bar() -> impl IntoElement {
     let tabs = NAV.map(|(destination, name, glyph)| {
         let selected = move || nav::destination() == destination;

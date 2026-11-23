@@ -24,3 +24,4 @@ pub mod status;
 pub mod table;
 pub mod tiles;
 pub mod tooltip;
+pub mod trace;

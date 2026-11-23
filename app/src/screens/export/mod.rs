@@ -397,6 +397,12 @@ fn preview_column(spec: Rc<ExportSpec>, preview: Signal<Preview>, retry: Rc<dyn 
     })
 }
 
+/// A note above a dialog's options (what the records hold): 13 px muted, with mono between
+/// backticks, 12 px in.
+pub fn options_note(words: &'static str) -> AnyElement {
+    rich(words, 13.0).text_size(px(13.0)).line_height(px(18.0)).text_color(muted_ink).px(px(12.0)).into_element()
+}
+
 /// A group's title: 13 px at 600 in muted ink, 12 px in from the box's edge.
 fn group_title(words: &'static str) -> Text {
     body(text(words)).font_weight(FontWeight::SEMIBOLD).text_color(muted_ink).px(px(12.0))
@@ -441,10 +447,24 @@ pub fn choice_group<T: Copy + PartialEq + 'static>(
     get: impl Fn() -> T + Clone + 'static,
     set: impl Fn(T) + Clone + 'static,
 ) -> AnyElement {
+    choice_group_gated(legend, choices, |_| None, get, set)
+}
+
+/// [`choice_group`] where `off` gives the reason a choice cannot be taken (a format a run with
+/// tools cannot export): that row shows at half strength, takes no press, and says why in place
+/// of its hint.
+pub fn choice_group_gated<T: Copy + PartialEq + 'static>(
+    legend: &'static str,
+    choices: Vec<Choice<T>>,
+    off: impl Fn(T) -> Option<&'static str>,
+    get: impl Fn() -> T + Clone + 'static,
+    set: impl Fn(T) + Clone + 'static,
+) -> AnyElement {
     let rows: Vec<AnyElement> = choices
         .into_iter()
         .enumerate()
         .map(|(i, c)| {
+            let why = off(c.value);
             let checked = {
                 let get = get.clone();
                 move || get() == c.value
@@ -466,6 +486,7 @@ pub fn choice_group<T: Copy + PartialEq + 'static>(
                 .child(view().w(px(8.0)).h(px(8.0)).rounded(px(4.0)).bg(move || theme().primary_foreground));
             let row = radio()
                 .checked(checked)
+                .disabled(why.is_some())
                 .on_change(move |_: &bool| set(c.value))
                 .flex_row()
                 .items_start()
@@ -473,10 +494,11 @@ pub fn choice_group<T: Copy + PartialEq + 'static>(
                 .min_h(px(40.0))
                 .px(px(12.0))
                 .py(px(10.0))
-                .cursor(Cursor::Pointer)
+                .opacity(if why.is_some() { 0.5_f32 } else { 1.0 })
+                .cursor(if why.is_some() { Cursor::Default } else { Cursor::Pointer })
                 .focus_visible(|s| s.ring(px(2.0)).ring_color(token("ring")))
                 .child(indicator)
-                .child(option_words(c.label, c.hint, true));
+                .child(option_words(c.label, why.or(c.hint), true));
             view().child(row).child(row_separator(i)).into_element()
         })
         .collect();

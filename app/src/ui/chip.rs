@@ -19,10 +19,11 @@ pub struct Chip {
     leading: Option<AnyElement>,
     on_press: Option<Rc<dyn Fn()>>,
     selected: Option<Rc<dyn Fn() -> bool>>,
+    trigger: bool,
 }
 
 pub fn chip(label: impl Into<SharedString>) -> Chip {
-    Chip { label: label.into(), mono: false, leading: None, on_press: None, selected: None }
+    Chip { label: label.into(), mono: false, leading: None, on_press: None, selected: None, trigger: false }
 }
 
 impl Chip {
@@ -41,6 +42,13 @@ impl Chip {
     /// The chip is a link: pressing it runs `f`, hovering it shows the highlight.
     pub fn on_press(mut self, f: impl Fn() + 'static) -> Self {
         self.on_press = Some(Rc::new(f));
+        self
+    }
+
+    /// The trigger of a popover (the run's tools): it looks like a chip that links and reads as a
+    /// button, and the popover takes the press.
+    pub fn popover_trigger(mut self) -> Self {
+        self.trigger = true;
         self
     }
 
@@ -79,14 +87,17 @@ impl IntoElement for Chip {
             .bg(move || if s3() { crate::theme::token("periwinkle-tint")() } else { theme().secondary })
             .child(leading)
             .child(label);
-        if let Some(f) = self.on_press {
+        if self.on_press.is_some() || self.trigger {
             c = c
                 .role(AccessibilityRole::Button)
+                .label(self.label.clone())
                 .hover(move |s| s.bg(move || theme().accent))
                 .cursor(Cursor::Pointer)
                 .focusable(true)
-                .focus_visible(|s| s.ring(px(2.0)).ring_color(crate::theme::token("ring")).ring_offset(px(2.0)))
-                .on_press(move || f());
+                .focus_visible(|s| s.ring(px(2.0)).ring_color(crate::theme::token("ring")).ring_offset(px(2.0)));
+        }
+        if let Some(f) = self.on_press {
+            c = c.on_press(move || f());
         }
         c.into_element()
     }

@@ -81,6 +81,7 @@ pub fn form_view(state: State, data: Data, submit: Rc<dyn Fn()>, source_error: O
         )
         .child(form_group(requests_rows(state, data, &submit)).title("Requests"))
         .child(form_group(sampling_rows(state, &submit)).title("Sampling"))
+        .child(super::tools_view::tools_section(state, data, &submit))
         .child(form_disclosure("Prompt options", move || prompt_summary(&state.form()), state.prompt_open, prompt_rows, false))
         .child(form_disclosure("Advanced", move || advanced_summary(&state.form()), state.advanced_open, advanced_rows, false))
         .child(
