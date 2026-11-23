@@ -72,7 +72,7 @@ if grep -q "already using the data folder" "$out/desktop-second.log"; then
 else
   echo "::warning::the second copy did not report the data folder in use"; tail -5 "$out/desktop-second.log"
 fi
-kill "$second" 2> /dev/null; sleep 2; kill -9 "$second" 2> /dev/null
+{ kill "$second"; sleep 2; kill -9 "$second"; wait "$second"; } 2> /dev/null
 
 # Opening the app again through Launch Services (as from the Finder or the Dock) brings the running
 # copy forward.

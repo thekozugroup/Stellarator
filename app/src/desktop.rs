@@ -97,6 +97,9 @@ fn startup_failure() {
         let busy = error.contains("Another Stellarator is already using the data folder");
         let title = if busy { "Stellarator is already open" } else { "Stellarator could not start" };
         show_window();
+        // To the front, the app active: a copy started from a terminal is not, and its dialog
+        // would open behind the other windows.
+        main_window().focus();
         let _ = spawn(async move {
             let _ = nsh_base::alert_dialog().title(title).description(error).action("quit", "Quit").show().await;
             nsh_core::element::desktop::quit();
