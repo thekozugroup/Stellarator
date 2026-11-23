@@ -13,6 +13,7 @@ pub mod api;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod backend;
 mod data;
+mod desktop;
 // The formatting helpers, the router, the shortcuts and the component library serve every screen;
 // the ones still to port use the rest.
 #[allow(dead_code, reason = "shared by the screens still to port")]
@@ -26,6 +27,8 @@ mod shortcuts;
 mod theme;
 #[allow(dead_code, reason = "shared by the screens still to port")]
 mod ui;
+#[cfg(not(target_arch = "wasm32"))]
+mod updater;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -81,6 +84,7 @@ pub fn App() -> impl IntoElement {
         });
     }
     platform::setup_window();
+    desktop::install();
     shortcuts::install();
     theme::appearance::apply_saved();
     // The component gallery, for checking the components by eye (not in the navigation).

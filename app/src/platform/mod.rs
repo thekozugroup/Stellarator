@@ -68,13 +68,17 @@ pub fn setup_window() {
     {
         let attach = !std::env::var("STELLARATOR_NO_TOOLBAR").is_ok_and(|v| v == "1");
         spawn(async move {
+            // The window opens hidden (nsh.json `defaultVisible`): the toolbar goes on first, so the
+            // window never shows with the plain title bar's 16 pt corners.
             let chrome = match run_on_main_thread(move || macos::use_toolbar_window(attach)).await {
                 Ok(chrome) => chrome,
                 Err(e) => {
                     log::warn!("could not set up the window's toolbar: {e}");
+                    crate::desktop::show_window();
                     return;
                 }
             };
+            crate::desktop::show_window();
             // AppKit gives the new corners once the window has laid out the toolbar.
             timer(Duration::from_millis(300)).await;
             let measured = run_on_main_thread(macos::corner_radius_of_main_window).await.ok().flatten();

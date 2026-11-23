@@ -2,7 +2,8 @@
 //! library the `nsh run` and `nsh package` runners mount.
 //!
 //! The order matters: the in-process server starts first (its database is open and interrupted
-//! runs are recovered before the window shows; a failure is printed here), then the window runs
+//! runs are recovered before the window shows; a failure is printed here and shown by the UI),
+//! then the window runs
 //! until the app quits, then the server stops. Quitting from the UI already stops it
 //! (lib.rs, `quit_cleanly`); stopping again here is a no-op, and covers any other way out.
 
@@ -19,9 +20,10 @@ use nsh_platform_windows as platform;
 fn main() -> impl std::process::Termination {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    // A failure is shown by the UI as well (another process holds the data folder, say): it opens
+    // a dialog with the reason and quits.
     if let Err(e) = stellarator_app::backend::start() {
         eprintln!("Stellarator could not start: {e}");
-        std::process::exit(1);
     }
 
     let ui = stellarator_app::registry();
@@ -45,6 +47,9 @@ fn main() -> impl std::process::Termination {
             asset_base: Some(platform::AssetBase::Directory(assets)),
             app_id: stellarator_app::backend::APP_ID.to_owned(),
             size: (1280, 820),
+            // As nsh.json's `singleInstance`, which the packaged runners read.
+            #[cfg(target_os = "linux")]
+            single_instance: true,
             ..Default::default()
         },
     );

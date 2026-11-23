@@ -43,12 +43,14 @@ fn major_version() -> isize {
     NSProcessInfo::processInfo().operatingSystemVersion().majorVersion
 }
 
-/// The app's main window: AppKit's main or key window, else its first visible one.
+/// The app's main window: AppKit's main or key window, else its first visible one, else (at
+/// launch, while it is still hidden) its first window.
 fn main_window(mtm: MainThreadMarker) -> Option<Retained<NSWindow>> {
     let app = NSApplication::sharedApplication(mtm);
     app.mainWindow()
         .or_else(|| app.keyWindow())
         .or_else(|| app.windows().iter().find(|w| w.isVisible()))
+        .or_else(|| app.windows().iter().next())
 }
 
 /// The window's `_cornerRadius` (a private AppKit method), only when the window answers it.

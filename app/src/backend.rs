@@ -51,6 +51,11 @@ impl Backend {
     pub fn data_dir(&self) -> &std::path::Path {
         &self.data_dir
     }
+
+    /// The server's tokio runtime, for other work that needs one (the updater's HTTPS requests).
+    pub fn runtime_handle(&self) -> tokio::runtime::Handle {
+        self.runtime.handle().clone()
+    }
 }
 
 /// The server, once [`start`] ran: `Err` holds why it could not start, for the UI to show.

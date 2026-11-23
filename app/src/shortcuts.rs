@@ -2,7 +2,8 @@
 //!
 //! | Keys | Where | What |
 //! | --- | --- | --- |
-//! | `mod+[` | everywhere | back one screen ([`crate::nav::back`]) |
+//! | `mod+[` | everywhere | back one screen ([`crate::nav::back`]); on macOS the View menu's Back |
+//! | `mod+,` | everywhere | Settings; on macOS the app menu's Settings… |
 //! | `j`, `k` | sample viewer | next and previous sample (the web UI's) |
 //! | `j`, `k`, arrows, `u`, `?` | preference review | next and previous pair, choose, undo, help (the web UI's) |
 //!
@@ -17,11 +18,19 @@ use crate::nav;
 /// Back one screen.
 pub const BACK: &str = "mod+[";
 
-/// Binds the app-wide shortcuts. Call once from the root component.
+/// Settings.
+pub const SETTINGS: &str = "mod+,";
+
+/// Binds the app-wide shortcuts. Call once from the root component. On macOS the menu bar's
+/// items carry them (desktop.rs), so they are not bound twice.
 pub fn install() {
+    if os() == nsh_core::platform::Os::MacOs {
+        return;
+    }
     on_key(BACK, |_| {
         nav::back();
     });
+    on_key(SETTINGS, |_| nav::open(nav::Destination::Settings));
 }
 
 /// Runs `handler` when `keys` ("j", "shift+mod+l", "arrowdown") is pressed, while the calling
