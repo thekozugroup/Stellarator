@@ -17,8 +17,10 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of Stellarator is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <Icon Id="StellaratorIcon" SourceFile="$(var.Source)\Stellarator.exe" />
-    <Property Id="ARPPRODUCTICON" Value="StellaratorIcon" />
+    <!-- Apps & features shows this .ico of app/icons/icon.png (the exe's own icon, which the Start
+         menu shortcut shows). Not the exe itself: the Icon table keeps the whole file, uncompressed. -->
+    <Icon Id="Stellarator.ico" SourceFile="$(sys.SOURCEFILEDIR)stellarator.ico" />
+    <Property Id="ARPPRODUCTICON" Value="Stellarator.ico" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/thekozugroup/Stellarator" />
 
     <StandardDirectory Id="LocalAppDataFolder">
@@ -43,7 +45,7 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut">
         <Shortcut Id="StellaratorShortcut" Name="Stellarator" Description="Distill datasets from LLMs"
-                  Target="[INSTALLFOLDER]Stellarator.exe" WorkingDirectory="INSTALLFOLDER" Icon="StellaratorIcon" />
+                  Target="[INSTALLFOLDER]Stellarator.exe" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\The Kozu Group\Stellarator" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>

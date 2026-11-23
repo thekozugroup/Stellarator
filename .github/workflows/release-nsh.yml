@@ -410,6 +410,10 @@ jobs:
           $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
           $msi = Get-ChildItem out\*.msi | Select-Object -First 1
           "MSI $($msi.Name): $([math]::Round($msi.Length / 1MB, 1)) MB"
+          # Both hold the same files, compressed (LZX against LZMA2): far larger means something is
+          # stored uncompressed, as the exe was when it was the Icon table's source.
+          $setupSize = (Get-ChildItem out\*-setup.exe | Select-Object -First 1).Length
+          if ($msi.Length -gt 2 * $setupSize) { "::warning::the MSI is more than twice the size of setup.exe: something in it is stored uncompressed" }
           $p = Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v msi-install.log" -Wait -PassThru
           if ($p.ExitCode -ne 0 -or -not (Test-Path $app)) { Get-Content msi-install.log -Tail 40; throw "MSI install failed ($($p.ExitCode))" }
           Get-ChildItem -Recurse $menu -Filter "Stellarator*.lnk" | ForEach-Object { "shortcut: $($_.FullName)" }
