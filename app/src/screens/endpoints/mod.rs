@@ -4,11 +4,15 @@
 //!
 //! The screen keeps the list in a `Signal<Load<…>>` and reads it again after each change, as the
 //! web UI's query is invalidated.
+//!
+//! [`open_edit`] is the web UI's `/endpoints?edit=<id>&focus=key` link: any screen calls it to show
+//! one endpoint's edit dialog with its key (or URL) field focused. Closing the dialog, saved or not,
+//! returns to the destination the call came from, as the web UI's `return` parameter does.
 
 mod details;
 mod form;
 mod list;
-mod status;
+pub mod status;
 
 use std::rc::Rc;
 
@@ -22,6 +26,7 @@ use crate::api::EndpointPreset;
 use crate::api::types::EndpointOut as Endpoint;
 use crate::data::{Load, call};
 use crate::format::count;
+use crate::nav::{self, Destination};
 use crate::theme::radius;
 use crate::theme::text::body;
 use crate::ui::blocks::{empty_block, error_block};
@@ -33,6 +38,41 @@ use crate::ui::plasma::plasma;
 
 /// The presets the empty page offers, in this order.
 const EMPTY_PRESETS: [&str; 3] = ["openrouter", "lmstudio", "ollama"];
+
+/// Which field of the edit dialog has the focus when [`open_edit`] opens it: the API key (a key the
+/// server rejected), the base URL (a server that did not answer), or the first field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EditFocus {
+    Key,
+    Url,
+    #[default]
+    None,
+}
+
+/// What [`open_edit`] asks the Endpoints screen for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct EditRequest {
+    id: i64,
+    focus: EditFocus,
+    /// Where the request came from; the dialog's closing goes back there.
+    back_to: Option<Destination>,
+}
+
+/// Switches to the Endpoints destination and opens endpoint `endpoint_id`'s edit dialog with the
+/// field `focus` names focused (the web UI's `/endpoints?edit=<id>&focus=key`). When the dialog
+/// closes, whether the endpoint was saved or not, the app shows the destination it was called from
+/// (its stack as it was: the New run form, the run). An endpoint that no longer exists says so in
+/// a toast.
+#[allow(dead_code, reason = "called by the New run and Run screens")]
+pub fn open_edit(endpoint_id: i64, focus: EditFocus) {
+    let from = untracked(nav::destination);
+    global::<Option<EditRequest>>().set(Some(EditRequest {
+        id: endpoint_id,
+        focus,
+        back_to: (from != Destination::Endpoints).then_some(from),
+    }));
+    nav::open(Destination::Endpoints);
+}
 
 /// The Endpoints screen.
 pub fn screen() -> impl IntoElement {
@@ -53,6 +93,34 @@ pub fn screen() -> impl IntoElement {
         form_target.set(target);
         form_open.set(true);
     };
+    // A request from `open_edit`: shown once the list has loaded, and the dialog's closing goes
+    // back to where the request came from.
+    let request = global::<Option<EditRequest>>();
+    let back_to = signal(None::<Destination>);
+    effect(move || {
+        let Some(req) = request.get() else { return };
+        let Some(list) = load.with(|l| l.loaded().cloned()) else { return };
+        request.set(None);
+        match list.into_iter().find(|e| e.id == req.id) {
+            Some(endpoint) => {
+                back_to.set(req.back_to);
+                open_form(Target { endpoint: Some(endpoint), preset: None, focus: req.focus });
+            }
+            None => toast_error("That endpoint no longer exists."),
+        }
+    });
+    let was_open = std::cell::Cell::new(false);
+    effect(move || {
+        if form_open.get() {
+            was_open.set(true);
+        } else if was_open.replace(false) {
+            if let Some(destination) = back_to.get_untracked() {
+                back_to.set(None);
+                // After this render: the screen is replaced by the one it goes back to.
+                let _ = request_animation_frame(move |_| nav::open(destination));
+            }
+        }
+    });
     let details_id = signal(None::<i64>);
     let sheet_open = signal(false);
     let deleting = signal(None::<Endpoint>);
@@ -98,7 +166,7 @@ pub fn screen() -> impl IntoElement {
             details_id.set(Some(e.id));
             sheet_open.set(true);
         }),
-        edit: Rc::new(move |e: Endpoint| open_form(Target { endpoint: Some(e), preset: None })),
+        edit: Rc::new(move |e: Endpoint| open_form(Target { endpoint: Some(e), preset: None, focus: EditFocus::None })),
         delete: Rc::new(move |e: Endpoint| {
             delete_error.set(None);
             deleting.set(Some(e));
@@ -234,7 +302,7 @@ fn empty_page(presets: Signal<Vec<EndpointPreset>>, open_form: impl Fn(Target) +
                 button(format!("Add {}", p.name))
                     .variant(Variant::Secondary)
                     .on_card()
-                    .on_press(move || open_form(Target { endpoint: None, preset: Some(p.clone()) }))
+                    .on_press(move || open_form(Target { endpoint: None, preset: Some(p.clone()), focus: EditFocus::None }))
                     .into_element()
             })
             .collect();

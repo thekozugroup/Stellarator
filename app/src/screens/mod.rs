@@ -5,7 +5,7 @@
 //! To add a screen: add its route to `nav::Route` (with its destination and label there), write
 //! `screens/<name>.rs` with `pub fn screen(...) -> impl IntoElement`, and add its arm below.
 
-mod endpoints;
+pub mod endpoints;
 mod gallery;
 mod placeholder;
 mod runs;

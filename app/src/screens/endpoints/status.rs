@@ -4,6 +4,7 @@
 use chrono::{DateTime, Utc};
 use nsh_core::prelude::*;
 
+use super::EditFocus;
 use crate::api::types::EndpointOut as Endpoint;
 use crate::format::{DASH, relative};
 use crate::theme::muted_ink;
@@ -31,6 +32,37 @@ pub fn server_reason(error: Option<&str>) -> Option<String> {
     }
     let body = rest.trim();
     Some(if body.is_empty() { code.to_owned() } else { format!("{code}: {body}") })
+}
+
+/// Why an endpoint's last check failed (`endpointTrouble` in components/runs/run-data.ts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trouble {
+    KeyRejected,
+    Unreachable,
+}
+
+impl Trouble {
+    /// "Key rejected" or "Unreachable".
+    pub fn word(self) -> &'static str {
+        match self {
+            Trouble::KeyRejected => "Key rejected",
+            Trouble::Unreachable => "Unreachable",
+        }
+    }
+
+    /// The edit field that fixes it (`troubleField`): the key, or the URL.
+    pub fn field(self) -> EditFocus {
+        match self {
+            Trouble::KeyRejected => EditFocus::Key,
+            Trouble::Unreachable => EditFocus::Url,
+        }
+    }
+}
+
+/// The trouble when the endpoint's last check failed; `None` when it passed or never ran.
+pub fn endpoint_trouble(endpoint: Option<&Endpoint>) -> Option<Trouble> {
+    let endpoint = endpoint.filter(|e| e.last_ok == Some(false))?;
+    Some(if is_key_rejected(endpoint.last_error.as_deref()) { Trouble::KeyRejected } else { Trouble::Unreachable })
 }
 
 /// The state as a word, a tone and, for a failure, the reason.

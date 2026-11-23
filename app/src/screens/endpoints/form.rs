@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use nsh_core::prelude::*;
 
+use super::EditFocus;
 use super::status::is_key_rejected;
 use crate::api::types::{EndpointOut as Endpoint, EndpointTestIn, EndpointTestOut, Location};
 use crate::api::{ApiError, EndpointPreset};
@@ -32,6 +33,8 @@ const DEFAULT_SEQS: i64 = 16;
 pub struct Target {
     pub endpoint: Option<Endpoint>,
     pub preset: Option<EndpointPreset>,
+    /// The field an edit opens on (`open_edit`).
+    pub focus: EditFocus,
 }
 
 /// One header row: an id that stays with the row, its name and value.
@@ -138,7 +141,11 @@ pub fn endpoint_form(
 
     // Open with the key focused when the preset needs one; an edit with its name focused and
     // selected, as the web UI's dialog focuses its first field.
-    if preset.as_ref().is_some_and(|p| p.needs_api_key) {
+    if editing && target.focus == EditFocus::Key {
+        let _ = request_animation_frame(move |_| key_ref.focus());
+    } else if editing && target.focus == EditFocus::Url {
+        let _ = request_animation_frame(move |_| url_ref.focus());
+    } else if preset.as_ref().is_some_and(|p| p.needs_api_key) {
         let _ = request_animation_frame(move |_| key_ref.focus());
     } else if editing {
         let len = name.get_untracked().encode_utf16().count() as u32;
