@@ -19,7 +19,7 @@ use super::status::{IMPORTING_REFRESH, status_label, status_tone};
 use crate::api::types::{Page, PromptOut, PromptSetOut as PromptSet, PromptSetStatus};
 use crate::data::{Load, call, now_utc};
 use crate::format::{int, relative};
-use crate::nav::{self, Route};
+use crate::nav;
 use crate::theme::text::body;
 use crate::theme::{ink, muted_ink, radius, token};
 use crate::ui::blocks::{bar, error_block};
@@ -182,7 +182,11 @@ pub fn screen(id: i64) -> impl IntoElement {
         match set.with(|l| l.loaded().map(|s| s.status)) {
             None => view().into_element(),
             Some(status) => {
-                let new_run = (status == PromptSetStatus::Ready).then(|| button("New run").on_press(|| nav::push(Route::NewRun, None)));
+                let new_run = (status == PromptSetStatus::Ready).then(|| {
+                    button("New run").on_press(move || {
+                        crate::screens::new_run::open(crate::screens::new_run::Prefill { prompt_set: Some(id), ..Default::default() })
+                    })
+                });
                 let menu = (status != PromptSetStatus::Importing).then(|| {
                     menu_with(
                         Button::icon(icon::ELLIPSIS, "More actions").variant(Variant::Secondary).size(Size::Icon).without_tooltip(),
