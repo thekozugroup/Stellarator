@@ -183,21 +183,27 @@ fn with_card(button: Button, on_card: bool) -> Button {
 /// The common seqs values as one segmented control: `value` is the current number (none of the
 /// segments is chosen when it is not one of them), `on_change` hears a choice.
 pub fn seqs_choices(value: impl Fn() -> i64 + 'static, on_change: impl Fn(i64) + 'static) -> impl IntoElement {
-    let options: Vec<(i64, &'static str)> = SEQS_CHOICES.iter().copied().zip(SEQS_LABELS).collect();
+    let (value, on_change) = (std::rc::Rc::new(value), std::rc::Rc::new(on_change));
     // Below 640 px the segments share the row, 4 px each side of a label (`w-full px-1`); from
-    // 640 px the control is as wide as they are, 8 px each side (`sm:w-fit sm:px-2`).
-    let narrow = untracked(window_width) < 640.0;
-    segmented_padded(
-        options,
-        move || {
-            let n = value();
-            if SEQS_CHOICES.contains(&n) { n } else { -1 }
-        },
-        on_change,
-        "Common seqs values",
-        narrow,
-        if narrow { 4.0 } else { 8.0 },
-    )
+    // 640 px the control is as wide as they are, 8 px each side (`sm:w-fit sm:px-2`). Made again
+    // when the width crosses 640 px (it holds nothing of its own).
+    let narrow = computed(move || window_width() < 640.0);
+    dynamic(move || {
+        let narrow = narrow.get();
+        let (value, on_change) = (value.clone(), on_change.clone());
+        let options: Vec<(i64, &'static str)> = SEQS_CHOICES.iter().copied().zip(SEQS_LABELS).collect();
+        segmented_padded(
+            options,
+            move || {
+                let n = value();
+                if SEQS_CHOICES.contains(&n) { n } else { -1 }
+            },
+            move |n| on_change(n),
+            "Common seqs values",
+            narrow,
+            if narrow { 4.0 } else { 8.0 },
+        )
+    })
 }
 
 #[cfg(test)]

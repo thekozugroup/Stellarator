@@ -39,27 +39,34 @@ const NAV: [(Destination, &str, ImageAsset); 4] = [
     (Destination::Preferences, "Preferences", icon::GIT_COMPARE_ARROWS),
 ];
 
-/// The open screen, made again only when the route changes (not when its label does).
+/// The open screen, made again only when the route changes (not when its label does). The screen
+/// is made untracked: what it reads while it is made (the window's width, a signal's value) must
+/// not make it again, which would drop what the user typed or opened in it.
 fn open_screen() -> impl IntoElement {
     let route = computed(nav::current);
-    dynamic(move || screens::view(route.get()))
+    dynamic(move || {
+        let route = route.get();
+        untracked(move || screens::view(route))
+    })
 }
 
 /// The whole window: the sidebar beside the open screen, or on a phone the open screen over the
-/// tab bar. Made again when the width crosses 768 px.
+/// tab bar. When the width crosses 768 px the sidebar and the tab bar come and go around the open
+/// screen, which stays made (with what the user typed or opened in it) and switches its layout.
 pub fn shell() -> impl IntoElement {
+    #[cfg(target_arch = "wasm32")]
+    crate::web::follow_address();
     view()
         .flex_1()
         .bg(background)
         .child(
-            when(is_phone, || view().flex_1().child(view().flex_1().child(open_screen())).child(tab_bar())).otherwise(|| {
-                view()
-                    .flex_1()
-                    .flex_row()
-                    .child(sidebar())
-                    .child(view().flex_1().min_w(px(0.0)).child(open_screen()))
-            }),
+            view()
+                .flex_1()
+                .flex_row()
+                .child(when(move || !is_phone(), sidebar))
+                .child(view().flex_1().min_w(px(0.0)).child(open_screen())),
         )
+        .child(when(is_phone, tab_bar))
         .child(toaster())
 }
 

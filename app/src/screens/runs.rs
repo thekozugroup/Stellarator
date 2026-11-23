@@ -24,7 +24,7 @@ use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon;
 use crate::ui::progress::{progress_bar, progress_bar_full};
 use crate::ui::icon::icon as glyph;
-use crate::ui::page::{is_phone, page, window_width};
+use crate::ui::page::{page, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::status::run_status_pill as run_status;
 use crate::ui::table::{Column, cell, header, row};
@@ -116,19 +116,17 @@ pub fn screen() -> impl IntoElement {
 
     // The toolbar's push button; on a phone the "+" in the bar instead.
     let mut frame = page("Runs");
-    if !untracked(is_phone) {
-        frame = frame.actions(|| {
-            button("New run")
-                .leading(icon::PLUS)
-                .on_press(|| {
-                    if crate::platform::probing() {
-                        crate::platform::probe_line("press reached nsh: New run button");
-                    }
-                    new_run::open(Prefill::default())
-                })
-                .into_element()
-        });
-    }
+    frame = frame.desktop_actions(|| {
+        button("New run")
+            .leading(icon::PLUS)
+            .on_press(|| {
+                if crate::platform::probing() {
+                    crate::platform::probe_line("press reached nsh: New run button");
+                }
+                new_run::open(Prefill::default())
+            })
+            .into_element()
+    });
     frame
         .bar_actions(|| {
             Button::icon(icon::PLUS, "New run")

@@ -289,13 +289,18 @@ fn filter_bar(
         page.set(1);
         selected.set(None);
     };
-    let wide = window_width() >= TABLE_FROM;
-    let from_sm = window_width() >= 640.0;
-    let filter_control: AnyElement = if wide { tabs(run, filter, q, choose).into_element() } else { filter_select(run, filter, q, choose).into_element() };
+    // The control follows the width (tabs from 1024 px, the pop-up button below); the search
+    // field stays made, with its text and the focus.
+    let wide = computed(move || window_width() >= TABLE_FROM);
+    let from_sm = move || window_width() >= 640.0;
+    let filter_control = dynamic(move || -> AnyElement {
+        let run = run.clone();
+        if wide.get() { tabs(run, filter, q, choose).into_element() } else { filter_select(run, filter, q, choose).into_element() }
+    });
     let field = view()
         .flex_1()
         .min_w(px(0.0))
-        .max_w(px(if from_sm { 288.0 } else { f32::MAX }))
+        .max_w(move || px(if from_sm() { 288.0 } else { f32::MAX }))
         // Escape clears a search (and only then leaves the field).
         .on_key_down(move |e: &nsh_core::keyboard::KeyEvent| {
             if e.key.as_ref() == "Escape" && !search.with_untracked(String::is_empty) {
@@ -311,7 +316,7 @@ fn filter_bar(
         .border_b_1()
         .border_color(move || theme().border)
         .child(view().h_full().min_w(px(0.0)).flex_row().items_center().child(filter_control))
-        .child(from_sm.then(|| view().flex_1()))
+        .child(when(from_sm, || view().flex_1()))
         .child(field)
 }
 

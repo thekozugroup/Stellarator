@@ -19,6 +19,9 @@
 //! or 32 px (from 1024 px) padding. The scroll position is kept per screen in `nav`: going back
 //! lands where the user was.
 //!
+//! The screen's content is made once: when the width crosses 768 px only the bars, the title and
+//! the meta are made again around it, so what the user typed, opened or scrolled stays.
+//!
 //! ```ignore
 //! page("Endpoints")
 //!     .actions(|| button("Add endpoint").leading(icon::PLUS).on_press(add).into_element())
@@ -81,6 +84,8 @@ pub struct Page {
     title: Rc<dyn Fn() -> Option<SharedString>>,
     meta: Option<Build>,
     actions: Option<Build>,
+    /// Whether a phone shows the actions under its title (a screen whose bar has them says no).
+    actions_on_phone: bool,
     bar_actions: Option<Build>,
     bottom_bar: Option<Build>,
     /// The bottom bar floats only below 1024 px (Import); from there the screen places it.
@@ -101,6 +106,7 @@ pub fn page_with(title: impl Fn() -> Option<SharedString> + 'static) -> Page {
         title: Rc::new(title),
         meta: None,
         actions: None,
+        actions_on_phone: true,
         bar_actions: None,
         bottom_bar: None,
         bar_below_lg: false,
@@ -119,6 +125,13 @@ impl Page {
     /// The screen's buttons: in the toolbar (see the module's notes), beside the meta otherwise.
     pub fn actions(mut self, actions: impl Fn() -> AnyElement + 'static) -> Self {
         self.actions = Some(Rc::new(actions));
+        self
+    }
+
+    /// [`Page::actions`] from 768 px only: a phone has them in its bar ([`Page::bar_actions`]).
+    pub fn desktop_actions(mut self, actions: impl Fn() -> AnyElement + 'static) -> Self {
+        self.actions = Some(Rc::new(actions));
+        self.actions_on_phone = false;
         self
     }
 
@@ -157,7 +170,7 @@ impl Page {
 
 impl IntoElement for Page {
     fn into_element(self) -> AnyElement {
-        if untracked(is_phone) { phone_page(self) } else { desktop_page(self) }
+        frame(self)
     }
 }
 
@@ -196,30 +209,92 @@ fn page_scroll(scrolled: Signal<f32>) -> Scroll {
     scroll().flex_1().element_ref(&target)
 }
 
-/// From 768 px.
-fn desktop_page(p: Page) -> AnyElement {
+/// The frame: the content in the scroll view, made once; the bars, the title and the meta for
+/// the width, made again when it crosses 768 px.
+fn frame(p: Page) -> AnyElement {
     let scrolled = signal(0.0_f32);
     let detail = !untracked(nav::current).is_top_level();
-    let actions_in_bar = move || !detail || window_width() >= ACTIONS_IN_BAR_FROM;
-    let title_fn = p.title.clone();
+    let Page { title, meta, actions, actions_on_phone, bar_actions, bottom_bar, bar_below_lg, wide, content } = p;
+    let has_bottom_bar = bottom_bar.is_some();
 
-    // The toolbar: the material fades in once something is under it.
+    let bars = {
+        let (phone_title, desktop_title, actions) = (title.clone(), title.clone(), actions.clone());
+        when(is_phone, move || phone_bar(phone_title.clone(), bar_actions.clone(), scrolled, detail))
+            .otherwise(move || desktop_toolbar(desktop_title.clone(), actions.clone(), wide, scrolled, detail))
+    };
+    let head = dynamic(move || {
+        if is_phone() {
+            phone_head(title.clone(), meta.clone(), actions.clone().filter(|_| actions_on_phone))
+        } else {
+            desktop_head(title.clone(), meta.clone(), actions.clone(), detail)
+        }
+    });
+    let body = column(wide)
+        .pt(move || px(if is_phone() { PHONE_BAR + 4.0 } else { TOOLBAR_HEIGHT + if detail { 24.0 } else { 16.0 } }))
+        .pb(move || {
+            px(if is_phone() {
+                // Clear of the tab bar, and of the action bar over it.
+                BOTTOM_CHROME + if has_bottom_bar { 72.0 } else { 0.0 }
+            } else if has_bottom_bar && !(bar_below_lg && window_width() >= ACTIONS_IN_BAR_FROM) {
+                96.0
+            } else if window_width() >= 1024.0 {
+                32.0
+            } else {
+                24.0
+            })
+        })
+        .child(head)
+        .children(content);
+
+    // The floating action bar: 8 px over the window's bottom, over the tab bar on a phone.
+    let bottom = bottom_bar.map(|bar| {
+        view()
+            .absolute()
+            .left(px(0.0))
+            .right(px(0.0))
+            .bottom(move || px(if is_phone() { BOTTOM_CHROME } else { 8.0 }))
+            .flex_row()
+            .justify_center()
+            .child(column(wide).child(dynamic(move || bar())))
+    });
+
+    view()
+        .flex_1()
+        .bg(background)
+        .child(page_scroll(scrolled).child(view().flex_row().justify_center().child(body)))
+        .child(bars)
+        .child(bottom)
+        .into_element()
+}
+
+/// Whether a detail screen's actions sit in the toolbar (from 1024 px; a top-level screen's
+/// always do).
+fn actions_in_bar(detail: bool) -> bool {
+    !detail || window_width() >= ACTIONS_IN_BAR_FROM
+}
+
+/// From 768 px: the toolbar. The material fades in once something is under it.
+fn desktop_toolbar(
+    title_fn: Rc<dyn Fn() -> Option<SharedString>>,
+    actions: Option<Build>,
+    wide: bool,
+    scrolled: Signal<f32>,
+    detail: bool,
+) -> AnyElement {
     let toolbar_title: AnyElement = if detail {
-        breadcrumb(title_fn.clone()).into_element()
+        breadcrumb(title_fn).into_element()
     } else {
-        let t = title_fn.clone();
         view()
             .flex_1()
             .min_w(px(0.0))
             .role(AccessibilityRole::Header)
-            .child(dynamic(move || match t() {
+            .child(dynamic(move || match title_fn() {
                 Some(s) => title(text(s)).number_of_lines(1).into_element(),
                 None => super::blocks::bar(224.0, 16.0).into_element(),
             }))
             .into_element()
     };
-    let bar_actions = p.actions.clone();
-    let toolbar = probe_press(
+    probe_press(
         view()
             .absolute()
             .top(px(0.0))
@@ -246,7 +321,7 @@ fn desktop_page(p: Page) -> AnyElement {
             .pointer_events(PointerEvents::None),
     )
     .child(
-        column(p.wide)
+        column(wide)
             .h_full()
             .flex_row()
             .items_center()
@@ -254,52 +329,43 @@ fn desktop_page(p: Page) -> AnyElement {
             .child(toolbar_title)
             .child(
                 view().flex_row().items_center().gap(px(8.0)).child(dynamic(move || {
-                    if actions_in_bar() { bar_actions.as_ref().map(|a| a()) } else { None }
+                    if actions_in_bar(detail) { actions.as_ref().map(|a| a()) } else { None }
                 })),
             ),
-    );
+    )
+    .into_element()
+}
 
-    // The content: on a detail screen the display title and the meta first.
-    let meta = p.meta.clone();
-    let content_actions = p.actions.clone();
-    let head: Option<AnyElement> = detail.then(|| {
-        let t = title_fn.clone();
+/// From 768 px, over the content: a detail screen's display title, its meta and (below 1024 px)
+/// its actions; a top-level screen's meta.
+fn desktop_head(title_fn: Rc<dyn Fn() -> Option<SharedString>>, meta: Option<Build>, actions: Option<Build>, detail: bool) -> AnyElement {
+    if detail {
         view()
-            .child(dynamic(move || match t() {
+            .child(dynamic(move || match title_fn() {
                 Some(s) => display(text(s)).role(AccessibilityRole::Header).into_element(),
                 None => super::blocks::bar(288.0, 32.0).into_element(),
             }))
-            .child(meta_row(meta.clone(), content_actions.clone(), move || !actions_in_bar(), true))
+            .child(meta_row(meta, actions, move || !actions_in_bar(detail), true))
             .into_element()
-    });
-    let top_meta = (!detail && p.meta.is_some()).then(|| meta_row(p.meta.clone(), None, || false, false));
-    let has_bottom_bar = p.bottom_bar.is_some();
-    let bar_below_lg = p.bar_below_lg;
-    let body = column(p.wide)
-        .pt(px(TOOLBAR_HEIGHT + if detail { 24.0 } else { 16.0 }))
-        .pb(move || px(if has_bottom_bar && !(bar_below_lg && window_width() >= ACTIONS_IN_BAR_FROM) { 96.0 } else if window_width() >= 1024.0 { 32.0 } else { 24.0 }))
-        .child(head)
-        .child(top_meta)
-        .children(p.content);
+    } else if meta.is_some() {
+        meta_row(meta, None, || false, false).into_element()
+    } else {
+        view().into_element()
+    }
+}
 
-    let bottom = p.bottom_bar.clone().map(|bar| {
-        view()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(8.0))
-            .flex_row()
-            .justify_center()
-            .child(column(p.wide).child(dynamic(move || bar())))
+/// Below 768 px, over the content: the large title (28 px on 31 px), the meta and the actions.
+fn phone_head(title_fn: Rc<dyn Fn() -> Option<SharedString>>, meta: Option<Build>, actions: Option<Build>) -> AnyElement {
+    let large_title = dynamic(move || match title_fn() {
+        Some(s) => display(text(s))
+            .text_size(px(28.0))
+            .line_height(px(31.0))
+            .letter_spacing(px(-0.84))
+            .role(AccessibilityRole::Header)
+            .into_element(),
+        None => super::blocks::bar(288.0, 28.0).into_element(),
     });
-
-    view()
-        .flex_1()
-        .bg(background)
-        .child(page_scroll(scrolled).child(view().flex_row().justify_center().child(body)))
-        .child(toolbar)
-        .child(bottom)
-        .into_element()
+    view().child(large_title).child(meta_row(meta, actions, || true, true)).into_element()
 }
 
 /// The row under a title: the meta (muted) at its start, the actions at its end; 24 px under it.
@@ -381,35 +447,27 @@ fn breadcrumb(current: Rc<dyn Fn() -> Option<SharedString>>) -> impl IntoElement
         )
 }
 
-/// Below 768 px.
-fn phone_page(p: Page) -> AnyElement {
-    let scrolled = signal(0.0_f32);
-    let route = untracked(nav::current);
-    let detail = !route.is_top_level();
-    let title_fn = p.title.clone();
+/// Below 768 px: the 44 px bar, with the back button (or Settings on a top-level screen), the small
+/// title that fades in once the large one has gone under the bar, and the bar's actions.
+fn phone_bar(title_fn: Rc<dyn Fn() -> Option<SharedString>>, bar_actions: Option<Build>, scrolled: Signal<f32>, detail: bool) -> AnyElement {
     // The large title (28 px on 31 px, 4 px under the bar) has gone under the bar.
     let title_under = move || scrolled.get() > 4.0 + 31.0;
-
     let leading: AnyElement = if detail {
         back_control(title_under).into_element()
     } else {
         settings_button().into_element()
     };
-    let small_title = {
-        let t = title_fn.clone();
-        text(move || t().map(|s| s.to_string()).unwrap_or_default())
-            .text_size(px(17.0))
-            .line_height(px(22.0))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(ink)
-            .number_of_lines(1)
-            .text_center()
-            .opacity(move || if title_under() { 1.0_f32 } else { 0.0 })
-            .transition_opacity()
-            .accessibility_elements_hidden(true)
-    };
-    let bar_actions = p.bar_actions.clone();
-    let bar = view()
+    let small_title = text(move || title_fn().map(|s| s.to_string()).unwrap_or_default())
+        .text_size(px(17.0))
+        .line_height(px(22.0))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(ink)
+        .number_of_lines(1)
+        .text_center()
+        .opacity(move || if title_under() { 1.0_f32 } else { 0.0 })
+        .transition_opacity()
+        .accessibility_elements_hidden(true);
+    view()
         .absolute()
         .top(px(0.0))
         .left(px(0.0))
@@ -447,43 +505,7 @@ fn phone_page(p: Page) -> AnyElement {
                         .gap(px(8.0))
                         .child(dynamic(move || bar_actions.as_ref().map(|a| a()))),
                 ),
-        );
-
-    let t = title_fn.clone();
-    let large_title = dynamic(move || match t() {
-        Some(s) => display(text(s))
-            .text_size(px(28.0))
-            .line_height(px(31.0))
-            .letter_spacing(px(-0.84))
-            .role(AccessibilityRole::Header)
-            .into_element(),
-        None => super::blocks::bar(288.0, 28.0).into_element(),
-    });
-    let has_bottom_bar = p.bottom_bar.is_some();
-    let body = column(p.wide)
-        .pt(px(PHONE_BAR + 4.0))
-        // Clear of the tab bar, and of the action bar over it.
-        .pb(px(BOTTOM_CHROME + if has_bottom_bar { 72.0 } else { 0.0 }))
-        .child(large_title)
-        .child(meta_row(p.meta.clone(), p.actions.clone(), || true, true))
-        .children(p.content);
-
-    let bottom = p.bottom_bar.clone().map(|bar| {
-        view()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(BOTTOM_CHROME))
-            .px(move || px(column_padding()))
-            .child(dynamic(move || bar()))
-    });
-
-    view()
-        .flex_1()
-        .bg(background)
-        .child(page_scroll(scrolled).child(body))
-        .child(bar)
-        .child(bottom)
+        )
         .into_element()
 }
 

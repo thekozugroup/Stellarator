@@ -21,7 +21,7 @@ use crate::theme::{muted_ink, radius};
 use crate::ui::blocks::{bar, empty_block, error_block};
 use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon::{self, icon as glyph};
-use crate::ui::page::{is_phone, page, window_width};
+use crate::ui::page::{page, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::table::{Column, cell, header, row};
 
@@ -92,12 +92,10 @@ pub fn screen() -> impl IntoElement {
     });
 
     let mut frame = page("Prompt sets");
-    if !untracked(is_phone) {
-        frame = frame.actions(move || {
-            let empty = load.with(|l| l.loaded().is_some_and(Vec::is_empty));
-            if empty { view().into_element() } else { import_button().on_press(import).into_element() }
-        });
-    }
+    frame = frame.desktop_actions(move || {
+        let empty = load.with(|l| l.loaded().is_some_and(Vec::is_empty));
+        if empty { view().into_element() } else { import_button().on_press(import).into_element() }
+    });
     frame
         .bar_actions(move || {
             dynamic(move || {

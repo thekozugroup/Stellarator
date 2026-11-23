@@ -165,21 +165,19 @@ pub fn screen(id: i64) -> impl IntoElement {
     };
 
     let mut frame = page_with(title_fn).meta(move || meta(set));
-    if !untracked(is_phone) {
-        frame = frame.actions(move || {
-            let Some(run_count) = runs.get() else { return view().into_element() };
-            view()
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .child((run_count >= 2).then(|| {
-                    button("Auto-pair by run…").variant(Variant::Secondary).on_press(move || auto_open.set(true))
-                }))
-                .child(button("Export pairs…").on_press(move || export_open.set(true)))
-                .child(menu(false))
-                .into_element()
-        });
-    }
+    frame = frame.desktop_actions(move || {
+        let Some(run_count) = runs.get() else { return view().into_element() };
+        view()
+            .flex_row()
+            .items_center()
+            .gap(px(8.0))
+            .child((run_count >= 2).then(|| {
+                button("Auto-pair by run…").variant(Variant::Secondary).on_press(move || auto_open.set(true))
+            }))
+            .child(button("Export pairs…").on_press(move || export_open.set(true)))
+            .child(menu(false))
+            .into_element()
+    });
     let bar_review = review.clone();
     frame
         .bar_actions(move || dynamic(move || menu(true)).into_element())
@@ -743,7 +741,7 @@ impl Review {
             .child(view().mb(px(24.0)).child(tabs))
             .child(
                 view()
-                    .child(view().absolute().top(px(if is_phone() { -60.0 } else { -68.0 })).h(px(0.0)).w(px(1.0)).element_ref(&r.top_mark))
+                    .child(view().absolute().top(move || px(if is_phone() { -60.0 } else { -68.0 })).h(px(0.0)).w(px(1.0)).element_ref(&r.top_mark))
                     .child(body),
             )
             .child(shortcuts_dialog)

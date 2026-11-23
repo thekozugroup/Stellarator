@@ -338,13 +338,13 @@ pub fn error_text(message: impl Into<SharedString>) -> impl IntoElement {
 type HintFn = Rc<dyn Fn() -> Option<SharedString>>;
 
 /// The hint, or the error in its place while `error` has one.
-fn note(hint_text: Option<HintFn>, error: Option<Signal<Option<String>>>, end: bool) -> impl IntoElement {
+fn note(hint_text: Option<HintFn>, error: Option<Signal<Option<String>>>, end: impl Fn() -> bool + 'static) -> impl IntoElement {
     dynamic(move || -> Option<AnyElement> {
         let el = match error.and_then(|e| e.get()) {
             Some(message) if !message.is_empty() => error_text(message).into_element(),
             _ => {
                 let h = hint_text.as_ref().and_then(|h| h())?;
-                if end { meta(text(h)).text_right().into_element() } else { hint(h).into_element() }
+                if end() { meta(text(h)).text_right().into_element() } else { hint(h).into_element() }
             }
         };
         Some(el)
@@ -404,7 +404,7 @@ impl IntoElement for Field {
             .gap(px(4.0))
             .child(field_label(self.label.clone(), self.optional))
             .child(self.info.map(|i| info_tip(self.label.clone(), i)));
-        view().gap(px(6.0)).child(label_row).child(self.control).child(note(self.hint, self.error, false)).into_element()
+        view().gap(px(6.0)).child(label_row).child(self.control).child(note(self.hint, self.error, || false)).into_element()
     }
 }
 
@@ -584,19 +584,24 @@ impl FormRow {
 
 impl IntoElement for FormRow {
     fn into_element(self) -> AnyElement {
-        let side_by_side = !self.stacked && !untracked(is_phone);
+        // Side by side from 768 px (the label in a 192 px column), stacked on a phone. The row
+        // switches in place, so its control stays made with what was typed in it.
+        let stacked = self.stacked;
+        let side_by_side = move || !stacked && !is_phone();
         let label_row = view()
             .flex_row()
             .items_center()
             .gap(px(4.0))
-            .min_h(px(if side_by_side { CONTROL } else { 0.0 }))
+            .min_h(move || px(if side_by_side() { CONTROL } else { 0.0 }))
+            .style_when(side_by_side, |s| s.w(px(192.0)).flex_none())
             .child(
                 body(text(self.label.clone())).number_of_lines(2).child(self.optional.map(|optional| {
                     text(move || if optional() { " (optional)" } else { "" }).text_color(muted_ink)
                 })),
             )
             .child(self.info.map(|i| info_tip(self.label.clone(), i)));
-        let end = self.end && side_by_side;
+        let has_end = self.end;
+        let end = move || has_end && side_by_side();
         // A hint that is an element (a sentence with a link) shows while there is no error.
         let hint_element = self.hint_element.map(|make| {
             let error = self.error;
@@ -604,22 +609,22 @@ impl IntoElement for FormRow {
                 if error.is_some_and(|e| e.with(|m| m.as_ref().is_some_and(|m| !m.is_empty()))) { None } else { make() }
             })
         });
-        let mut control_col =
-            view().gap(px(6.0)).min_w(px(0.0)).child(self.control).child(note(self.hint, self.error, end)).child(hint_element);
-        if self.end && side_by_side {
-            control_col = control_col.items_end();
-        }
-        let row = view().px(px(12.0)).py(px(8.0)).gap(px(6.0));
-        if side_by_side {
-            row.flex_row()
-                .items_start()
-                .gap(px(16.0))
-                .child(label_row.w(px(192.0)).flex_none())
-                .child(control_col.flex_1())
-                .into_element()
-        } else {
-            row.child(label_row).child(control_col).into_element()
-        }
+        let control_col = view()
+            .gap(px(6.0))
+            .min_w(px(0.0))
+            .style_when(side_by_side, |s| s.flex_1())
+            .style_when(end, |s| s.items_end())
+            .child(self.control)
+            .child(note(self.hint, self.error, end))
+            .child(hint_element);
+        view()
+            .px(px(12.0))
+            .py(px(8.0))
+            .gap(px(6.0))
+            .style_when(side_by_side, |s| s.flex_row().items_start().gap(px(16.0)))
+            .child(label_row)
+            .child(control_col)
+            .into_element()
     }
 }
 

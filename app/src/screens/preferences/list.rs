@@ -19,7 +19,7 @@ use crate::theme::{muted_ink, radius};
 use crate::ui::blocks::{bar, empty_block, error_block};
 use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon;
-use crate::ui::page::{is_phone, page, window_width};
+use crate::ui::page::{page, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::{progress_bar, progress_bar_full};
 use crate::ui::table::row;
@@ -71,14 +71,12 @@ pub fn screen() -> impl IntoElement {
     let mut frame = page("Preferences");
     // The toolbar's button while loading and with sets (the empty card has its own); on a phone
     // the "+" in the bar instead.
-    if !untracked(is_phone) {
-        frame = frame.actions(move || {
-            if empty() {
-                return view().into_element();
-            }
-            button("New preference set").leading(icon::PLUS).on_press(move || open.set(true)).into_element()
-        });
-    }
+    frame = frame.desktop_actions(move || {
+        if empty() {
+            return view().into_element();
+        }
+        button("New preference set").leading(icon::PLUS).on_press(move || open.set(true)).into_element()
+    });
     frame
         .bar_actions(move || {
             dynamic(move || {

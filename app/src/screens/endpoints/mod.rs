@@ -33,7 +33,7 @@ use crate::ui::blocks::{empty_block, error_block};
 use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon;
 use crate::ui::overlay::{Alert, DialogWidth, alert, dialog, side_sheet, toast_error, toast_success};
-use crate::ui::page::{is_phone, page};
+use crate::ui::page::page;
 use crate::ui::plasma::plasma;
 
 /// The presets the empty page offers, in this order.
@@ -270,12 +270,10 @@ pub fn screen() -> impl IntoElement {
     let mut frame = page("Endpoints");
     // The toolbar's Add endpoint: while loading and with endpoints (the empty page has its own
     // buttons); on a phone the "+" in the bar instead.
-    if !untracked(is_phone) {
-        frame = frame.actions(move || {
-            let empty = load.with(|l| l.loaded().is_some_and(Vec::is_empty));
-            (!empty).then(|| button("Add endpoint").leading(icon::PLUS).on_press(add).into_element()).unwrap_or_else(|| view().into_element())
-        });
-    }
+    frame = frame.desktop_actions(move || {
+        let empty = load.with(|l| l.loaded().is_some_and(Vec::is_empty));
+        (!empty).then(|| button("Add endpoint").leading(icon::PLUS).on_press(add).into_element()).unwrap_or_else(|| view().into_element())
+    });
     frame
         .bar_actions(move || {
             dynamic(move || {

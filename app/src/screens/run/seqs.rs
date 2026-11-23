@@ -227,14 +227,10 @@ pub fn seqs_control(
                 .child(stepper)
                 // Below 640 px the common values take a row of their own, as wide as the card's
                 // content (`w-full`).
-                .child({
-                    let choices = view().child(seqs_choices(move || current(), move |n| pick(n)));
-                    if untracked(window_width) < 640.0 {
-                        choices.w(px(untracked(window_width) - 2.0 * untracked(column_padding) - 32.0))
-                    } else {
-                        choices
-                    }
-                }),
+                .child(view().child(seqs_choices(move || current(), move |n| pick(n))).w(move || {
+                    let w = window_width();
+                    if w < 640.0 { Length::from(px(w - 2.0 * column_padding() - 32.0)) } else { Length::Auto }
+                })),
         )
         .child(dynamic(move || {
             invalid().then(|| meta(text(format!("Enter a whole number from {MIN} to {}.", int(MAX)))).text_color(token("negative-ink")))

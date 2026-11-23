@@ -137,7 +137,25 @@ pub fn screen(id: i64) -> impl IntoElement {
     });
     cleanup(|| set_window_title("Stellarator".into()));
 
-    dynamic(move || match frame.get() {
+    // Made again only when the frame changes: the screen is made untracked, so what it reads
+    // while it is made (the width, the run) does not make it again and drop the open sample, the
+    // search or a dialog.
+    dynamic(move || {
+        let shown = frame.get();
+        untracked(|| screen_for(shown, id, live, run, seqs_shown, fetch))
+    })
+}
+
+/// The screen for `frame`: the skeleton, the missing run, the failure or the run.
+fn screen_for(
+    frame: Frame,
+    id: i64,
+    live: Signal<Live>,
+    run: Memo<Option<RunOut>>,
+    seqs_shown: Signal<Option<i64>>,
+    fetch: impl Fn() + Copy + 'static,
+) -> AnyElement {
+    match frame {
         Frame::Loading => skeleton().into_element(),
         Frame::Missing => missing().into_element(),
         Frame::Failed => {
@@ -153,7 +171,7 @@ pub fn screen(id: i64) -> impl IntoElement {
                 .into_element()
         }
         Frame::Loaded => loaded(id, live, run, seqs_shown, Rc::new(fetch)).into_element(),
-    })
+    }
 }
 
 /// "120 of 400 · Distill gsm8k · Stellarator" while the run goes, else "Distill gsm8k ·

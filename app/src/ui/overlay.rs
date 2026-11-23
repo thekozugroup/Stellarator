@@ -191,24 +191,17 @@ pub fn dialog_description(words: impl Into<SharedString>) -> AnyElement {
 /// A dialog's footer: the buttons at the end, in a row; on a phone stacked, the main action on top
 /// and each as wide as the dialog. Pass them in reading order (Cancel first).
 pub fn dialog_footer(buttons: Vec<Button>) -> impl IntoElement {
-    let buttons = Rc::new(std::cell::RefCell::new(Some(buttons)));
-    let phone = untracked(|| window_width() < 640.0);
-    let list = buttons.borrow_mut().take().unwrap_or_default();
-    if phone {
-        view()
-            .pt(px(4.0))
-            .gap(px(8.0))
-            .children(list.into_iter().rev().map(|b| b.full_width().into_element()).collect::<Vec<_>>())
-            .into_element()
-    } else {
-        view()
-            .pt(px(4.0))
-            .flex_row()
-            .justify_end()
-            .gap(px(8.0))
-            .children(list.into_iter().map(IntoElement::into_element).collect::<Vec<_>>())
-            .into_element()
-    }
+    // The footer switches in place when the width crosses 640 px, so an open dialog keeps its
+    // buttons (and their busy state). Stretching is the cross axis: in the row it changes nothing
+    // (the buttons have their height), stacked it makes each as wide as the dialog.
+    let phone = move || window_width() < 640.0;
+    view()
+        .pt(px(4.0))
+        .gap(px(8.0))
+        .style_when(phone, |s| s.flex_col_reverse())
+        .style_when(move || !phone(), |s| s.flex_row().justify_end())
+        .children(buttons.into_iter().map(|b| b.full_width().into_element()).collect::<Vec<_>>())
+        .into_element()
 }
 
 /// What an alert asks for.
@@ -321,15 +314,15 @@ pub fn side_sheet_width(
         })
         .accessibility_label(label)
         .backdrop_style(|s| s.bg(scrim))
-        .popup_style(|s| {
-            let inset = if window_width() >= 640.0 { shell_gap().max(8.0) } else { 0.0 };
-            let corner = if inset > 0.0 { panel_radius().max(radius::XL) } else { 0.0 };
+        .popup_style(move |s| {
+            // Bound to the width, so an open sheet follows the window as it changes.
+            let inset = || if window_width() >= 640.0 { shell_gap().max(8.0) } else { 0.0 };
             material_float(material_thick(s))
-                .top(px(inset))
-                .bottom(px(inset))
-                .right(px(inset))
-                .w(px((window_width() - 2.0 * inset).min(width)))
-                .rounded(px(corner))
+                .top(move || px(inset()))
+                .bottom(move || px(inset()))
+                .right(move || px(inset()))
+                .w(move || px((window_width() - 2.0 * inset()).min(width)))
+                .rounded(move || px(if inset() > 0.0 { panel_radius().max(radius::XL) } else { 0.0 }))
                 .overflow_hidden()
         })
         .child(dynamic(move || content()))

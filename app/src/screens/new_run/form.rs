@@ -430,8 +430,7 @@ fn requests_rows(state: State, data: Data, submit: &Rc<dyn Fn()>) -> Vec<AnyElem
     };
     // From 768 px the controls sit at the end of their column; a phone's start at its edge.
     let column = |children: Vec<AnyElement>| {
-        let c = view().gap(px(6.0)).children(children);
-        if untracked(is_phone) { c } else { c.items_end() }
+        view().gap(px(6.0)).style_when(move || !is_phone(), |s| s.items_end()).children(children)
     };
     let seqs = column(vec![
         stepper(Field::Concurrency, "seqs", 1, 4096).into_element(),
