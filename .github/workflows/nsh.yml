@@ -129,11 +129,6 @@ jobs:
           swiftc -O app/ci/mouse-drag.swift -o "$RUNNER_TEMP/mouse-drag"
           swiftc -O app/ci/icon-of.swift -o "$RUNNER_TEMP/icon-of"
 
-      - name: The icon macOS shows for the app
-        run: |
-          mkdir -p shots
-          "$RUNNER_TEMP/icon-of" "$PWD/app/.nsh/out/Stellarator.app" shots/app-icon.png 512
-          xcrun assetutil --info "$PWD/app/.nsh/out/Stellarator.app/Contents/Resources/Assets.car" 2> /dev/null | grep -E '"(Name|RenditionName|AssetType)"' | sort | uniq -c | head -20 || true
 
       - name: Run (light, empty data folder, then seeded, then without the toolbar)
         run: |
@@ -168,6 +163,18 @@ jobs:
       - name: Drag the window by its top band
         run: |
           app/ci/macos-drag.sh "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" "$RUNNER_TEMP/mouse-drag"
+
+      # Last, and bounded: in an earlier run this step did not return within 18 minutes.
+      - name: The icon macOS shows for the app
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          mkdir -p shots
+          perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/icon-of" "$PWD/app/.nsh/out/Stellarator.app" shots/app-icon.png 512 \
+            || echo "icon-of did not finish within 60 s (exit $?)"
+          perl -e 'alarm 60; exec @ARGV' xcrun assetutil --info "$PWD/app/.nsh/out/Stellarator.app/Contents/Resources/Assets.car" > shots/assets-car-info.json 2>&1 \
+            || echo "assetutil did not finish within 60 s (exit $?)"
+          grep -E '"(Name|RenditionName|AssetType)"' shots/assets-car-info.json | sort | uniq -c | head -20 || true
 
       - uses: actions/upload-artifact@v7
         if: always()
