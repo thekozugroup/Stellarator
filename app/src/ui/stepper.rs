@@ -6,17 +6,17 @@
 //!   the range and disable at its ends. Up and Down in the field step the value, as in a number
 //!   input.
 //! - [`seqs_choices`]: the common seqs values ([`SEQS_CHOICES`]) as one segmented control that never
-//!   wraps: from 768 px it is as wide as its segments, below that it fills its column.
+//!   wraps: from 640 px it is as wide as its segments, below that it fills its column.
 
 use std::rc::Rc;
 
 use nsh_core::prelude::*;
 
 use super::button::{Button, Size, Variant};
-use super::choice::segmented_with_get;
+use super::choice::segmented_padded;
 use super::field::text_field;
 use super::icon;
-use super::page::is_phone;
+use super::page::window_width;
 
 /// Common seqs values, offered as one segmented row on New run and on a run.
 pub const SEQS_CHOICES: [i64; 8] = [1, 4, 8, 16, 32, 64, 128, 256];
@@ -184,7 +184,10 @@ fn with_card(button: Button, on_card: bool) -> Button {
 /// segments is chosen when it is not one of them), `on_change` hears a choice.
 pub fn seqs_choices(value: impl Fn() -> i64 + 'static, on_change: impl Fn(i64) + 'static) -> impl IntoElement {
     let options: Vec<(i64, &'static str)> = SEQS_CHOICES.iter().copied().zip(SEQS_LABELS).collect();
-    segmented_with_get(
+    // Below 640 px the segments share the row, 4 px each side of a label (`w-full px-1`); from
+    // 640 px the control is as wide as they are, 8 px each side (`sm:w-fit sm:px-2`).
+    let narrow = untracked(window_width) < 640.0;
+    segmented_padded(
         options,
         move || {
             let n = value();
@@ -192,8 +195,8 @@ pub fn seqs_choices(value: impl Fn() -> i64 + 'static, on_change: impl Fn(i64) +
         },
         on_change,
         "Common seqs values",
-        // Below 768 px the segments share the row; above it the control is as wide as they are.
-        untracked(is_phone),
+        narrow,
+        if narrow { 4.0 } else { 8.0 },
     )
 }
 

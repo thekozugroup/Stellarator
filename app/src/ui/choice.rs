@@ -33,7 +33,7 @@ pub fn segmented<V: Clone + PartialEq + 'static>(
     accessibility: &'static str,
     fill: bool,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(move || value.get()), Rc::new(move |v| value.set(v)), accessibility, fill, 13.0, false)
+    segmented_with(options, Rc::new(move || value.get()), Rc::new(move |v| value.set(v)), accessibility, fill, 13.0, false, 10.0)
 }
 
 /// A segmented control with 12 px labels whose value is read with `get` and changed with `set`
@@ -44,7 +44,7 @@ pub fn segmented_small<V: Clone + PartialEq + 'static>(
     set: impl Fn(V) + 'static,
     accessibility: &'static str,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, false)
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, false, 10.0)
 }
 
 /// A segmented control whose value is read with `get` and changed with `set`, 13 px labels;
@@ -56,7 +56,20 @@ pub fn segmented_with_get<V: Clone + PartialEq + 'static>(
     accessibility: &'static str,
     fill: bool,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0, false)
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0, false, 10.0)
+}
+
+/// [`segmented_with_get`] with `pad` points each side of a segment's label (the common seqs
+/// values: 4 when they share a phone's row, 8 from 640 px).
+pub fn segmented_padded<V: Clone + PartialEq + 'static>(
+    options: Vec<(V, &'static str)>,
+    get: impl Fn() -> V + 'static,
+    set: impl Fn(V) + 'static,
+    accessibility: &'static str,
+    fill: bool,
+    pad: f32,
+) -> impl IntoElement {
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0, false, pad)
 }
 
 /// A segmented control with mono 12 px labels, for names
@@ -67,7 +80,7 @@ pub fn segmented_mono<V: Clone + PartialEq + 'static>(
     set: impl Fn(V) + 'static,
     accessibility: &'static str,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, true)
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, true, 10.0)
 }
 
 fn segmented_with<V: Clone + PartialEq + 'static>(
@@ -78,6 +91,7 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
     fill: bool,
     text_size: f32,
     mono: bool,
+    pad: f32,
 ) -> impl IntoElement {
     let segments = options.into_iter().map(move |(v, label)| {
         let chosen: Rc<dyn Fn() -> bool> = {
@@ -95,7 +109,7 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
         let mut seg = view()
             .h(px(28.0))
             .min_w(px(28.0))
-            .px(px(10.0))
+            .px(px(pad))
             .flex_row()
             .items_center()
             .justify_center()
