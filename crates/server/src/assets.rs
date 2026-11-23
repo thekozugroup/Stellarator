@@ -26,7 +26,11 @@ struct Dist;
 pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
     let path = uri.path().trim_start_matches('/');
     if path.starts_with("api/") || path == "api" {
-        return (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"detail": "Not found."}))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({"detail": "Not found."})),
+        )
+            .into_response();
     }
     if !path.is_empty() {
         if let Some(response) = file(path, &headers) {
@@ -47,7 +51,10 @@ pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
 /// file.
 fn file(path: &str, headers: &HeaderMap) -> Option<Response> {
     let original = Dist::get(path)?;
-    let accepted = headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let accepted = headers
+        .get(header::ACCEPT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     let (data, encoding) = [("br", ".br"), ("gzip", ".gz")]
         .into_iter()
         .filter(|(name, _)| accepts(accepted, name))
@@ -58,9 +65,15 @@ fn file(path: &str, headers: &HeaderMap) -> Option<Response> {
     } else if path.ends_with(".html") {
         "text/html; charset=utf-8".to_string()
     } else {
-        mime_guess::from_path(path).first_or_octet_stream().to_string()
+        mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .to_string()
     };
-    let cache = if immutable(path) { "public, max-age=31536000, immutable" } else { "no-cache" };
+    let cache = if immutable(path) {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
     let mut response = Response::builder()
         .header(header::CONTENT_TYPE, mime)
         .header(header::CACHE_CONTROL, cache)
@@ -76,7 +89,12 @@ fn accepts(header: &str, name: &str) -> bool {
     header.split(',').any(|part| {
         let mut pieces = part.trim().split(';');
         let coding = pieces.next().unwrap_or("").trim();
-        let refused = pieces.any(|p| matches!(p.trim().replace(' ', "").as_str(), "q=0" | "q=0.0" | "q=0.00" | "q=0.000"));
+        let refused = pieces.any(|p| {
+            matches!(
+                p.trim().replace(' ', "").as_str(),
+                "q=0" | "q=0.0" | "q=0.00" | "q=0.000"
+            )
+        });
         coding.eq_ignore_ascii_case(name) && !refused
     })
 }
@@ -85,7 +103,9 @@ fn accepts(header: &str, name: &str) -> bool {
 /// (`nsh-page.6c2c70f7ae.css`, `browser.b998e17dc5/...`). `assets/` holds the app's files under
 /// their own names, so it is revalidated.
 fn immutable(path: &str) -> bool {
-    path.split('/').flat_map(|segment| segment.split('.')).any(|part| part.len() == 10 && part.bytes().all(|b| b.is_ascii_hexdigit()))
+    path.split('/')
+        .flat_map(|segment| segment.split('.'))
+        .any(|part| part.len() == 10 && part.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// Content-Security-Policy for every response: only this server's scripts (plus the inline scripts
@@ -120,10 +140,14 @@ fn inline_scripts(html: &str) -> Vec<&str> {
     let mut rest = html;
     while let Some(start) = rest.find("<script") {
         let after = &rest[start + "<script".len()..];
-        let Some(tag_end) = after.find('>') else { break };
+        let Some(tag_end) = after.find('>') else {
+            break;
+        };
         let attributes = &after[..tag_end];
         let body_start = &after[tag_end + 1..];
-        let Some(end) = body_start.find("</script>") else { break };
+        let Some(end) = body_start.find("</script>") else {
+            break;
+        };
         if !attributes.contains("src=") && !body_start[..end].trim().is_empty() {
             out.push(&body_start[..end]);
         }
@@ -136,8 +160,14 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert(header::CONTENT_SECURITY_POLICY, csp().clone());
-    h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    h.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    h.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
     res
 }
 
@@ -160,7 +190,8 @@ mod tests {
 
     #[test]
     fn inline_scripts_are_found_with_attributes() {
-        let html = r#"<script>a()</script><script type="module">b()</script><script src="x.js"></script>"#;
+        let html =
+            r#"<script>a()</script><script type="module">b()</script><script src="x.js"></script>"#;
         assert_eq!(inline_scripts(html), vec!["a()", "b()"]);
     }
 }
