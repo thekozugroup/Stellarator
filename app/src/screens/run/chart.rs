@@ -368,7 +368,7 @@ fn chart(m: Rc<Model>) -> impl IntoElement {
         let m = m.clone();
         dynamic(move || {
             let (w, _) = size.get();
-            hover.get().and_then(|(i, mx, my)| m.data.get(i).map(|p| readout(*p, m.multi_day, mx, my, w)))
+            hover.get().and_then(|(i, mx, _)| m.data.get(i).map(|p| readout(*p, m.multi_day, mx, w)))
         })
     };
 
@@ -470,8 +470,9 @@ fn labels(m: &Model, w: f32, h: f32) -> impl IntoElement {
     view().absolute().inset(px(0.0)).accessibility_elements_hidden(true).children(out)
 }
 
-/// The readout of reading `p` beside the pointer at (`mx`, `my`), kept inside a chart `w` wide.
-fn readout(p: Point, multi_day: bool, mx: f32, my: f32, w: f32) -> AnyElement {
+/// The readout of reading `p`: 10 px right of the pointer at `mx` (left of it when there is no
+/// room), level with the top of the plot, as recharts places it; over the flag.
+fn readout(p: Point, multi_day: bool, mx: f32, w: f32) -> AnyElement {
     const BOX_W: f32 = 180.0;
     let when = if multi_day { date_time_seconds(at(p.t)) } else { time(at(p.t)) };
     let left = if mx + 10.0 + BOX_W > w { (mx - 10.0 - BOX_W).max(0.0) } else { mx + 10.0 };
@@ -499,7 +500,7 @@ fn readout(p: Point, multi_day: bool, mx: f32, my: f32, w: f32) -> AnyElement {
     material_float(material_thick(view()))
         .absolute()
         .left(px(left))
-        .top(px((my + 10.0).max(0.0)))
+        .top(px(TOP))
         .w(px(BOX_W))
         .rounded(px(radius::SM))
         .px(px(12.0))

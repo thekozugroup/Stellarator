@@ -296,6 +296,12 @@ fn filter_bar(
         .flex_1()
         .min_w(px(0.0))
         .max_w(px(if from_sm { 288.0 } else { f32::MAX }))
+        // Escape clears a search (and only then leaves the field).
+        .on_key_down(move |e: &nsh_core::keyboard::KeyEvent| {
+            if e.key.as_ref() == "Escape" && !search.with_untracked(String::is_empty) {
+                search.set(String::new());
+            }
+        })
         .child(text_field(search).search().placeholder("Search samples").accessibility_label("Search samples"));
     view()
         .h(px(44.0))

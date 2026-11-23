@@ -19,6 +19,7 @@ use crate::theme::{muted_ink, radius, token};
 use crate::ui::button::{Button, Size, Variant};
 use crate::ui::icon;
 use crate::ui::overlay::toast_error_with;
+use crate::ui::page::is_phone;
 use crate::ui::stepper::{parse_int, seqs_choices};
 
 const MIN: i64 = 1;
@@ -224,7 +225,11 @@ pub fn seqs_control(
                 .gap(px(8.0))
                 .child(body(text("Seqs")).text_color(muted_ink).mr(px(4.0)))
                 .child(stepper)
-                .child(seqs_choices(move || current(), move |n| pick(n))),
+                // On a phone the common values take a row of their own, as wide as the card (`w-full`).
+                .child({
+                    let choices = view().child(seqs_choices(move || current(), move |n| pick(n)));
+                    if untracked(is_phone) { choices.w_full() } else { choices }
+                }),
         )
         .child(dynamic(move || {
             invalid().then(|| meta(text(format!("Enter a whole number from {MIN} to {}.", int(MAX)))).text_color(token("negative-ink")))
