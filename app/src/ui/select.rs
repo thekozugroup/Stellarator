@@ -179,7 +179,11 @@ pub fn combobox_field(
         .offset(px(4.0))
         .popup_style(popup)
         .item_class(ITEM_CLASS)
+        // The input fills the field's box, which draws the edge.
+        .input_class("flex-1 min-w-0 self-stretch bg-transparent text-[13px] text-foreground")
         .h(px(CONTROL))
+        .flex_row()
+        .items_center()
         .px(px(12.0))
         .rounded(px(radius::MD))
         .border_1()

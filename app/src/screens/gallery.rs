@@ -19,7 +19,7 @@ use crate::ui::overlay::{Alert, DialogWidth, alert, dialog, dialog_description, 
 use crate::ui::page::{page, panel};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
-use crate::ui::select::{MenuEntry, menu_button, menu_destructive, menu_entry, option, select_button};
+use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, option, select_button};
 use crate::ui::status::{Tone, pill, run_status_badge, status_badge};
 use crate::ui::tiles::{tile, tiles};
 use crate::ui::tooltip::{copy_button, kbd};
@@ -31,6 +31,7 @@ pub fn screen() -> impl IntoElement {
     let name = signal(String::from("DGX Spark"));
     let notes = signal(String::new());
     let pick = signal(Some(SharedString::from("vllm")));
+    let model = signal(None::<SharedString>);
     let tab = signal(0_u8);
     let seg = signal(1_u8);
     let on = signal(true);
@@ -89,6 +90,16 @@ pub fn screen() -> impl IntoElement {
                 },
                 "Choose a server",
                 "Server",
+            ),
+        )
+        .into_element(),
+        form_row(
+            "Model",
+            combobox_field(
+                vec![option("qwen3-32b", "qwen3-32b"), option("mock-flaky", "mock-flaky"), option("mock-reasoning", "mock-reasoning")],
+                model,
+                "Search models…",
+                "Model",
             ),
         )
         .into_element(),
