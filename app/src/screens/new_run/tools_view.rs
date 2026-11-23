@@ -46,7 +46,6 @@ pub fn tools_section(state: State, data: Data, submit: &Rc<dyn Fn()>) -> impl In
             Load::Loaded(_) => 3,
         })
     });
-    let note = dynamic(move || state.tools_note.get().map(|n| meta(text(n)).text_color(token("coral-ink")).px(px(12.0))));
     let body_el = dynamic(move || -> AnyElement {
         match shape.get() {
             0 => view().into_element(),
@@ -65,13 +64,19 @@ pub fn tools_section(state: State, data: Data, submit: &Rc<dyn Fn()>) -> impl In
                     .into_element()
             }
             2 => view()
-                .px(px(12.0))
-                .child(text_link("Add MCP servers in Tools", None, crate::screens::tools::open))
+                .gap(px(8.0))
+                .child(view().px(px(12.0)).child(text_link("Add MCP servers in Tools", None, crate::screens::tools::open)))
+                .child(dropped_note(state))
                 .into_element(),
             _ => group(state, data, submit.clone()).into_element(),
         }
     });
-    view().gap(px(8.0)).element_ref(&state.element(Field::Tools)).child(body_el).child(note)
+    view().element_ref(&state.element(Field::Tools)).child(body_el)
+}
+
+/// What Run again could not copy, in coral under the group.
+fn dropped_note(state: State) -> impl IntoElement {
+    dynamic(move || state.tools_note.get().map(|n| meta(text(n)).text_color(token("coral-ink")).px(px(12.0))))
 }
 
 fn group_title() -> impl IntoElement {
@@ -117,6 +122,7 @@ fn group(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
     view()
         .gap(px(8.0))
         .child(form_group(vec![use_row.into_element()]).title("Tools").dynamic_rows(rows).footnote(footnote))
+        .child(dropped_note(state))
         .child(when(move || on.get(), move || settings(state, submit.clone())))
 }
 
@@ -187,11 +193,12 @@ fn server_row(state: State, data: Data, id: i64) -> impl IntoElement {
                 })
             })
     });
+    // The switch and the chevron line up with the name, the first line.
     let head = view()
         .flex_row()
-        .items_center()
+        .items_start()
         .gap(px(12.0))
-        .child(switch)
+        .child(view().h(px(18.0)).flex_row().items_center().child(switch))
         .child(
             view()
                 .flex_1()
@@ -201,8 +208,9 @@ fn server_row(state: State, data: Data, id: i64) -> impl IntoElement {
                 .child(label(text(first.name.clone())).number_of_lines(1))
                 .child(detail),
         )
-        .child(check)
-        .child(chevron.map(|c| view().rotate(move || if expanded() { 180.0_f32.to_radians() } else { 0.0 }).child(c)));
+        // 28 px controls centered on the 18 px first line.
+        .child(check.map(|c| view().my(px(-5.0)).child(c)))
+        .child(chevron.map(|c| view().my(px(-5.0)).rotate(move || if expanded() { 180.0_f32.to_radians() } else { 0.0 }).child(c)));
     form_item(
         view()
             .gap(px(8.0))

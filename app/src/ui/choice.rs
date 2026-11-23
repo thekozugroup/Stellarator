@@ -352,7 +352,8 @@ pub fn radio_group<V: Clone + PartialEq + 'static>(options: Vec<(V, &'static str
 /// A switch and its label: a 32 × 18 track, the ink fill when on.
 pub fn switch(label: impl Into<SharedString>, on: Signal<bool>) -> impl IntoElement {
     let label = label.into();
-    switch_with(label.clone(), move || on.get(), move |next| on.set(next), || false, label)
+    // At the start of a column, as wide as the switch and its label.
+    view().flex_row().child(switch_with(label.clone(), move || on.get(), move |next| on.set(next), || false, label))
 }
 
 /// A switch whose state is read with `on` and changed with `set`; while `disabled` holds it takes
@@ -375,7 +376,6 @@ pub fn switch_with(
         .flex_row()
         .items_center()
         .gap(px(8.0))
-        .self_start()
         .cursor(Cursor::Pointer)
         .opacity(move || if disabled() { 0.5_f32 } else { 1.0 })
         .track_style(|s| {

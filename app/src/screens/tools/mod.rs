@@ -117,17 +117,20 @@ pub fn screen() -> impl IntoElement {
         delete: Rc::new(move |s: Server| {
             delete_error.set(None);
             delete_runs.set(Vec::new());
-            let id = s.id;
-            // The runs it was used by, named in the alert once they are read.
-            if s.run_count > 0 {
-                call(|api| async move { api.runs().await }, move |r| {
-                    if let Ok(runs) = r {
-                        delete_runs.set(runs_using(&runs, id));
-                    }
-                });
-            }
+            let (id, used) = (s.id, s.run_count > 0);
             deleting.set(Some(s));
-            delete_open.set(true);
+            if !used {
+                delete_open.set(true);
+                return;
+            }
+            // The alert names the runs it was used by: it opens once they are read (or failed to
+            // be, when it says how many).
+            call(|api| async move { api.runs().await }, move |r| {
+                if let Ok(runs) = r {
+                    delete_runs.set(runs_using(&runs, id));
+                }
+                delete_open.set(true);
+            });
         }),
         check: check.clone(),
         toggle,

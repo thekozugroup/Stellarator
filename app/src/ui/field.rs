@@ -667,7 +667,10 @@ pub fn form_disclosure(
         )
         .child(body(text(title)).font_weight(FontWeight::SEMIBOLD))
         .child(view().flex_1())
-        .child(dynamic(move || (!open.get()).then(|| body(text(summary())).number_of_lines(1).text_color(muted_ink))));
+        // The summary gives way first: cut at the group's edge, never past it.
+        .child(dynamic(move || {
+            (!open.get()).then(|| body(text(summary())).number_of_lines(1).flex_shrink(1.0).min_w(px(0.0)).text_color(muted_ink))
+        }));
     view()
         .rounded(px(if in_dialog { radius::MD } else { radius::XL }))
         .bg(group_fill(in_dialog))

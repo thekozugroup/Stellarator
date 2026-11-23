@@ -79,16 +79,9 @@ pub fn details(
     let facts = view()
         .px(px(20.0))
         .gap(px(8.0))
-        .child(
-            view()
-                .flex_row()
-                .flex_wrap()
-                .items_center()
-                .gap_x(px(12.0))
-                .gap_y(px(8.0))
-                .child(status_badge(state.tone, None, state.word))
-                .child(body(text(facts_line.join(" · "))).text_color(muted_ink).tabular_nums()),
-        )
+        // The badge on its own line, the facts under it (they wrap in the sheet's width).
+        .child(view().flex_row().child(status_badge(state.tone, None, state.word)))
+        .child(body(text(facts_line.join(" · "))).text_color(muted_ink).tabular_nums())
         .child(state.reason.clone().map(|r| body(text(r)).text_color(reason_color).selectable(true)))
         .child(secrets_line);
 

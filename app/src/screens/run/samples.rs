@@ -631,15 +631,16 @@ fn stacked_rows(
                             bound(s, |s| (s.status, s.finish_reason.clone()), |s| sample_status_pill(s.status, s.finish_reason.as_deref()).into_element())
                         }))
                         .child(view().flex_1())
-                        .child(tools.then(|| {
-                            bound(s, |s| s.tool_calls, |s| {
-                                (s.tool_calls > 0)
-                                    .then(|| mono_meta(count(s.tool_calls, "tool call", "tool calls")).into_element())
-                                    .unwrap_or_else(|| view().into_element())
-                            })
-                        }))
-                        .child(bound(s, |s| s.completion_tokens, |s| {
-                            s.completion_tokens.map(|t| mono_meta(format!("{} tokens", int(t))).into_element()).unwrap_or_else(|| view().into_element())
+                        .child(bound(s, |s| (s.tool_calls, s.completion_tokens), move |s| {
+                            // "2 tool calls · 76 tokens" (tool calls only for a run with tools).
+                            let parts: Vec<String> = [
+                                (tools && s.tool_calls > 0).then(|| count(s.tool_calls, "tool call", "tool calls")),
+                                s.completion_tokens.map(|t| format!("{} tokens", int(t))),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .collect();
+                            if parts.is_empty() { view().into_element() } else { mono_meta(parts.join(" · ")).into_element() }
                         })),
                 )
                 .child(body(text(move || s.with(|s| non_empty(&s.prompt_preview)))).number_of_lines(1).mt(px(4.0)))
