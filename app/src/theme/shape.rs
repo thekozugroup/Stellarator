@@ -8,6 +8,7 @@
 //! | macOS 14 and 15 | 10 | flush |
 //! | Windows 11 | 8 | flush |
 //! | Linux | 0 | flush |
+//! | Browser | 26, the design value (no window corners), so it matches the Mac app | floats |
 //!
 //! Below [`FLOAT_FROM`] the sidebar is not a floating panel: it fills the window's left edge with
 //! a 1 px border, square-cornered, so nothing in the page touches a window corner.
@@ -45,6 +46,7 @@ impl WindowShape {
             Some(Os::MacOs) if version.0 >= 26 => WindowShape { radius: 26.0, overlay_title_bar: true },
             Some(Os::MacOs) => WindowShape { radius: 10.0, overlay_title_bar: true },
             Some(Os::Windows) => WindowShape { radius: 8.0, overlay_title_bar: false },
+            Some(Os::Web) => WindowShape { radius: 26.0, overlay_title_bar: false },
             _ => WindowShape { radius: 0.0, overlay_title_bar: false },
         }
     }
@@ -92,6 +94,7 @@ mod tests {
         assert_eq!(WindowShape::expected(Some(Os::MacOs), (15, 6)).radius, 10.0);
         assert_eq!(WindowShape::expected(Some(Os::Windows), (10, 0)).radius, 8.0);
         assert_eq!(WindowShape::expected(Some(Os::Linux), (0, 0)).radius, 0.0);
+        assert_eq!(WindowShape::expected(Some(Os::Web), (0, 0)).radius, 26.0);
         assert!(WindowShape::expected(Some(Os::MacOs), (26, 0)).overlay_title_bar);
         assert!(!WindowShape::expected(Some(Os::Windows), (10, 0)).overlay_title_bar);
     }

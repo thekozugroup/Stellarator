@@ -116,7 +116,11 @@ jobs:
           ls -la "$app/Contents/Resources" "$app/Contents/MacOS"
           du -sh "$app"
           mkdir -p dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname Stellarator -srcfolder dmg -ov -format UDZO Stellarator-nsh-x64.dmg
+          # hdiutil sometimes fails with "Resource busy" on the hosted runners: try again.
+          for attempt in 1 2 3; do
+            hdiutil create -volname Stellarator -srcfolder dmg -ov -format UDZO Stellarator-nsh-x64.dmg && break
+            sleep 10
+          done
           ls -la Stellarator-nsh-x64.dmg
 
       - name: Window helper
