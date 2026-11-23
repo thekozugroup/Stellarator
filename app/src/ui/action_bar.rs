@@ -10,13 +10,23 @@
 
 use nsh_core::prelude::*;
 
-use super::material::{material_bar, material_float};
+use super::material::{material_bar, material_bar_tinted, material_float};
 use crate::theme::radius;
 use crate::theme::shape::panel_radius;
 
 /// The bar holding `children` in a row: the first at the start, the rest at the end.
 pub fn action_bar(children: Vec<AnyElement>) -> impl IntoElement {
-    material_float(material_bar(view()))
+    bar(material_bar(view()), children)
+}
+
+/// [`action_bar`] in a state's tint (a theme.json token): the preference review's bar is
+/// `review-bar-tint`, periwinkle at 10% (DESIGN.md, Materials).
+pub fn action_bar_tinted(children: Vec<AnyElement>, tint: &'static str) -> impl IntoElement {
+    bar(material_bar_tinted(view(), tint), children)
+}
+
+fn bar(material: View, children: Vec<AnyElement>) -> View {
+    material_float(material)
         .flex_row()
         .flex_wrap()
         .items_center()

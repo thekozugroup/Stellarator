@@ -459,6 +459,73 @@ fn error_of(status: u16, bytes: &[u8]) -> ApiError {
     ApiError { status: Some(status), message, fields: body.map(|b| b.fields).unwrap_or_default() }
 }
 
+// ------------------------------------------------------------------------------- preferences
+
+/// Preference sets (frontend/src/components/preferences/queries.ts and the dialogs there).
+impl Api {
+    /// `GET /api/preference-sets`: every preference set, newest first.
+    pub async fn preference_sets(&self) -> Result<Vec<types::PreferenceSetOut>, ApiError> {
+        self.get("/api/preference-sets").await
+    }
+
+    /// `GET /api/preference-sets/{id}`.
+    pub async fn preference_set(&self, id: i64) -> Result<types::PreferenceSetOut, ApiError> {
+        self.get(&format!("/api/preference-sets/{id}")).await
+    }
+
+    /// `POST /api/preference-sets`: a new set over `run_ids` (one prompt set).
+    pub async fn create_preference_set(&self, body: &types::PreferenceSetCreate) -> Result<types::PreferenceSetOut, ApiError> {
+        self.post("/api/preference-sets", body).await
+    }
+
+    /// `DELETE /api/preference-sets/{id}`: the set and its pairs; runs and responses are kept.
+    pub async fn delete_preference_set(&self, id: i64) -> Result<(), ApiError> {
+        self.delete(&format!("/api/preference-sets/{id}")).await
+    }
+
+    /// `GET /api/preference-sets/{id}/items?filter=…&offset=…&limit=…`: prompts with their
+    /// candidates and pair; `filter` is "undecided", "decided" or "all".
+    pub async fn preference_items(
+        &self,
+        id: i64,
+        filter: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<types::Page<types::PreferenceItem>, ApiError> {
+        self.get(&format!("/api/preference-sets/{id}/items?filter={filter}&offset={offset}&limit={limit}")).await
+    }
+
+    /// `PUT /api/preference-sets/{id}/pairs/{prompt_id}`: saves a prompt's pair.
+    pub async fn save_pair(&self, id: i64, prompt_id: i64, body: &types::PairIn) -> Result<types::PreferenceItem, ApiError> {
+        self.put(&format!("/api/preference-sets/{id}/pairs/{prompt_id}"), body).await
+    }
+
+    /// `DELETE /api/preference-sets/{id}/pairs/{prompt_id}`: clears a prompt's pair.
+    pub async fn clear_pair(&self, id: i64, prompt_id: i64) -> Result<(), ApiError> {
+        self.delete(&format!("/api/preference-sets/{id}/pairs/{prompt_id}")).await
+    }
+
+    /// `POST /api/preference-sets/{id}/auto-pair`: prefers one run's responses over another's.
+    pub async fn auto_pair(&self, id: i64, body: &types::AutoPairIn) -> Result<types::AutoPairOut, ApiError> {
+        self.post(&format!("/api/preference-sets/{id}/auto-pair"), body).await
+    }
+
+    /// `POST /api/preference-sets/{id}/export/preview`: the record count, what is skipped and the
+    /// first record of an export with `options`.
+    pub async fn preference_export_preview(
+        &self,
+        id: i64,
+        options: &types::PrefExportOptions,
+    ) -> Result<types::ExportPreviewOut, ApiError> {
+        self.post(&format!("/api/preference-sets/{id}/export/preview"), options).await
+    }
+
+    /// `POST /api/preference-sets/{id}/export/hub`: pushes the pairs to a Hugging Face dataset.
+    pub async fn preference_export_hub(&self, id: i64, body: &types::PrefHubIn) -> Result<types::HubPushOut, ApiError> {
+        self.post(&format!("/api/preference-sets/{id}/export/hub"), body).await
+    }
+}
+
 /// `GET /api/endpoint-presets`: one starting point of Add endpoint (the server's `EndpointPreset`,
 /// read back).
 #[derive(Debug, Clone, PartialEq, Deserialize)]

@@ -60,10 +60,57 @@ pub fn text_mode_toggle() -> impl IntoElement {
     )
 }
 
+/// The size and color of model text: 14 px on 1.6 lines in ink by default ([`model_text`]); a
+/// card's `text-sm` text is [`ModelTextStyle::SMALL`]; `muted` dims it (a thinking trace, a
+/// rejected response).
+#[derive(Clone)]
+pub struct ModelTextStyle {
+    /// The text size in points.
+    pub size: f32,
+    /// The line height in points.
+    pub line_height: f32,
+    /// Muted ink while it holds, ink otherwise.
+    pub muted: std::rc::Rc<dyn Fn() -> bool>,
+}
+
+impl ModelTextStyle {
+    /// 14 px on 1.6 lines, ink (index.css's `.md` with no size of its own).
+    pub fn reading() -> Self {
+        ModelTextStyle { size: 14.0, line_height: 22.4, muted: std::rc::Rc::new(|| false) }
+    }
+
+    /// `text-sm` on the `.md` block: 13 px on 18 px lines (the utility's line height wins over
+    /// `.md`'s 1.6), ink.
+    pub fn small() -> Self {
+        ModelTextStyle { size: 13.0, line_height: 18.0, muted: std::rc::Rc::new(|| false) }
+    }
+
+    /// Muted ink while `muted` holds.
+    pub fn muted_when(mut self, muted: impl Fn() -> bool + 'static) -> Self {
+        self.muted = std::rc::Rc::new(muted);
+        self
+    }
+
+    fn color(&self) -> impl Fn() -> AdaptiveColor + 'static {
+        let muted = self.muted.clone();
+        move || if muted() { muted_ink() } else { ink() }
+    }
+}
+
 /// The reading styles of rendered model text (index.css's `.md`).
 fn reading_parts() -> TextViewParts {
+    reading_parts_with(&ModelTextStyle::reading())
+}
+
+/// The reading styles at `style`'s size and color.
+fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
+    let (size, line) = (style.size, style.line_height);
+    let color = std::rc::Rc::new(style.color());
     TextViewParts::new()
-        .part(TextViewPart::Root, |s| s.text_size(px(14.0)).line_height(px(22.4)).text_color(ink).max_w(px(640.0)).gap(px(10.5)))
+        .part(TextViewPart::Root, move |s| {
+            let color = color.clone();
+            s.text_size(px(size)).line_height(px(line)).text_color(move || color()).max_w(px(640.0)).gap(px(size * 0.75))
+        })
         .part(TextViewPart::Heading, |s| s.text_size(px(15.0)).line_height(px(21.0)).font_weight(FontWeight::SEMIBOLD).mt(px(8.0)))
         .part(TextViewPart::Heading4, |s| s.text_size(px(14.0)))
         .part(TextViewPart::Heading5, |s| s.text_size(px(14.0)))
@@ -88,20 +135,26 @@ fn reading_parts() -> TextViewParts {
 /// Model text: rendered as Markdown with formulas, or raw, as the viewer chose (or as `forced`
 /// says: `Some(TextMode::Raw)` for a one-line preview).
 pub fn model_text(source: impl Fn() -> String + 'static, forced: Option<TextMode>) -> impl IntoElement {
+    model_text_with(source, forced, ModelTextStyle::reading())
+}
+
+/// [`model_text`] at `style`'s size and color (a card's 13 px text, a muted thinking trace).
+pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<TextMode>, style: ModelTextStyle) -> impl IntoElement {
     let source = std::rc::Rc::new(source);
     dynamic(move || {
         let mode = forced.unwrap_or_else(text_mode);
         let source = source.clone();
+        let style = style.clone();
         match mode {
             TextMode::Raw => text(move || source())
-                .text_size(px(14.0))
-                .line_height(px(22.4))
-                .text_color(ink)
+                .text_size(px(style.size))
+                .line_height(px(style.size * 1.6))
+                .text_color(style.color())
                 .max_w(px(640.0))
                 .selectable(true)
                 .into_element(),
             TextMode::Rendered => {
-                provide_context(reading_parts());
+                provide_context(reading_parts_with(&style));
                 text_view()
                     .markdown(move || Some(SharedString::from(normalize_math(&source()))))
                     .selectable(true)

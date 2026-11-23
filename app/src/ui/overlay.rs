@@ -40,6 +40,8 @@ pub enum DialogWidth {
     /// 384 px (`max-w-sm`), the default.
     #[default]
     Sm,
+    /// 448 px (`max-w-md`): short forms (Auto-pair by run).
+    Md,
     /// 576 px (`max-w-xl`): forms.
     Xl,
     /// 896 px (`max-w-[56rem]`): the export dialogs (options beside the preview).
@@ -51,6 +53,7 @@ impl DialogWidth {
         match self {
             DialogWidth::Xs => 320.0,
             DialogWidth::Sm => 384.0,
+            DialogWidth::Md => 448.0,
             DialogWidth::Xl => 576.0,
             DialogWidth::FourXl => 896.0,
         }

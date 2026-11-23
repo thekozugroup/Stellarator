@@ -47,6 +47,14 @@ pub fn material_bar<S: Styled>(s: S) -> S {
     if blur_available() { s.backdrop_blur(px(30.0)).backdrop_saturate(1.8) } else { s }
 }
 
+/// `material-bar` over a state's own tint (theme.json token `tint`) in place of `material-tint`:
+/// a bar that belongs to a state, as the preference review's (`review-bar-tint`, periwinkle at
+/// 10%). The same strength and blur as [`material_bar`].
+pub fn material_bar_tinted<S: Styled>(s: S, tint: &'static str) -> S {
+    let s = s.bg(move || translucent(token(tint)(), 0.89, 0.93));
+    if blur_available() { s.backdrop_blur(px(30.0)).backdrop_saturate(1.8) } else { s }
+}
+
 /// `material-thick`: the fill and its blur.
 pub fn material_thick<S: Styled>(s: S) -> S {
     let s = s.bg(thick_fill);

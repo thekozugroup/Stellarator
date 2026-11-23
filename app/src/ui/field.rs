@@ -459,7 +459,13 @@ impl IntoElement for FormGroup {
             .child(self.title.map(|t| {
                 body(text(t)).px(px(12.0)).font_weight(FontWeight::SEMIBOLD).text_color(muted_ink).role(AccessibilityRole::Header)
             }))
-            .child(view().rounded(px(radius::XL)).bg(group_fill(self.in_dialog)).children(separated(self.rows)))
+            // In a dialog or sheet a card has 10 px corners (26 - 16), as index.css makes them.
+            .child(
+                view()
+                    .rounded(px(if self.in_dialog { radius::MD } else { radius::XL }))
+                    .bg(group_fill(self.in_dialog))
+                    .children(separated(self.rows)),
+            )
             .child(self.footnote.map(|f| view().px(px(12.0)).child(f)))
             .into_element()
     }
@@ -613,7 +619,7 @@ pub fn form_disclosure(
         .gap(px(8.0))
         .px(px(12.0))
         .py(px(6.0))
-        .rounded(px(radius::XL))
+        .rounded(px(if in_dialog { radius::MD } else { radius::XL }))
         .role(AccessibilityRole::Button)
         .label(title.clone())
         .accessibility_state(move || AccessibilityState { expanded: Some(open.get()), ..AccessibilityState::default() })
@@ -629,7 +635,7 @@ pub fn form_disclosure(
         .child(view().flex_1())
         .child(dynamic(move || (!open.get()).then(|| body(text(summary())).number_of_lines(1).text_color(muted_ink))));
     view()
-        .rounded(px(radius::XL))
+        .rounded(px(if in_dialog { radius::MD } else { radius::XL }))
         .bg(group_fill(in_dialog))
         .child(header)
         .child(when(move || open.get(), move || {

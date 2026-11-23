@@ -73,6 +73,50 @@ pub fn select_button(
         .self_start()
 }
 
+/// A pop-up button as wide as its column (`w-full`), filled with `fill` (`on-dialog-control` in a
+/// dialog's group: the raised tone in light, a lighter one in dark), the chevrons at its end.
+/// Otherwise as [`select_button`].
+pub fn select_field(
+    options: Vec<SelectItem>,
+    value: Signal<Option<SharedString>>,
+    title: impl Fn(&str) -> String + 'static,
+    placeholder: &'static str,
+    accessibility: &'static str,
+    fill: fn() -> AdaptiveColor,
+) -> impl IntoElement {
+    let trigger = view()
+        .h(px(CONTROL))
+        .self_stretch()
+        .flex_row()
+        .items_center()
+        .justify_between()
+        .gap(px(6.0))
+        .pl(px(12.0))
+        .pr(px(8.0))
+        .rounded(px(radius::MD))
+        .bg(fill)
+        .hover(|s| s.bg(move || theme().accent))
+        .cursor(Cursor::Pointer)
+        .child(
+            body(text(move || value.get().map(|v| title(&v)).unwrap_or_else(|| placeholder.to_owned())))
+                .number_of_lines(1)
+                .flex_shrink(1.0)
+                .min_w(px(0.0))
+                .text_color(move || if value.get().is_some() { theme().foreground } else { theme().muted_foreground }),
+        )
+        .child(icon(icon::CHEVRONS_UP_DOWN, 14.0, move || theme().muted_foreground));
+    select()
+        .items(options)
+        .value(move || nsh_base::SelectValue::from(value.get()))
+        .on_change(move |next: &Option<SharedString>| value.set(next.clone()))
+        .accessibility_label(accessibility)
+        .offset(px(4.0))
+        .popup_style(popup)
+        .item_class(ITEM_CLASS)
+        .trigger(trigger)
+        .self_stretch()
+}
+
 /// An entry of a menu.
 pub enum MenuEntry {
     /// An action: its icon, label, whether it is destructive, and what it does.
@@ -143,6 +187,29 @@ pub fn menu_with(trigger: impl IntoElement, entries: Vec<MenuEntry>, width: Opti
     menu()
         .offset(px(4.0))
         .align(Align::End)
+        .popup_style(move |s| {
+            let s = popup(s);
+            match width {
+                Some(w) => s.w(px(w)),
+                None => s,
+            }
+        })
+        .trigger(trigger)
+        .child(dynamic(move || entries.iter().map(entry).collect::<Vec<_>>()))
+}
+
+/// [`menu_with`] that keeps `open` in step with the menu: true while it shows. A screen whose keys
+/// must stand down while a menu is open (the preference review's) reads it.
+pub fn menu_with_open(trigger: impl IntoElement, entries: Vec<MenuEntry>, width: Option<f32>, open: Signal<bool>) -> impl IntoElement {
+    let entries = Rc::new(entries);
+    menu()
+        .offset(px(4.0))
+        .align(Align::End)
+        .on_open_change(move |e: &nsh_base::MenuEvent| {
+            if let nsh_base::MenuEvent::OpenChange(o, _) = e {
+                open.set(*o);
+            }
+        })
         .popup_style(move |s| {
             let s = popup(s);
             match width {
