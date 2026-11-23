@@ -394,8 +394,10 @@ jobs:
         run: |
           dotnet tool install --global wix --version 5.0.2
           mkdir -p out
+          # An absolute Windows path: WiX reads relative ones from the .wxs file's folder.
+          source=$(cygpath -w "$PWD/app/.nsh/out/Stellarator")
           wix build app/packaging/windows/stellarator.wxs -arch x64 -d "Version=$VERSION" \
-            -d "Source=app/.nsh/out/Stellarator" -o "out/Stellarator_${VERSION}_x64_en-US.msi"
+            -d "Source=$source" -o "out/Stellarator_${VERSION}_x64_en-US.msi"
           cp app/.nsh/out/Stellarator-setup.exe "out/Stellarator_${VERSION}_x64-setup.exe"
           ls -la out
 
@@ -406,6 +408,7 @@ jobs:
           $app = "$env:LOCALAPPDATA\Programs\Stellarator\Stellarator.exe"
           $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
           $msi = Get-ChildItem out\*.msi | Select-Object -First 1
+          "MSI $($msi.Name): $([math]::Round($msi.Length / 1MB, 1)) MB"
           $p = Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v msi-install.log" -Wait -PassThru
           if ($p.ExitCode -ne 0 -or -not (Test-Path $app)) { Get-Content msi-install.log -Tail 40; throw "MSI install failed ($($p.ExitCode))" }
           Get-ChildItem -Recurse $menu -Filter "Stellarator*.lnk" | ForEach-Object { "shortcut: $($_.FullName)" }
@@ -418,10 +421,15 @@ jobs:
           if ($p.ExitCode -ne 0 -or -not $installed) { throw "setup.exe install failed ($($p.ExitCode))" }
           "setup.exe installed $($installed.FullName)"
           Get-ChildItem -Recurse $menu -Filter "Stellarator*.lnk" | ForEach-Object { "shortcut: $($_.FullName)" }
+          # The installer may have started the app at its end.
+          Start-Sleep -Seconds 3
+          Stop-Process -Name Stellarator -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
           $uninstaller = Get-ChildItem $installed.DirectoryName -Filter "unins*.exe" | Select-Object -First 1
           if (-not $uninstaller) { throw "no uninstaller next to the app" }
           $p = Start-Process $uninstaller.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
-          Start-Sleep -Seconds 5
+          # Inno's uninstaller hands over to a copy of itself in the temporary folder and returns.
+          for ($i = 0; $i -lt 30 -and (Test-Path $installed.FullName); $i++) { Start-Sleep -Seconds 1 }
           if (Test-Path $installed.FullName) { throw "setup.exe uninstall left the app" }
           "setup.exe: installed and uninstalled"
 
