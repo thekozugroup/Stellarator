@@ -111,6 +111,16 @@ pub fn past_end(filter: Filter, total: i64) -> i64 {
     if filter == Filter::Undecided { 0 } else { (total - 1).max(0) }
 }
 
+/// How far from the shown prompt a prompt read stays kept: the neighbours read ahead (one each
+/// way) and a few more, so J and K back and forth stay instant.
+pub const CACHE_REACH: i64 = 3;
+
+/// Whether the prompt read at `entry` (its queue and position) stays kept while `at` shows: the
+/// same queue, at most [`CACHE_REACH`] away. The rest is read again when it is next shown.
+pub fn keep_cached(entry: (Filter, i64), at: (Filter, i64)) -> bool {
+    entry.0 == at.0 && (entry.1 - at.1).abs() <= CACHE_REACH
+}
+
 /// "3 of 12 undecided" in the action bar (the position is never shown past the total, nor below 1).
 pub fn position_text(i: i64, total: i64, filter: Filter) -> String {
     format!("{} of {} {}", int((i + 1).min(total.max(1))), int(total), filter.noun())
@@ -507,6 +517,19 @@ pub fn runs_hint(selected: &[&RunOut]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cache_keeps_the_prompts_near_the_shown_one() {
+        let at = (Filter::Undecided, 10);
+        assert!(keep_cached((Filter::Undecided, 10), at));
+        assert!(keep_cached((Filter::Undecided, 11), at));
+        assert!(keep_cached((Filter::Undecided, 7), at));
+        assert!(keep_cached((Filter::Undecided, 13), at));
+        assert!(!keep_cached((Filter::Undecided, 14), at));
+        assert!(!keep_cached((Filter::Undecided, 0), at));
+        // Another queue's positions name other prompts.
+        assert!(!keep_cached((Filter::All, 10), at));
+    }
 
     fn cand(sample_id: i64, run_id: i64) -> Candidate {
         Candidate {

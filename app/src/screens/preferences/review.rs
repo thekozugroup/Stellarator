@@ -24,8 +24,8 @@ use super::delete::delete_alert;
 use super::export::export_dialog;
 use super::logic::{
     Empty, Filter, Mark, SaveState, Sel, StatusLine, all_decided_text, chip_label, compares_models, empty_kind, error_sentence,
-    last_key, letter, matches_filter, messages, next_selection, past_end, position_text, runs_with_several, status_line, step,
-    trace_unit_for,
+    keep_cached, last_key, letter, matches_filter, messages, next_selection, past_end, position_text, runs_with_several,
+    status_line, step, trace_unit_for,
 };
 use super::prompt_view::prompt_view;
 use crate::api::types::{Page, PairIn, PreferenceItem, PreferenceSetOut as Set};
@@ -136,6 +136,9 @@ pub fn screen(id: i64) -> impl IntoElement {
                 Some(Rc::new(move || {
                     set.set(SetLoad::Loading);
                     load_set();
+                    // The prompt shown failed with the set (the server was away): read it again too,
+                    // so the review does not come back to a second Retry.
+                    review.retry_item();
                 })),
             )
             .into_element(),
@@ -323,8 +326,13 @@ impl Review {
                 r.inflight.with(|s| s.remove(&key));
                 match result {
                     Ok(page) => {
+                        // Kept only near the prompt shown now (the rest is read again when shown).
+                        let at = untracked(|| r.key());
                         r.cache.update(|c| {
-                            c.insert(key, Cached { page, fresh: true });
+                            c.retain(|k, _| keep_cached(*k, at));
+                            if keep_cached(key, at) {
+                                c.insert(key, Cached { page, fresh: true });
+                            }
                         });
                         if r.item_error.with_untracked(|e| e.as_ref().is_some_and(|(k, _)| *k == key)) {
                             r.item_error.set(None);
@@ -601,6 +609,16 @@ impl Review {
         }
     }
 
+    /// Reads the shown prompt again after it failed (its error goes).
+    fn retry_item(&self) {
+        if untracked(|| self.item_error.with(Option::is_none)) {
+            return;
+        }
+        self.item_error.set(None);
+        let key = untracked(|| self.key());
+        self.fetch(key, true);
+    }
+
     fn retry(&self) {
         let Some(SaveState::Error { clear, .. }) = untracked(|| self.status()) else { return };
         if clear {
@@ -710,14 +728,7 @@ impl Review {
 
         let body = dynamic(move || -> AnyElement {
             match kind.get() {
-                Body::Failed(message) => error_block(
-                    format!("Couldn't load this prompt. {message}"),
-                    Some(Rc::new(move || {
-                        r.item_error.set(None);
-                        let key = untracked(|| r.key());
-                        r.fetch(key, true);
-                    })),
-                )
+                Body::Failed(message) => error_block(format!("Couldn't load this prompt. {message}"), Some(Rc::new(move || r.retry_item())))
                 .into_element(),
                 Body::Skeleton => review_skeleton().into_element(),
                 Body::Empty(f) => match untracked(set) {
