@@ -168,6 +168,8 @@ impl IntoElement for TextField {
         let is_disabled = move || disabled.as_ref().is_some_and(|f| f());
         let on_change = self.on_change.clone();
         let bg = self.background.unwrap_or(|| theme().background);
+        // Mono fields (URLs, keys) stay 12 px at every width, as the web UI's on a pointer.
+        let mono = self.mono;
         let mut field = input()
             .value(move || value.get())
             .on_change(move |text: &str| {
@@ -185,8 +187,9 @@ impl IntoElement for TextField {
             .border_1()
             .border_color(move || if i1() { theme().destructive } else { theme().input })
             .bg(bg)
-            .text_size(px(13.0))
-            .line_height(px(18.0))
+            // 13 px, and 16 px below 768 px (the web UI's `text-base md:text-sm`).
+            .text_size(move || px(if mono { 12.0 } else if is_phone() { 16.0 } else { 13.0 }))
+            .line_height(move || px(if mono { 16.0 } else if is_phone() { 20.0 } else { 18.0 }))
             .text_color(move || theme().foreground)
             .placeholder_color(move || resolved(theme().muted_foreground))
             .caret_color(move || resolved(token("periwinkle")()))
@@ -205,7 +208,7 @@ impl IntoElement for TextField {
             field = field.masked(move || m());
         }
         if self.mono {
-            field = field.font_family(ROBOTO_MONO.family).text_size(px(12.0)).letter_spacing(px(0.0));
+            field = field.font_family(ROBOTO_MONO.family).letter_spacing(px(0.0));
         }
         if self.numeric {
             field = field.keyboard_type(KeyboardType::Numeric).text_right().tabular_nums();

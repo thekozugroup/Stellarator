@@ -21,6 +21,7 @@ use nsh_core::element::ImageAsset;
 use nsh_core::prelude::*;
 
 use super::icon::{self, icon};
+use super::material::{float_shadow, material_bar, material_float};
 use super::overlay::toaster;
 use super::page::{is_phone, probe_press};
 use crate::nav::{self, Destination};
@@ -86,7 +87,8 @@ fn tab_bar() -> impl IntoElement {
                     .text_color(move || if selected() { ink() } else { muted_ink() }),
             )
     });
-    view()
+    // The bar material with the floating edge and shadow (blurred where nsh draws blurs).
+    material_float(material_bar(view()))
         .absolute()
         .left(px(12.0))
         .right(px(12.0))
@@ -95,10 +97,6 @@ fn tab_bar() -> impl IntoElement {
         .p(px(4.0))
         .flex_row()
         .rounded(px(28.0))
-        .bg(token("material-tint"))
-        .border_1()
-        .border_color(token("material-edge"))
-        .shadow(material_shadow())
         .children(tabs)
 }
 
@@ -115,7 +113,7 @@ fn sidebar() -> impl IntoElement {
         .border_1()
         .border_color(move || if floating() { token("material-edge")() } else { AdaptiveColor::TRANSPARENT })
         .border_r_color(move || if floating() { token("material-edge")() } else { theme().border })
-        .style_when(floating, |s| s.shadow(material_shadow()))
+        .style_when(floating, |s| s.shadow(float_shadow()))
         .px(px(8.0))
         .pt(move || px((titlebar_height() - shell_gap()).max(0.0) + 8.0))
         .pb(px(8.0))
@@ -146,16 +144,6 @@ fn sidebar() -> impl IntoElement {
                 "sidebar band",
             ),
         )
-}
-
-/// `material-float`'s shadow (frontend/src/index.css, `--material-shadow` in light): 0 1px 2px at
-/// 5%, 0 12px 32px -8px at 16%.
-fn material_shadow() -> [BoxShadow; 2] {
-    let black = |a: f32| nsh_core::color::hsla(0.0, 0.0, 0.0, a).into();
-    [
-        BoxShadow { offset_y: px(1.0), blur: px(2.0), color: black(0.05), ..BoxShadow::default() },
-        BoxShadow { offset_y: px(12.0), blur: px(32.0), spread: px(-8.0), color: black(0.16), ..BoxShadow::default() },
-    ]
 }
 
 /// The mark, monochrome in ink, and the name.

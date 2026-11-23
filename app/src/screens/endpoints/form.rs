@@ -136,9 +136,16 @@ pub fn endpoint_form(
         let _ = request_animation_frame(move |_| if needs_key { key_ref.focus() } else { name_ref.focus() });
     };
 
-    // Open with the key focused when the preset needs one.
+    // Open with the key focused when the preset needs one; an edit with its name focused and
+    // selected, as the web UI's dialog focuses its first field.
     if preset.as_ref().is_some_and(|p| p.needs_api_key) {
         let _ = request_animation_frame(move |_| key_ref.focus());
+    } else if editing {
+        let len = name.get_untracked().encode_utf16().count() as u32;
+        let _ = request_animation_frame(move |_| {
+            name_ref.focus();
+            name_ref.set_selection(0, len);
+        });
     }
 
     let endpoint_id = endpoint.as_ref().map(|e| e.id);

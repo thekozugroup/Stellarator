@@ -21,7 +21,8 @@ use crate::ui::blocks::error_block;
 use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon;
 use crate::ui::progress::{progress_bar, progress_bar_full};
-use crate::ui::page::page;
+use crate::ui::icon::icon as glyph;
+use crate::ui::page::{is_phone, page, window_width};
 use crate::ui::status::run_status_pill as run_status;
 use crate::ui::table::{Column, cell, header, row};
 
@@ -116,8 +117,10 @@ pub fn screen() -> impl IntoElement {
         })
     });
 
-    page("Runs")
-        .actions(|| {
+    // The toolbar's push button; on a phone the "+" in the bar instead.
+    let mut frame = page("Runs");
+    if !untracked(is_phone) {
+        frame = frame.actions(|| {
             button("New run")
                 .leading(icon::PLUS)
                 .on_press(|| {
@@ -127,7 +130,9 @@ pub fn screen() -> impl IntoElement {
                     nav::push(Route::NewRun, None)
                 })
                 .into_element()
-        })
+        });
+    }
+    frame
         .bar_actions(|| {
             Button::icon(icon::PLUS, "New run")
                 .variant(Variant::Secondary)
@@ -139,34 +144,60 @@ pub fn screen() -> impl IntoElement {
         .child(content)
 }
 
-/// Below 1024 px: the name and the status, then the facts and the date, then the progress.
+/// Below 1024 px: the name and the status, then the facts (and from 640 px the date), then the
+/// progress; a chevron at the end, as every row that opens a screen. A press opens the run.
 fn stacked_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
     let created = run.created_at;
+    let (id, name) = (run.id, run.name.clone());
     view()
+        .flex_row()
+        .items_center()
+        .gap(px(12.0))
         .py(px(12.0))
-        .gap(px(2.0))
+        .cursor(Cursor::Pointer)
+        .role(AccessibilityRole::Link)
+        .label(run.name.clone())
+        .on_press(move || nav::push(Route::Run { id }, Some(name.clone())))
         .child(
             view()
-                .flex_row()
-                .items_center()
-                .gap(px(12.0))
-                .child(label(text(run.name.clone())).number_of_lines(1).flex_1().min_w(px(0.0)))
-                .child(run_status(run.status)),
+                .flex_1()
+                .min_w(px(0.0))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_start()
+                        .gap(px(12.0))
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w(px(0.0))
+                                .gap(px(2.0))
+                                .child(label(text(run.name.clone())).number_of_lines(1))
+                                .child(
+                                    meta(text({
+                                        let facts = facts(&run).join(" · ");
+                                        move || {
+                                            if window_width() >= 640.0 {
+                                                format!("{facts} · {}", relative(created, now.get()))
+                                            } else {
+                                                facts.clone()
+                                            }
+                                        }
+                                    }))
+                                    .number_of_lines(1),
+                                ),
+                        )
+                        .child(run_status(run.status)),
+                )
+                .child(
+                    view()
+                        .mt(px(10.0))
+                        .gap(px(6.0))
+                        .child(progress_figures(&run))
+                        .child(progress_bar_full(run.done, run.failed, run.total)),
+                ),
         )
-        .child(
-            meta(text({
-                let facts = facts(&run).join(" · ");
-                move || format!("{facts} · {}", relative(created, now.get()))
-            }))
-                .number_of_lines(1),
-        )
-        .child(
-            view()
-                .mt(px(8.0))
-                .gap(px(6.0))
-                .child(progress_figures(&run))
-                .child(progress_bar_full(run.done, run.failed, run.total)),
-        )
+        .child(glyph(icon::CHEVRON_RIGHT, 16.0, muted_ink))
         .child(view().absolute().left(px(0.0)).right(px(0.0)).bottom(px(0.0)).h(px(1.0)).bg(move || nsh_base::theme().border))
 }
 
@@ -196,6 +227,13 @@ fn run_row(run: Run, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'stat
         cell(CREATED, body(text(move || relative(created, now.get()))).text_color(muted_ink).tabular_nums().number_of_lines(1))
             .into_element(),
     ], last)
+    .cursor(Cursor::Pointer)
+    .role(AccessibilityRole::Link)
+    .label(run.name.clone())
+    .on_press({
+        let (id, name) = (run.id, run.name.clone());
+        move || nav::push(Route::Run { id }, Some(name.clone()))
+    })
 }
 
 /// The name at 500, then in 12 px muted the model (mono), the endpoint and the prompt set, minus

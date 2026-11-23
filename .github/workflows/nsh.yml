@@ -296,6 +296,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/xdg-dark/gtk-4.0"
           printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$RUNNER_TEMP/xdg-dark/gtk-4.0/settings.ini"
           xvfb-run -a -s "$screen" app/ci/linux-session.sh dark "$exe" "$data" "$out" XDG_CONFIG_HOME="$RUNNER_TEMP/xdg-dark"
+          # Every component on one screen (src/screens/gallery.rs).
+          xvfb-run -a -s "$screen" app/ci/linux-session.sh gallery "$exe" "$data" "$out" STELLARATOR_GALLERY=1
+
+      - name: Unit tests (formatting, the router, the pixel tile, the API client)
+        working-directory: app
+        run: cargo test --lib --locked
 
       - uses: actions/upload-artifact@v7
         if: always()

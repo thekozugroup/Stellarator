@@ -6,7 +6,8 @@ views where a component exists. Every component draws with theme tokens only (`t
 or `crate::theme::token("name")`), so light and dark follow the system without a render.
 
 Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one screen
-(`src/screens/gallery.rs`).
+(`src/screens/gallery.rs`); the Linux CI job uploads a screenshot of it (`gallery.png` in the
+`nsh-linux` artifact).
 
 ## Where things are
 
@@ -63,6 +64,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Materials | `material_bar(view())`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
 | Type | `theme::text::{body, label, meta, title, mono, display}` | Tailwind text classes |
 
+Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px), as the web UI's inputs.
 Inside a dialog or sheet, `muted` cards read as `dialog_muted` (the ground in light, the raised
 tone in dark): pass `.in_dialog()` to form groups and `.background(dialog_muted)` to tiles.
 
@@ -152,3 +154,7 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | A popup's tasks stop when it closes | `data::call` runs requests under the screen |
 | A menu's trigger must take the press itself | `menu_button` uses a button without a tooltip |
 | The Linux window has a minimum width of 900 px | Phone layouts are checked in the web build at 390 px |
+| On Linux, Escape in a focused text field only leaves the field | A second Escape (or the X, or the scrim) closes the dialog |
+| No stacked toast deck | Toasts are a list at the bottom right (three at most, 4 s each) |
+| `TextView` highlights code with its own palette | Code blocks keep nsh's colors, not index.css's three hues |
+| Crossing 768 px rebuilds the shell | The open screen is made again (an open dialog closes); its scroll position is kept |
