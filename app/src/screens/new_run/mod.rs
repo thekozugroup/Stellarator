@@ -169,15 +169,19 @@ fn bar(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
         let text_summary = run_summary(data.selected_set(&state).as_ref(), &state.get(logic::Field::Samples), &state.get(logic::Field::Concurrency))?;
         Some(body(text(text_summary)).text_color(muted_ink).tabular_nums())
     }));
-    // On a phone the size has a line of its own.
-    let summary = if untracked(is_phone) { summary.w_full().flex_none() } else { summary };
     let buttons = view()
         .flex_row()
         .items_center()
         .gap(px(12.0))
         .child(button("Cancel").variant(Variant::Secondary).on_press(|| nav::open(Destination::Runs)))
         .child(button("Start run").busy(move || state.starting.get(), "Starting…").on_press(move || submit()));
-    view().max_w(px(FORM_WIDTH)).child(action_bar(vec![summary.into_element(), buttons.into_element()]))
+    // On a phone the size has a line of its own, the buttons at the end of the next.
+    let children = if untracked(is_phone) {
+        vec![view().flex_1().min_w(px(0.0)).gap(px(8.0)).child(summary).child(view().flex_row().justify_end().child(buttons)).into_element()]
+    } else {
+        vec![summary.into_element(), buttons.into_element()]
+    };
+    view().max_w(px(FORM_WIDTH)).child(action_bar(children))
 }
 
 /// Checks every field and, when they pass, starts the run; the screen becomes the run's.

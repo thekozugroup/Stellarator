@@ -426,7 +426,7 @@ fn step_row(index: usize, step: Step, is_next: bool, loading: bool) -> AnyElemen
             view()
                 .mt(px(6.0))
                 .self_start()
-                .min_h(px(24.0))
+                .min_h(px(18.0))
                 .justify_center()
                 .role(AccessibilityRole::Link)
                 .label(step.action)
