@@ -476,7 +476,7 @@ jobs:
     needs: [version, release]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -484,9 +484,9 @@ jobs:
 
       - name: Build dependencies (GTK 4, GStreamer, packaging tools)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev clang libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            imagemagick dpkg-dev
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y -o Acquire::Retries=5 libgtk-4-dev clang libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev imagemagick dpkg-dev
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -531,9 +531,16 @@ jobs:
       - name: Install the .deb and run the AppImage in a clean ubuntu:24.04 container
         run: |
           mkdir -p shots
-          docker run --rm -v "$PWD:/w" -w /w ubuntu:24.04 bash -c '
+          # Bounded: with slow package mirrors this check once ran past the job's limit, and the
+          # built installers were never uploaded. A timeout here is a warning; a failure is not.
+          set +e
+          timeout 1500 docker run --rm --name install-check -v "$PWD:/w" -w /w ubuntu:24.04 bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
+            # The runner's own mirror (Azure) is much faster than archive.ubuntu.com from a runner.
+            src=/etc/apt/sources.list.d/ubuntu.sources
+            if [ -f "$src" ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g" "$src"; fi
+            echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/80retries
             apt-get update -qq
             apt-get install -y -qq ./out/Stellarator_*_amd64.deb xvfb xauth imagemagick > /dev/null
             dpkg -s stellarator | sed -n "/^Version/p;/^Depends/p"
@@ -555,6 +562,14 @@ jobs:
             tail -5 appimage.log
             grep -q first_frame appimage.log || echo "::warning::the AppImage did not draw its window"
           '
+          code=$?
+          set -e
+          if [ "$code" -eq 124 ]; then
+            docker rm -f install-check > /dev/null 2>&1 || true
+            echo "::warning::The clean-container check did not finish in 25 minutes (slow package mirrors). The installers were built and are uploaded."
+          elif [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
           ls -la shots
 
       - name: Update archive (when the updater is on)
