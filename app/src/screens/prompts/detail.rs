@@ -65,6 +65,9 @@ pub fn page_count(total: i64) -> i64 {
 pub fn screen(id: i64) -> impl IntoElement {
     let set = signal(Load::<PromptSet>::Loading);
     let prompts = signal(None::<Page<PromptOut>>);
+    // The search and the page the shown prompts answer (they lead `query` and `page` while the
+    // next read is on its way): an empty page says why from these.
+    let answered = signal((String::new(), 1_i64));
     let prompts_error = signal(None::<String>);
     let fetching = signal(false);
     let ticket = signal(0_u64);
@@ -80,6 +83,7 @@ pub fn screen(id: i64) -> impl IntoElement {
         ticket.set(n);
         fetching.set(true);
         let (p, q) = (page.get_untracked(), query.get_untracked());
+        let asked = q.clone();
         call(
             move |api| async move { api.prompts(id, (p - 1) * PAGE_SIZE, PAGE_SIZE, &q).await },
             move |result| {
@@ -89,6 +93,7 @@ pub fn screen(id: i64) -> impl IntoElement {
                 fetching.set(false);
                 match result {
                     Ok(data) => {
+                        answered.set((asked, p));
                         prompts.set(Some(data));
                         prompts_error.set(None);
                     }
@@ -203,21 +208,12 @@ pub fn screen(id: i64) -> impl IntoElement {
         }
     };
 
-    let top = dynamic(move || {
+    let top = move || {
         let s = set.with(|l| l.loaded().cloned())?;
         Some(view().child(facts(&s)).child(progress_panel(&s, open)))
-    });
+    };
 
-    let search = view()
-        .w(move || px(if window_width() >= 640.0 { 320.0 } else { (window_width() - 2.0 * column_padding()).max(0.0) }))
-        .child(
-            text_field(draft)
-                .search()
-                .placeholder("Search prompts…")
-                .accessibility_label("Search prompts")
-                .on_change(on_search),
-        );
-    let range = dynamic(move || {
+    let range = move || {
         let data = prompts.with(|p| p.as_ref().map(|d| d.total))?;
         let q = query.get();
         if !(data > PAGE_SIZE || (!q.is_empty() && data > 0)) {
@@ -225,19 +221,9 @@ pub fn screen(id: i64) -> impl IntoElement {
         }
         let (first, last) = page_bounds(page.get(), data);
         Some(body(text(range_text(first, last, data, !q.is_empty()))).text_color(muted_ink).tabular_nums())
-    });
-    let toolbar = view()
-        .mb(px(12.0))
-        .flex_row()
-        .flex_wrap()
-        .items_center()
-        .justify_between()
-        .gap_x(px(16.0))
-        .gap_y(px(8.0))
-        .child(search)
-        .child(view().flex_row().flex_wrap().items_center().gap(px(12.0)).child(range).child(text_mode_toggle()));
+    };
 
-    let list = dynamic(move || -> AnyElement {
+    let list = move || -> AnyElement {
         let has_data = prompts.with(|p| p.is_some());
         if !has_data {
             return match prompts_error.get() {
@@ -246,9 +232,15 @@ pub fn screen(id: i64) -> impl IntoElement {
             };
         }
         let data = prompts.get().unwrap_or_else(|| Page { items: Vec::new(), total: 0, offset: 0, limit: PAGE_SIZE });
-        let q = query.get();
         if data.items.is_empty() {
-            return empty_list(&q, data.total, page.get(), importing(), clear_search, go_to_page).into_element();
+            // Why this page is empty, as its own search and page say (Clear search or Go to page 1
+            // leaves it on screen, dimmed, until the next page comes).
+            let (q, p) = answered.get();
+            return view()
+                .opacity(move || if fetching.get() { 0.6_f32 } else { 1.0 })
+                .transition_opacity()
+                .child(empty_list(&q, data.total, p, importing(), clear_search, go_to_page))
+                .into_element();
         }
         let n = data.items.len();
         let rows: Vec<AnyElement> = data.items.iter().enumerate().map(|(i, p)| prompt_row(p, i + 1 == n)).collect();
@@ -268,9 +260,9 @@ pub fn screen(id: i64) -> impl IntoElement {
             )
             .children(rows)
             .into_element()
-    });
+    };
 
-    let pager = dynamic(move || {
+    let pager = move || {
         let total = prompts.with(|p| p.as_ref().map(|d| d.total))?;
         if total <= PAGE_SIZE {
             return None;
@@ -302,10 +294,32 @@ pub fn screen(id: i64) -> impl IntoElement {
                         .on_press(move || go_to_page(page.get_untracked() + 1)),
                 ),
         )
-    });
+    };
 
-    let body_when_loaded = view().child(top).child(toolbar).child(list).child(pager);
-    let loaded_body = Rc::new(std::cell::RefCell::new(Some(body_when_loaded)));
+    // Made each time the set is shown again after a failed read (a Retry that worked): the search
+    // keeps what was typed, as it is the screen's `draft`.
+    let loaded_body = move || {
+        let search = view()
+            .w(move || px(if window_width() >= 640.0 { 320.0 } else { (window_width() - 2.0 * column_padding()).max(0.0) }))
+            .child(
+                text_field(draft)
+                    .search()
+                    .placeholder("Search prompts…")
+                    .accessibility_label("Search prompts")
+                    .on_change(on_search),
+            );
+        let toolbar = view()
+            .mb(px(12.0))
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .justify_between()
+            .gap_x(px(16.0))
+            .gap_y(px(8.0))
+            .child(search)
+            .child(view().flex_row().flex_wrap().items_center().gap(px(12.0)).child(dynamic(range)).child(text_mode_toggle()));
+        view().child(dynamic(top)).child(toolbar).child(dynamic(list)).child(dynamic(pager))
+    };
     let shown = view()
         .child(when(failed, move || {
             let message = set.with(|l| l.error().unwrap_or_default().to_owned());
@@ -314,10 +328,15 @@ pub fn screen(id: i64) -> impl IntoElement {
                 Some(Rc::new(move || {
                     set.set(Load::Loading);
                     fetch_set();
+                    // The prompts failed with the set (the server was away): read them again too,
+                    // so the set does not come back to a second Retry.
+                    if prompts.with_untracked(Option::is_none) {
+                        fetch_prompts();
+                    }
                 })),
             )
         }))
-        .child(when(move || !failed(), move || loaded_body.borrow_mut().take().map(|b| b.into_element())));
+        .child(when(move || !failed(), loaded_body));
 
     // From 1024 px the actions sit in the toolbar; below, under the title with the chips.
     page_with(heading).meta(meta).actions(actions).child(shown).child(dialogs(set, open))

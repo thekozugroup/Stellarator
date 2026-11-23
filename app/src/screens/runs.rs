@@ -58,17 +58,16 @@ pub fn screen() -> impl IntoElement {
     let load = signal(Load::Loading);
     let now = signal(now_utc());
     let refresh = move || {
-        spawn(async move {
-            let result = match crate::api() {
-                Ok(api) => api.runs().await.map_err(|e| e.to_string()),
-                Err(e) => Err(e),
-            };
-            now.set(now_utc());
-            load.set(match result {
-                Ok(runs) => Load::Loaded(runs),
-                Err(message) => Load::Failed(message),
-            });
-        });
+        call(
+            |api| async move { api.runs().await },
+            move |result| {
+                now.set(now_utc());
+                load.set(match result {
+                    Ok(runs) => Load::Loaded(runs),
+                    Err(e) => Load::Failed(e.to_string()),
+                });
+            },
+        );
     };
     refresh();
     // Ends with the screen (the task belongs to it).
@@ -318,9 +317,14 @@ struct Step {
 fn setup_checklist() -> impl IntoElement {
     let endpoints = signal(Loaded::<Vec<EndpointOut>>::Loading);
     let sets = signal(Loaded::<Vec<PromptSet>>::Loading);
+    // The checklist goes once the first run appears, maybe before these answer: `try_set`.
     let load = move || {
-        call(|api| async move { api.endpoints().await }, move |r| endpoints.set(Loaded::from(r)));
-        call(|api| async move { api.get::<Vec<PromptSet>>("/api/prompt-sets").await }, move |r| sets.set(Loaded::from(r)));
+        call(|api| async move { api.endpoints().await }, move |r| {
+            endpoints.try_set(Loaded::from(r));
+        });
+        call(|api| async move { api.get::<Vec<PromptSet>>("/api/prompt-sets").await }, move |r| {
+            sets.try_set(Loaded::from(r));
+        });
     };
     load();
     let retry: Rc<dyn Fn()> = Rc::new(move || {
