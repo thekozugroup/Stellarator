@@ -47,7 +47,7 @@ Your prompts, answers and settings stay on your PC. There is no account and no s
 Stellarator is free and open source under the MIT license. The source code is at github.com/thekozugroup/Stellarator.
 ```
 
-## What's new in this version (479 of 1,500 characters)
+## What's new in this version (481 of 1,500 characters)
 
 ```text
 Stellarator is now a native Windows app: the window is drawn by Windows itself instead of a web page, and the server runs inside the app with no network port. Every screen, dialog and export works as before, with the same design. It uses less memory (about 21 MB of private memory when idle) and no longer needs the WebView2 runtime. Only one copy runs per data folder, and the window opens where you left it. Both installers install for your account, without administrator rights.

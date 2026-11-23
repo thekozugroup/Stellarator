@@ -91,7 +91,7 @@ rejects keywords like vLLM, Ollama or Hugging Face as other parties' trademarks)
 distillation,dataset,LLM,SFT,DPO,KTO,fine-tuning,preference,reasoning,training data,synthetic data
 ```
 
-### What's New in This Version (1,012 of 4,000 characters)
+### What's New in This Version (639 of 4,000 characters)
 
 From the 0.4.0 section of CHANGELOG.md.
 
