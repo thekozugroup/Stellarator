@@ -10,6 +10,7 @@
 //!   `{"detail": "One sentence.", "fields": {"field.path": "message"}}`.
 
 pub mod config;
+pub mod datalock;
 pub mod db;
 pub mod error;
 pub mod openai;
@@ -35,7 +36,10 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// Opens the data folder: takes its lock ([`datalock`]: one process per folder), then the
+    /// database.
     pub async fn open(config: Config) -> anyhow::Result<Self> {
+        datalock::acquire(&config.data_dir)?;
         let db = db::connect(&config).await?;
         let http = reqwest::Client::builder()
             .user_agent(concat!("stellarator/", env!("CARGO_PKG_VERSION")))
