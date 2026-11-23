@@ -2,6 +2,14 @@
 
 Each version's section is copied into its GitHub release under "What's new".
 
+## 0.3.1
+
+### Fixes
+
+- Windows: the app opens its database again. The data folder's full path (`\\?\C:\...`) was read
+  as a database URL, so the `?` started a query and the server stopped at launch with "unknown
+  query parameter". The server now opens the database file by its path.
+
 ## 0.3.0
 
 ### A new look
