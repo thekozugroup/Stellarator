@@ -50,6 +50,8 @@ fn form(open: Signal<bool>, created: Rc<dyn Fn(Set)>) -> impl IntoElement {
     let err_form = signal(None::<String>);
     let creating = signal(false);
     let name_ref = element_ref();
+    // The dialog opens on its first field, as the web UI's does.
+    let _ = request_animation_frame(move |_| name_ref.focus());
 
     let all_runs = move || runs.with(|l| l.loaded().cloned().unwrap_or_default());
     let selected_runs = move || -> Vec<RunOut> {
@@ -278,6 +280,7 @@ fn run_row(
     let off = move || empty || b1();
     let off2 = off.clone();
     let off3 = off.clone();
+    let off4 = off.clone();
     let c1 = checked;
     let c2 = checked;
     let right: AnyElement = if empty {
@@ -309,7 +312,10 @@ fn run_row(
         .rounded(px(radius::SM))
         .cursor(Cursor::Pointer)
         .bg(move || if c2() { theme().accent } else { AdaptiveColor::TRANSPARENT })
-        .hover(move |s| s.bg(move || theme().accent))
+        .hover(move |s| {
+            let off4 = off4.clone();
+            s.bg(move || if off4() && !c2() { AdaptiveColor::TRANSPARENT } else { theme().accent })
+        })
         .opacity(move || if off3() { 0.6_f32 } else { 1.0 })
         .disabled_style(|s| s.cursor(Cursor::NotAllowed))
         .indicator_style(|s| {

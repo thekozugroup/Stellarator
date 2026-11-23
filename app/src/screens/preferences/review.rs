@@ -47,7 +47,6 @@ use crate::ui::page::{is_phone, page_with, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::select::{MenuEntry, menu_destructive, menu_entry, menu_with_open};
 use crate::ui::status::{Tone, pill};
-use crate::ui::tooltip::kbd;
 
 /// How long a finished pair stays on screen before the next prompt replaces it.
 const BEAT: Duration = Duration::from_millis(450);
@@ -930,7 +929,7 @@ fn status_view(r: Review) -> AnyElement {
 fn shortcuts_table(candidates: usize) -> impl IntoElement {
     let last = last_key(candidates);
     let dash = || body(text("–")).text_color(muted_ink).into_element();
-    let k = |s: &str| kbd(s.to_owned()).into_element();
+    let k = |s: &str| key_chip(s.to_owned()).into_element();
     let rows: Vec<(Vec<AnyElement>, &str)> = vec![
         (vec![k("1"), dash(), k(&last)], "Choose response"),
         (vec![k("Shift"), k("1"), dash(), k(&last)], "Reject response"),
@@ -960,6 +959,21 @@ fn shortcuts_table(candidates: usize) -> impl IntoElement {
         .gap(px(16.0))
         .child(dialog_header("Keyboard shortcuts", None))
         .child(view().rounded(px(radius::MD)).bg(crate::ui::material::dialog_muted).px(px(12.0)).children(lines))
+}
+
+/// A key as the shortcuts dialog shows it: `ui::tooltip::kbd`, on the ground in dark (the web UI's
+/// `dark:[&_[data-slot=kbd]]:bg-background` there), so it stands out from the dialog's card.
+fn key_chip(keys: String) -> impl IntoElement {
+    view()
+        .h(px(20.0))
+        .min_w(px(20.0))
+        .px(px(4.0))
+        .flex_row()
+        .items_center()
+        .justify_center()
+        .rounded(px(radius::XS))
+        .bg(move || AdaptiveColor { light: theme().secondary.light, dark: theme().background.dark })
+        .child(text(keys).text_size(px(12.0)).line_height(px(16.0)).font_weight(FontWeight::MEDIUM).text_color(muted_ink))
 }
 
 /// An empty queue keeps its frame (DESIGN.md, Do): a muted card with the pixel field, one sentence

@@ -144,7 +144,9 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
     dynamic(move || {
         let mode = forced.unwrap_or_else(text_mode);
         let source = source.clone();
-        let style = style.clone();
+        // The text view's part styles are read once: a change of the color makes it again.
+        let muted = (style.muted)();
+        let style = ModelTextStyle { muted: std::rc::Rc::new(move || muted), ..style.clone() };
         match mode {
             TextMode::Raw => text(move || source())
                 .text_size(px(style.size))

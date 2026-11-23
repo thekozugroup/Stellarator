@@ -6,7 +6,7 @@ use nsh_core::prelude::*;
 
 use crate::theme::radius;
 use crate::theme::text::{body, meta};
-use crate::ui::action_bar::action_bar;
+use crate::ui::action_bar::{action_bar, action_bar_tinted};
 use crate::ui::blocks::{bar, empty_block, empty_text, error_block};
 use crate::ui::button::{Button, Size, Variant, button, external_link};
 use crate::ui::chip::{chip, chip_row};
@@ -14,7 +14,7 @@ use crate::ui::choice::{checkbox, line_tabs, radio_group, segmented, switch, tog
 use crate::ui::field::{field, form_disclosure, form_group, form_row, text_area, text_field};
 use crate::ui::icon;
 use crate::ui::info_tip::info_tip;
-use crate::ui::model_text::{model_text, text_mode_toggle};
+use crate::ui::model_text::{ModelTextStyle, model_text, model_text_with, text_mode_toggle};
 use crate::ui::overlay::{
     Alert, DialogWidth, alert, dialog, dialog_description, dialog_footer, dialog_header, side_sheet, side_sheet_width, toast_error_with,
     toast_info,
@@ -24,7 +24,7 @@ use crate::ui::pickers::{RichSelect, TypedCombobox};
 use crate::ui::stepper::{number_stepper, seqs_choices};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
-use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, option, select_button};
+use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, menu_with_open, option, select_button, select_field};
 use crate::ui::status::{Tone, pill, run_status_badge, status_badge};
 use crate::ui::tiles::{tile, tiles};
 use crate::ui::tooltip::{copy_button, kbd};
@@ -52,6 +52,8 @@ pub fn screen() -> impl IntoElement {
     let rich = signal(Some(SharedString::from("1")));
     let typed_model = signal(String::from("qwen3-32b"));
     let typed_query = signal(String::new());
+    let run_pick = signal(Some(SharedString::from("1")));
+    let menu_shown = signal(false);
 
     let buttons = view()
         .flex_row()
@@ -303,6 +305,34 @@ pub fn screen() -> impl IntoElement {
                 .child(form_disclosure("Headers", || "Optional".into(), disclosure, || vec![body(text("A row")).p(px(12.0)).into_element()], false))
                 .child(field("Label above", text_field(signal(String::new())).search().placeholder("Search models…")).hint("A hint under the field."))
                 .child(panel(Some("Model text".into()), None, Some(text_mode_toggle().into_element()), model_text(|| SAMPLE.to_owned(), None)))
+                // The preference review's pieces: a card's 13 px muted text, a full-width pop-up
+                // button on the dialog fill, the menu that reports it is open, the tinted bar.
+                .child(panel(
+                    Some("Review pieces".into()),
+                    None,
+                    None,
+                    view()
+                        .gap(px(12.0))
+                        .child(model_text_with(|| "A *rejected* response, in muted 13 px text.".to_owned(), None, ModelTextStyle::small().muted_when(|| true)))
+                        .child(select_field(
+                            vec![option("1", "Distill gsm8k (Qwen3-32B)"), option("2", "Baseline (Llama-3.1-8B)")],
+                            run_pick,
+                            |v| if v == "1" { "Distill gsm8k (Qwen3-32B)".into() } else { "Baseline (Llama-3.1-8B)".into() },
+                            "",
+                            "Chosen run",
+                            || crate::theme::token("on-dialog-control")(),
+                        ))
+                        .child(menu_with_open(
+                            Button::icon(icon::ELLIPSIS, "More actions").variant(Variant::Secondary).without_tooltip(),
+                            vec![menu_destructive(Some(icon::TRASH), "Delete preference set…", || {})],
+                            Some(224.0),
+                            menu_shown,
+                        ))
+                        .child(action_bar_tinted(
+                            vec![body(text("A chosen over B.")).into_element(), Button::icon(icon::KEYBOARD, "Keyboard shortcuts").muted().into_element()],
+                            "review-bar-tint",
+                        )),
+                ))
                 .child(view().h(px(1.0)).rounded(px(radius::XS))),
         )
 }

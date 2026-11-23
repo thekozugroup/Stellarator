@@ -35,8 +35,8 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Text field | `text_field(signal).placeholder(..).placeholder_with(f).mono().numeric().tabular().centered().masked(f).search().width(96.0).invalid(f).trailing(el).element(&ref).on_change(f).on_blur(f).on_submit(f)`; `text_area(signal).height(80.0)` (`numeric` is right-aligned, `tabular` left-aligned figures) | `ui/input.tsx`, `ui/textarea.tsx`, `ui/input-group.tsx` |
 | Field | `field(label, control).hint(..).hint_when(f).error(signal).info(text).optional()` | `shared/field.tsx` |
 | Grouped form | `form_group(rows).title(..).footnote(el).in_dialog()`; `form_row(label, control).hint(..).hint_element(f).error(signal).optional_when(f).align_end().stacked().info(..)` (`hint_element` makes the hint a sentence with a link; the error takes its place); `form_item(el)`; `form_disclosure(title, summary_fn, open, rows_fn, in_dialog)` | `shared/form-group.tsx` |
-| Pop-up button | `select_button(vec![option("vllm", "vLLM")], value, title_fn, placeholder, label)` | `ui/select.tsx` |
-| Menu | `menu_button(label, vec![menu_entry(Some(icon::PENCIL), "Edit…", f), MenuEntry::Separator, menu_destructive(..)], Some(176.0))`; `menu_with(trigger, entries, width)` | `ui/dropdown-menu.tsx` |
+| Pop-up button | `select_button(vec![option("vllm", "vLLM")], value, title_fn, placeholder, label)`; full width with its own fill: `select_field(options, value, title_fn, placeholder, label, fill)` (`on-dialog-control` in a dialog's group) | `ui/select.tsx` |
+| Menu | `menu_button(label, vec![menu_entry(Some(icon::PENCIL), "Edit…", f), MenuEntry::Separator, menu_destructive(..)], Some(176.0))`; `menu_with(trigger, entries, width)`; `menu_with_open(trigger, entries, width, open)` keeps `open` true while it shows (keys that must stand down) | `ui/dropdown-menu.tsx` |
 | Combobox | `combobox_field(options, value, placeholder, label)` | `ui/command.tsx` (as a combobox) |
 | Rich pop-up button | `RichSelect { items, value, on_change, shown, render_item, placeholder, accessibility, invalid, element }` (`ui/pickers.rs`): the screen draws the trigger and the rows (a tile, a name, a muted detail); full width, on a card | `ui/select.tsx` with custom items |
 | Typed combobox | `TypedCombobox { items, value, on_change, on_query, placeholder, accessibility, empty, mono, disabled, invalid, element }` (`ui/pickers.rs`): a field that filters the listed items and lets the screen offer what was typed as one more | `runs/model-combobox.tsx` |
@@ -59,13 +59,13 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
 | Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)` | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
-| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)` (`Xs` 320, `Sm` 384, `Xl` 576, `FourXl` 896 px); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
+| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)` (`Xs` 320, `Sm` 384, `Md` 448, `Xl` 576, `FourXl` 896 px); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
 | Alert | `alert(open, \|\| Alert { .. }, busy_fn, error_fn, on_action)` | `ui/alert-dialog.tsx` |
 | Side sheet | `side_sheet(open, label, \|\| content)` (448 px), `side_sheet_width(open, label, 720.0, \|\| content)`; `sheet_header`, `sheet_close(open)` | `ui/sheet.tsx` (side right) |
 | Toasts | `toast_success(msg)`, `toast_error(msg)`, `toast_info(msg)`, `toast_error_with(msg, second_line)` (the shell holds the toaster) | `ui/sonner.tsx` |
-| Action bar | `page(..).bottom_bar(\|\| action_bar(vec![..]).into_element())` | `shared/action-bar.ts` |
-| Model text | `model_text(\|\| text, None)`, `text_mode_toggle()` | `shared/model-text.tsx`, `shared/markdown.tsx` |
-| Materials | `material_bar(view())`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
+| Action bar | `page(..).bottom_bar(\|\| action_bar(vec![..]).into_element())`; in a state's tint: `action_bar_tinted(vec![..], "review-bar-tint")` | `shared/action-bar.ts` |
+| Model text | `model_text(\|\| text, None)`, `text_mode_toggle()`; sized or muted: `model_text_with(\|\| text, None, ModelTextStyle::small().muted_when(f))` (13 px on 18 px, a card's `text-sm`) | `shared/model-text.tsx`, `shared/markdown.tsx` |
+| Materials | `material_bar(view())`, `material_bar_tinted(view(), token)`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
 | Type | `theme::text::{body, label, meta, title, mono, display}` | Tailwind text classes |
 
 Screens share one more piece outside `ui/`: the export dialogs' layout, `screens::export`
@@ -77,6 +77,8 @@ to use it; `screens/export/run.rs` (a run's export) is the worked example.
 Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px), as the web UI's inputs.
 Inside a dialog or sheet, `muted` cards read as `dialog_muted` (the ground in light, the raised
 tone in dark): pass `.in_dialog()` to form groups and `.background(dialog_muted)` to tiles.
+Cards there have 10 px corners (26 - 16), as index.css gives `rounded-xl` inside dialogs; form
+groups `in_dialog()` take them.
 
 ## Links between screens
 
@@ -176,3 +178,6 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | No stacked toast deck | Toasts are a list at the bottom right (three at most, 4 s each) |
 | `TextView` highlights code with its own palette | Code blocks keep nsh's colors, not index.css's three hues |
 | Crossing 768 px rebuilds the shell | The open screen is made again (an open dialog closes); its scroll position is kept |
+| A screen's key bindings still fire while a dialog or menu of the same window is open | The screen checks its own dialogs' signals (and `menu_with_open`) before acting, as the preference review does |
+| `TextView`'s part styles are read once | `model_text_with` makes the text view again when its color changes (a response marked rejected) |
+| No `scrollIntoView` with a margin | The preference review reveals a zero-height mark placed the toolbar's height above the prompt |
