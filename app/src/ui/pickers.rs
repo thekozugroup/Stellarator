@@ -113,6 +113,8 @@ impl IntoElement for TypedCombobox {
     fn into_element(self) -> AnyElement {
         let (i1, i2) = (self.invalid.clone(), self.invalid.clone());
         let disabled = self.disabled.clone();
+        #[cfg(target_arch = "wasm32")]
+        let disabled_click = self.disabled.clone();
         let items = self.items.clone();
         let value = self.value.clone();
         let on_change = self.on_change.clone();
@@ -164,6 +166,40 @@ impl IntoElement for TypedCombobox {
         if let Some(e) = self.element {
             field = field.element_ref(&e);
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            opens_on_click(field, disabled_click)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         field.into_element()
     }
+}
+
+/// The web: a click in the field's input opens the list, as the web UI's trigger does. nsh's web
+/// runtime gives a text field no press (the platforms report the one that opens the list), so the
+/// list is held open here and a mouse release over the input opens it. Tabbing in does not, nor
+/// does a touch (the combobox opens on a touch's focus itself); the chevrons at the end keep
+/// their own toggle.
+#[cfg(target_arch = "wasm32")]
+fn opens_on_click(field: nsh_base::ComboboxElement, disabled: Rc<dyn Fn() -> bool>) -> AnyElement {
+    /// The trigger at the field's end: the 14 px chevrons, the 6 px gap and the 8 px padding.
+    const TRIGGER: f32 = 30.0;
+    let open = signal(false);
+    let width = signal(0.0_f32);
+    let field = field.open(move || Some(open.get())).on_open_change(move |e: &nsh_base::ComboboxEvent| {
+        if let nsh_base::ComboboxEvent::OpenChange(o, _) = e {
+            open.set(*o);
+        }
+    });
+    view()
+        .self_stretch()
+        .on_layout(move |frame: &Bounds<Points>| width.set(frame.size.width.0))
+        .on_mouse_up(move |e: &MouseEvent| {
+            let on_input = e.position.x.0 < width.get_untracked() - TRIGGER;
+            if e.button == Some(MouseButton::Left) && on_input && !open.get_untracked() && !disabled() {
+                open.set(true);
+            }
+        })
+        .child(field)
+        .into_element()
 }
