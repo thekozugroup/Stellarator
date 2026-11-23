@@ -24,9 +24,14 @@ use crate::ui::select::{option, select_field};
 /// How many decided items one read asks for while counting hand-picked pairs.
 const PAGE: i64 = 200;
 
-/// The dialog, shown while `open` holds; `done` runs after pairs were made.
-pub fn auto_pair_dialog(set: Set, open: Signal<bool>, done: Rc<dyn Fn()>) -> impl IntoElement {
-    dialog(open, "Auto-pair by run", move || form(set.clone(), open, done.clone()).into_element()).width(DialogWidth::Md)
+/// The dialog, shown while `open` holds; it reads the set (`set`) as it opens. `done` runs after
+/// pairs were made.
+pub fn auto_pair_dialog(set: Rc<dyn Fn() -> Option<Set>>, open: Signal<bool>, done: Rc<dyn Fn()>) -> impl IntoElement {
+    dialog(open, "Auto-pair by run", move || match untracked(|| set()) {
+        Some(s) => form(s, open, done.clone()).into_element(),
+        None => view().into_element(),
+    })
+    .width(DialogWidth::Md)
 }
 
 fn form(set: Set, open: Signal<bool>, done: Rc<dyn Fn()>) -> impl IntoElement {
@@ -119,8 +124,8 @@ fn form(set: Set, open: Signal<bool>, done: Rc<dyn Fn()>) -> impl IntoElement {
     };
 
     let mut rows = vec![
-        form_row("Chosen run", chosen_field).into_element(),
-        form_row("Rejected run", rejected_field).into_element(),
+        form_row("Chosen run", chosen_field).stacked().into_element(),
+        form_row("Rejected run", rejected_field).stacked().into_element(),
     ];
     rows.push(dynamic(replace_row).into_element());
 

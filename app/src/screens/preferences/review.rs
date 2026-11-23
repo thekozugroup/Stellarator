@@ -100,7 +100,9 @@ pub fn screen(id: i64) -> impl IntoElement {
         })
     };
     load_set();
-    let loaded = move || set.with(|s| if let SetLoad::Loaded(s) = s { Some(s.clone()) } else { None });
+    // How many runs the set compares, once loaded: the toolbar and the menu follow it, not the
+    // counts that change with each pair.
+    let runs = computed(move || set.with(|s| if let SetLoad::Loaded(s) = s { Some(s.runs.len()) } else { None }));
     effect(move || {
         if let SetLoad::Loaded(s) = set.get() {
             nav::set_label(s.name);
@@ -146,11 +148,11 @@ pub fn screen(id: i64) -> impl IntoElement {
     let (auto_open, export_open, delete_open) = (review.auto_open, review.export_open, review.delete_open);
     // Below 768 px the "…" menu in the bar carries Export and Auto-pair too.
     let menu = move |phone: bool| -> AnyElement {
-        let Some(s) = loaded() else { return view().into_element() };
+        let Some(run_count) = runs.get() else { return view().into_element() };
         let mut entries = Vec::new();
         if phone {
             entries.push(menu_entry(None, "Export pairs…", move || export_open.set(true)));
-            if s.runs.len() >= 2 {
+            if run_count >= 2 {
                 entries.push(menu_entry(None, "Auto-pair by run…", move || auto_open.set(true)));
             }
             entries.push(MenuEntry::Separator);
@@ -166,12 +168,12 @@ pub fn screen(id: i64) -> impl IntoElement {
     let mut frame = page_with(title_fn).meta(move || meta(set));
     if !untracked(is_phone) {
         frame = frame.actions(move || {
-            let Some(s) = loaded() else { return view().into_element() };
+            let Some(run_count) = runs.get() else { return view().into_element() };
             view()
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
-                .child((s.runs.len() >= 2).then(|| {
+                .child((run_count >= 2).then(|| {
                     button("Auto-pair by run…").variant(Variant::Secondary).on_press(move || auto_open.set(true))
                 }))
                 .child(button("Export pairs…").on_press(move || export_open.set(true)))
@@ -189,8 +191,13 @@ pub fn screen(id: i64) -> impl IntoElement {
 /// The chips under the title: the runs it compares ("vs" between them), then the prompt set with
 /// its tile; each a link. A bar while the set loads.
 fn meta(set: Signal<SetLoad>) -> AnyElement {
+    // The set without its counts: the chips are made again only when what they show changes.
+    let shown = computed(move || match set.get() {
+        SetLoad::Loaded(s) => SetLoad::Loaded(Set { prompt_count: 0, decided: 0, ..s }),
+        other => other,
+    });
     dynamic(move || -> AnyElement {
-        match set.get() {
+        match shown.get() {
             SetLoad::Loading => view().w(px(384.0)).max_w(nsh_core::geometry::relative(1.0)).h(px(28.0)).rounded(px(14.0)).bg(move || theme().secondary).into_element(),
             SetLoad::Loaded(s) => {
                 let mut chips: Vec<AnyElement> = Vec::new();
@@ -741,18 +748,13 @@ impl Review {
                     .child(body),
             )
             .child(shortcuts_dialog)
-            .child(dynamic(move || {
-                let s = set()?;
-                Some(
-                    view()
-                        .child(auto_pair_dialog(s.clone(), r.auto_open, Rc::new(move || {
-                            r.invalidate();
-                            r.refresh_set();
-                        })))
-                        .child(export_dialog(s.clone(), r.export_open))
-                        .child(delete_alert(s, r.delete_open)),
-                )
-            }))
+            // Made once: each reads the set as it opens, and the export's options outlive it.
+            .child(auto_pair_dialog(Rc::new(set), r.auto_open, Rc::new(move || {
+                r.invalidate();
+                r.refresh_set();
+            })))
+            .child(export_dialog(r.id, r.export_open))
+            .child(delete_alert(Rc::new(set), r.delete_open))
     }
 
     /// The prompt's header, the prompt and its responses.
