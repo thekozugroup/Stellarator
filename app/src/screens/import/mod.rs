@@ -270,7 +270,7 @@ pub fn screen() -> impl IntoElement {
                 st.committing.set(false);
                 match result {
                     // The server answers with the set still importing: its page shows the progress.
-                    Ok(set) => nav::replace(Route::PromptSet { id: set.id }, Some(set.name)),
+                    Ok(set) => nav::reset_to(Route::PromptSet { id: set.id }, Some(set.name)),
                     Err(e) => st.commit_error.set(Some(e)),
                 }
             },

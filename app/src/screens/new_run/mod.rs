@@ -190,8 +190,9 @@ fn bar(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
         .gap(px(12.0))
         .child(button("Cancel").variant(Variant::Secondary).on_press(|| nav::open(Destination::Runs)))
         .child(button("Start run").busy(move || state.starting.get(), "Starting…").on_press(move || submit()));
-    // On a phone the size has a line of its own, the buttons at the end of the next.
-    let children = if untracked(is_phone) {
+    // On a phone the size has a line of its own, the buttons at the end of the next. Read
+    // tracked: the page makes the bar again when the width crosses 768 px.
+    let children = if is_phone() {
         vec![view().flex_1().min_w(px(0.0)).gap(px(8.0)).child(summary).child(view().flex_row().justify_end().child(buttons)).into_element()]
     } else {
         vec![summary.into_element(), buttons.into_element()]
@@ -224,7 +225,7 @@ fn start(state: State, data: Data) {
     call(move |api| async move { api.post::<Run>("/api/runs", &body).await }, move |result| {
         state.starting.set(false);
         match result {
-            Ok(run) => nav::replace(Route::Run { id: run.id }, Some(run.name)),
+            Ok(run) => nav::reset_to(Route::Run { id: run.id }, Some(run.name)),
             Err(e) if !e.fields.is_empty() => {
                 let (mapped, other) = server_errors(&e.fields);
                 state.show_errors(&mapped);

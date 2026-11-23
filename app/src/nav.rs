@@ -14,6 +14,11 @@
 //!   own for a top-level screen, the one given to [`push`] for a detail screen, which the screen can
 //!   change once it has loaded ([`set_label`]).
 //!
+//! - [`reset_to`] shows a screen as a fresh page of its destination (`[root, route]`), where the
+//!   web UI navigates to a new URL: a run once it starts, a prompt set once its import starts.
+//! - Each route has the web UI's path ([`Route::path`], [`Route::from_path`]); the web build keeps
+//!   it in the address bar and follows the browser's back and forward ([`show`]).
+//!
 //! The state is one global [`Router`]; [`current`] is reactive, so the shell shows a new screen
 //! when it changes.
 
@@ -106,6 +111,64 @@ impl Route {
             Route::PreferenceSet { id } => format!("Preference set {id}"),
             Route::Gallery => "Components".into(),
         }
+    }
+
+    // The web build follows the address bar with it; the desktop has none.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    /// The web UI's path of the route (frontend/src/App.tsx): `/runs`, `/runs/new`, `/runs/4`.
+    pub fn path(&self) -> String {
+        match self {
+            Route::Runs => "/runs".into(),
+            Route::NewRun => "/runs/new".into(),
+            Route::Run { id } => format!("/runs/{id}"),
+            Route::PromptSets => "/prompts".into(),
+            Route::Import => "/prompts/import".into(),
+            Route::PromptSet { id } => format!("/prompts/{id}"),
+            Route::Endpoints => "/endpoints".into(),
+            Route::Preferences => "/preferences".into(),
+            Route::PreferenceSet { id } => format!("/preferences/{id}"),
+            Route::Settings => "/settings".into(),
+            Route::Gallery => "/settings/components".into(),
+        }
+    }
+
+    /// The route of a path or of a whole address (`http://host/runs/4?sample=2#x`): its query and
+    /// fragment are left out, as is a trailing slash. `/` is Runs, as the web UI redirects it;
+    /// `None` for a path the web UI has no page for.
+    // The web build follows the address bar with it; the desktop has none.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub fn from_path(address: &str) -> Option<Route> {
+        let parts: Vec<&str> = path_of_address(address).split('/').filter(|p| !p.is_empty()).collect();
+        let id = |s: &str| s.parse::<i64>().ok().filter(|n| *n > 0);
+        Some(match parts.as_slice() {
+            [] => Route::Runs,
+            ["runs"] => Route::Runs,
+            ["runs", "new"] => Route::NewRun,
+            ["runs", n] => Route::Run { id: id(n)? },
+            ["prompts"] => Route::PromptSets,
+            ["prompts", "import"] => Route::Import,
+            ["prompts", n] => Route::PromptSet { id: id(n)? },
+            ["endpoints"] => Route::Endpoints,
+            ["preferences"] => Route::Preferences,
+            ["preferences", n] => Route::PreferenceSet { id: id(n)? },
+            ["settings"] => Route::Settings,
+            ["settings", "components"] => Route::Gallery,
+            _ => return None,
+        })
+    }
+}
+
+/// The path of `address` (`/runs/4` of `http://host/runs/4?sample=2#x`): a bare path as it is,
+/// less its query and fragment; `/` for an address with no path.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn path_of_address(address: &str) -> &str {
+    let path = match address.split_once("://") {
+        Some((_, rest)) => rest.find('/').map(|i| &rest[i..]).unwrap_or("/"),
+        None => address,
+    };
+    match path.split(['?', '#']).next() {
+        Some("") | None => "/",
+        Some(p) => p,
     }
 }
 
@@ -208,18 +271,31 @@ impl Router {
         self.stack_mut().truncate(depth + 1);
     }
 
-    /// Replaces the shown screen (after a create: New run becomes the run).
-    pub fn replace(&mut self, route: Route, label: Option<String>) {
-        if self.stack().len() > 1 && route.destination() == self.destination && !route.is_top_level() {
-            self.stack_mut().pop();
-        }
+    /// Shows `route` as a fresh page of its destination: its stack becomes the root and the
+    /// route (the root alone for a top-level route). Back then goes to the destination's root, as
+    /// the web UI's breadcrumb does after it navigates to a new page.
+    pub fn reset_to(&mut self, route: Route, label: Option<String>) {
+        self.destination = route.destination();
+        self.stack_mut().truncate(1);
         self.push(route, label);
+    }
+
+    /// Shows `route` where the browser's back or forward (or a typed address) went: the entry
+    /// already on its destination's stack when there is one (keeping the entries under it and
+    /// their scroll positions), else as a fresh page ([`Router::reset_to`]).
+    // The web build follows the address bar with it; the desktop has none.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub fn show(&mut self, route: Route) {
+        self.destination = route.destination();
+        match self.stack().iter().position(|e| e.route == route) {
+            Some(i) => self.stack_mut().truncate(i + 1),
+            None => self.reset_to(route, None),
+        }
     }
 
     pub fn set_label(&mut self, label: String) {
         self.stack_mut().last_mut().expect("root").label = label;
     }
-
 }
 
 /// Where each entry was scrolled to, by entry id.
@@ -276,9 +352,15 @@ pub fn push(route: Route, label: Option<String>) {
     router().update(|r| r.push(route, label));
 }
 
-/// Replaces the shown screen with `route`.
-pub fn replace(route: Route, label: Option<String>) {
-    router().update(|r| r.replace(route, label));
+/// Shows `route` as a fresh page of its destination ([`Router::reset_to`]).
+pub fn reset_to(route: Route, label: Option<String>) {
+    router().update(|r| r.reset_to(route, label));
+}
+
+/// Shows `route` where the browser moved to ([`Router::show`]).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn show(route: Route) {
+    router().update(|r| r.show(route));
 }
 
 /// Back one screen.
@@ -371,10 +453,10 @@ mod tests {
     }
 
     #[test]
-    fn replace_and_back_to() {
+    fn reset_to_and_back_to() {
         let mut r = Router::default();
         r.push(Route::NewRun, None);
-        r.replace(Route::Run { id: 9 }, Some("New one".into()));
+        r.reset_to(Route::Run { id: 9 }, Some("New one".into()));
         assert_eq!(r.parents().len(), 1);
         assert_eq!(r.top().route, Route::Run { id: 9 });
         r.push(Route::Run { id: 10 }, None);
@@ -384,5 +466,98 @@ mod tests {
         r.push(Route::Run { id: 3 }, None);
         r.push(Route::Runs, None);
         assert!(r.parents().is_empty());
+    }
+
+    #[test]
+    fn reset_to_leaves_the_root_and_the_route() {
+        let mut r = Router::default();
+        // Run again: Runs, the run, New run; starting it leaves Runs and the new run.
+        r.push(Route::Run { id: 4 }, Some("Distill".into()));
+        r.push(Route::NewRun, None);
+        r.reset_to(Route::Run { id: 5 }, Some("Distill again".into()));
+        assert_eq!(r.destination, Destination::Runs);
+        assert_eq!(r.parents().iter().map(|e| e.route.clone()).collect::<Vec<_>>(), vec![Route::Runs]);
+        assert_eq!(r.top().label, "Distill again");
+        assert!(r.back());
+        assert_eq!(r.top().route, Route::Runs);
+        // From another destination: an import started from Prompt sets lands on its set.
+        r.push(Route::Import, None);
+        r.reset_to(Route::PromptSet { id: 7 }, None);
+        assert_eq!(r.destination, Destination::PromptSets);
+        assert_eq!(r.parents().len(), 1);
+        assert_eq!(r.top().route, Route::PromptSet { id: 7 });
+        // A top-level route is its root alone.
+        r.reset_to(Route::PromptSets, None);
+        assert!(r.parents().is_empty());
+    }
+
+    #[test]
+    fn show_goes_back_to_an_entry_on_the_stack_or_opens_a_fresh_page() {
+        let mut r = Router::default();
+        r.push(Route::Run { id: 4 }, Some("Distill".into()));
+        let run = r.top().id;
+        r.push(Route::NewRun, None);
+        r.open(Destination::Endpoints);
+        // The browser's back to /runs/4: the run's entry, with its label and id (its scroll).
+        r.show(Route::Run { id: 4 });
+        assert_eq!(r.destination, Destination::Runs);
+        assert_eq!(r.top().id, run);
+        assert_eq!(r.top().label, "Distill");
+        assert_eq!(r.parents().len(), 1);
+        // A route not on the stack (a typed address): Runs, then it.
+        r.show(Route::Run { id: 9 });
+        assert_eq!(r.parents().len(), 1);
+        assert_eq!(r.top().route, Route::Run { id: 9 });
+        r.show(Route::Runs);
+        assert!(r.parents().is_empty());
+        r.show(Route::PreferenceSet { id: 2 });
+        assert_eq!(r.destination, Destination::Preferences);
+        assert_eq!(r.parents()[0].route, Route::Preferences);
+    }
+
+    #[test]
+    fn paths_are_the_web_uis() {
+        let all = [
+            (Route::Runs, "/runs"),
+            (Route::NewRun, "/runs/new"),
+            (Route::Run { id: 4 }, "/runs/4"),
+            (Route::PromptSets, "/prompts"),
+            (Route::Import, "/prompts/import"),
+            (Route::PromptSet { id: 12 }, "/prompts/12"),
+            (Route::Endpoints, "/endpoints"),
+            (Route::Preferences, "/preferences"),
+            (Route::PreferenceSet { id: 3 }, "/preferences/3"),
+            (Route::Settings, "/settings"),
+            (Route::Gallery, "/settings/components"),
+        ];
+        for (route, path) in all {
+            assert_eq!(route.path(), path);
+            assert_eq!(Route::from_path(path), Some(route));
+        }
+    }
+
+    #[test]
+    fn addresses_map_to_routes() {
+        assert_eq!(Route::from_path("/"), Some(Route::Runs));
+        assert_eq!(Route::from_path(""), Some(Route::Runs));
+        assert_eq!(Route::from_path("http://127.0.0.1:8000"), Some(Route::Runs));
+        assert_eq!(Route::from_path("http://127.0.0.1:8000/"), Some(Route::Runs));
+        assert_eq!(Route::from_path("http://127.0.0.1:8000/runs/4?sample=11#top"), Some(Route::Run { id: 4 }));
+        assert_eq!(Route::from_path("https://host/prompts/import/"), Some(Route::Import));
+        assert_eq!(Route::from_path("/runs/new?from=4"), Some(Route::NewRun));
+        // Pages the web UI does not have.
+        assert_eq!(Route::from_path("/runs/abc"), None);
+        assert_eq!(Route::from_path("/runs/0"), None);
+        assert_eq!(Route::from_path("/runs/4/samples"), None);
+        assert_eq!(Route::from_path("/nope"), None);
+    }
+
+    #[test]
+    fn the_path_of_an_address() {
+        assert_eq!(path_of_address("http://127.0.0.1:8000/runs/4?sample=11#a"), "/runs/4");
+        assert_eq!(path_of_address("http://127.0.0.1:8000"), "/");
+        assert_eq!(path_of_address("http://127.0.0.1:8000/"), "/");
+        assert_eq!(path_of_address("/prompts/import"), "/prompts/import");
+        assert_eq!(path_of_address(""), "/");
     }
 }
