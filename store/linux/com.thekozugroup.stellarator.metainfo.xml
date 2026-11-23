@@ -93,7 +93,6 @@
   </screenshots>
 
   <releases>
-    <!-- OWNER: the date 0.4.0 is published. -->
     <release version="0.4.0" date="2026-11-23">
       <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.4.0</url>
       <description>

@@ -46,7 +46,7 @@ on:
 
 env:
   # "false" builds the installers only; "true" also publishes releases.
-  PUBLISH: "false"
+  PUBLISH: "true"
   CARGO_TERM_COLOR: always
   CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
 

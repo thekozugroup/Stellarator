@@ -21,7 +21,7 @@ reqwest = { version = "0.13.3", default-features = false, features = ["rustls", 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "json"] }
-stellarator-core = { version = "0.3.1", path = "../core" }
+stellarator-core = { version = "0.4.0", path = "../core" }
 tokio = { version = "1.53.3", features = ["full"] }
 tracing = "0.1.44"
 url = "2.5.8"

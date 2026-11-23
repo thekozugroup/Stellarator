@@ -30,7 +30,7 @@
 | --- | --- |
 | Name | Stellarator (one word, capital S) |
 | Developer | The Kozu Group |
-| Current version | 0.4.0 [OWNER: release date] |
+| Current version | 0.4.0 (November 23, 2026) |
 | First release | 0.2.0, November 17, 2026 |
 | Price | Free. No in-app purchases, no ads, no account. |
 | License | MIT |

@@ -4780,7 +4780,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stellarator-api"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "serde",
@@ -4789,7 +4789,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-app"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4816,7 +4816,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-core"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4838,7 +4838,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-engine"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4859,7 +4859,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-export"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -4885,7 +4885,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-import"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -4911,7 +4911,7 @@ dependencies = [
 
 [[package]]
 name = "stellarator-server"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",

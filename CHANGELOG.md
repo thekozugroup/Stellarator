@@ -43,6 +43,11 @@ Each version's section is copied into its GitHub release under "What's new".
   lists the window and macOS's tiling items.
 - Updates are signed with new keys and read `nsh-latest.json`.
 
+### Fixes
+
+- Stopping an import that finishes before the stop reaches the server keeps the prompt set: the
+  server now refuses to delete a set whose import is done (`POST /api/prompt-sets/{id}/stop`).
+
 ### Coming from 0.3
 
 - 0.3's updater cannot install 0.4.0: download it by hand from this release. Quit 0.3 first.

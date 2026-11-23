@@ -6,7 +6,7 @@ exclude = ["app"]
 # depends on crates/server by path.
 
 [workspace.package]
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 # 1.89: std::fs::File::try_lock (the data folder lock, crates/core/src/datalock.rs).
