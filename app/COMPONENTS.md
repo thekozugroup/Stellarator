@@ -72,7 +72,7 @@ It was removed in 0.4.0; it is in the repository at tag `v0.3.1`.
 | Action bar | `page(..).bottom_bar(\|\| action_bar(vec![..]).into_element())`; in a state's tint: `action_bar_tinted(vec![..], "review-bar-tint")` | `shared/action-bar.ts` |
 | Model text | `model_text(\|\| text, None)`, `text_mode_toggle()`; sized or muted: `model_text_with(\|\| text, None, ModelTextStyle::small().muted_when(f))` (13 px on 18 px, a card's `text-sm`) | `shared/model-text.tsx`, `shared/markdown.tsx` |
 | Tool trace | `trace_rounds(&trace)` (a sample's trace in requests, each call with its result), `split_final(rounds)`, `all_calls(&rounds)`; `tool_call_card(block, open)` (the sample viewer's card: name, server, latency, arguments and result); `compact_calls(calls, muted_fn)` (a preference card's folded "3 tool calls"); `data_tag("TRUNCATED", "coral-tint", "coral-ink")`; `code_spans(words, size)` (mono between backticks) (`ui/trace.rs`; DESIGN.md, "Tool traces") | (new) |
-| Materials | `material_bar(view())`, `material_bar_tinted(view(), token)`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
+| Materials | `material_bar(view())`, `material_bar_tinted(view(), token)`, `material_thick(..)`, `material_float(..)`, `dialog_muted`; `dialog_well` (a well in a card inside a dialog or sheet: `--muted` in light, where that card is the ground; the ground in dark) | index.css `material-*` |
 | Type | `theme::text::{body, label, meta, title, mono, display}` | Tailwind text classes |
 
 Screens share one more piece outside `ui/`: the export dialogs' layout, `screens::export`

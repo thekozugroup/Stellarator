@@ -308,8 +308,9 @@ holds the answer. The sample viewer shows it in full, a preference card folded
   ink, an ERROR tag when the result is an error, the call's latency in muted mono at the end, and
   the copy button (the arguments). Open by default; folded when the request made more than four
   calls, so a long trace stays short to scroll.
-- **Arguments**: a ground well (8 px corners, 12 px by 10 px padding) of Roboto Mono 12 px on
-  19.5 px lines. Rendered shows the JSON pretty-printed (two spaces, keys in the model's order);
+- **Arguments**: a well (8 px corners, 12 px by 10 px padding) of Roboto Mono 12 px on 19.5 px
+  lines. In the sheet the card is the ground in light, so its wells take `--muted` there and the
+  ground in dark (`dialog_well`); the input schemas in the Tools sheet use the same well. Rendered shows the JSON pretty-printed (two spaces, keys in the model's order);
   Raw shows it exactly as the model wrote it. Arguments that are not JSON show as written, with
   "Not valid JSON: shown as the model wrote it." in 12 px coral ink under the well.
 - **Result**: a 28 px row ("Result", 13 px at 600; its tags; its copy button), then a ground well
