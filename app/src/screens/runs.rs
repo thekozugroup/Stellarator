@@ -114,7 +114,13 @@ pub fn screen() -> impl IntoElement {
     let new_run = if untracked(is_phone) {
         icon_button(icon::PLUS, "New run", || super::open(Screen::NewRun)).into_element()
     } else {
-        button(Variant::Primary, Some(icon::PLUS), "New run", || super::open(Screen::NewRun)).into_element()
+        button(Variant::Primary, Some(icon::PLUS), "New run", || {
+            if crate::platform::probing() {
+                crate::platform::probe_line("press reached nsh: New run button");
+            }
+            super::open(Screen::NewRun)
+        })
+        .into_element()
     };
     page("Runs", Some(new_run), content)
 }

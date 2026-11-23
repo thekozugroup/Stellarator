@@ -21,7 +21,7 @@ mod ui;
 mod web;
 
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
-use nsh_core::element::desktop::{on_app_quit, on_quit_request, quit, window as app_window};
+use nsh_core::element::desktop::{main_window, on_app_quit, on_quit_request, quit};
 use nsh_core::platform::Os;
 use nsh_core::prelude::*;
 
@@ -58,21 +58,21 @@ pub(crate) fn api() -> Result<api::Api, String> {
 #[component]
 pub fn App() -> impl IntoElement {
     global::<WindowShape>().set(WindowShape::expected(Some(os()), os_version()));
+    if os().is_desktop() {
+        // The root renders in the runner's main window (a `window()` here would open a second
+        // one in nsh 0.6.1). On macOS its title bar is hidden; closing it or quitting stops the
+        // server first (requests finish, runs are paused), then quits, as in the Tauri app.
+        let main = main_window();
+        main.set(main_window_attributes());
+        main.on_close_press(|_| quit_cleanly());
+        on_quit_request(quit_cleanly);
+        on_app_quit(|| async {
+            #[cfg(not(target_arch = "wasm32"))]
+            backend::stop().await;
+        });
+    }
     platform::setup_window();
-    // A single-window tool: closing the window or quitting stops the server first (requests
-    // finish, runs are paused), then quits, as in the Tauri app.
-    on_quit_request(quit_cleanly);
-    on_app_quit(|| async {
-        #[cfg(not(target_arch = "wasm32"))]
-        backend::stop().await;
-    });
-    app_window()
-        .id("main")
-        .title("Stellarator")
-        .default_size(size(px(1280.0), px(820.0)))
-        .attributes(main_window_attributes())
-        .on_close_press(|_| quit_cleanly())
-        .content(|| ui::shell::shell())
+    ui::shell::shell()
 }
 
 /// The main window's attributes: on macOS the title bar hidden, with the traffic lights centered

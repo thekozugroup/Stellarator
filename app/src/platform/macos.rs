@@ -84,7 +84,8 @@ pub fn use_toolbar_window(attach: bool) -> Chrome {
 /// The main window's `_cornerRadius` now.
 pub fn corner_radius_of_main_window() -> Option<f64> {
     let mtm = MainThreadMarker::new()?;
-    corner_radius(&main_window(mtm)?)
+    let window = main_window(mtm)?;
+    corner_radius(&window)
 }
 
 /// The radius the layout uses: what AppKit reports when it answers, else DESIGN.md's measured
@@ -235,20 +236,17 @@ pub fn post_band_clicks() -> Vec<String> {
         let location = NSPoint::new(x, height - y);
         let at = uptime + i as f64 * 0.3;
         let make = |kind: NSEventType, time: f64| {
-            // SAFETY: a mouse event for this window, made on the main thread.
-            unsafe {
-                NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
-                    kind,
-                    location,
-                    NSEventModifierFlags::empty(),
-                    time,
-                    window.windowNumber(),
-                    None,
-                    0,
-                    1,
-                    1.0,
-                )
-            }
+            NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                kind,
+                location,
+                NSEventModifierFlags::empty(),
+                time,
+                window.windowNumber(),
+                None,
+                0,
+                1,
+                1.0,
+            )
         };
         match (make(NSEventType::LeftMouseDown, at), make(NSEventType::LeftMouseUp, at + 0.05)) {
             (Some(down), Some(up)) => {

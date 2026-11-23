@@ -3,7 +3,10 @@
 # for each platform (does it build and run, the window's shape, fonts, dark mode, memory) come
 # from these runs. Nothing is released.
 #
-# Each job packages the app with `nsh package` (which builds a runner around app/'s crate), seeds a
+# The web job builds the same app for the browser (`nsh package --target web`): the screens reach
+# the API at the page's own origin.
+#
+# Each desktop job packages the app with `nsh package` (which builds a runner around app/'s crate), seeds a
 # data folder with sample runs (app/ci/seed.py) after the first launch, and uploads screenshots,
 # logs and packages as artifacts. The app prints `probe:` lines with STELLARATOR_PROBE=1
 # (app/src/platform/mod.rs).
@@ -267,3 +270,56 @@ jobs:
           path: |
             shots/
             app/.nsh/out/*.tar.gz
+
+  web:
+    name: Web (nsh package --target web)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      # `nsh package` also builds the app's crate for this machine (to describe its UI), which
+      # links GTK 4 on Linux.
+      - name: Build dependencies (GTK 4)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev clang
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-web
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/nsh" --version
+
+      - name: Placeholder web UI for the server crate
+        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
+
+      - name: Package (nsh package --target web)
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target web
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out .nsh/out/Stellarator
+          du -sh .nsh/out/Stellarator
+          for f in .nsh/out/Stellarator/*.wasm; do
+            echo "$f: $(wc -c < "$f") bytes, $(gzip -9c "$f" | wc -c) gzipped"
+          done
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nsh-web
+          if-no-files-found: warn
+          path: app/.nsh/out/Stellarator/
