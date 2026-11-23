@@ -10,8 +10,10 @@ pub mod endpoints;
 pub mod export;
 pub mod new_run;
 mod gallery;
+mod import;
 mod placeholder;
 mod preferences;
+mod prompts;
 mod run;
 mod runs;
 mod settings;
@@ -29,11 +31,11 @@ pub fn view(route: Route) -> AnyElement {
         Route::Endpoints => endpoints::screen().into_element(),
         Route::Settings => settings::screen().into_element(),
         Route::NewRun => new_run::screen().into_element(),
-        Route::PromptSets => placeholder::screen("Prompt sets", "Prompt sets").into_element(),
+        Route::PromptSets => prompts::list().into_element(),
         Route::Preferences => preferences::list_screen().into_element(),
         Route::Run { id } => run::screen(id).into_element(),
-        Route::PromptSet { .. } => placeholder::screen("Prompt set", "The prompt set").into_element(),
-        Route::Import => placeholder::screen("Import prompts", "Importing prompts").into_element(),
+        Route::PromptSet { id } => prompts::detail(id).into_element(),
+        Route::Import => import::screen().into_element(),
         Route::PreferenceSet { id } => preferences::review_screen(id).into_element(),
         Route::Gallery => gallery::screen().into_element(),
     }
