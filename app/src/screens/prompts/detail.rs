@@ -343,8 +343,11 @@ fn chip_row_of(set: &PromptSet, now: Signal<DateTime<Utc>>) -> impl IntoElement 
         row.push(chip(whr.clone()).mono().into_element());
     }
     let created = set.created_at;
+    // Read when the row is made too: a rename replaces the set without a fetch, and the web UI's
+    // re-render after it reads the clock again.
+    let made = now_utc();
     row.push(
-        body(text(move || format!("Created {}", relative(created, now.get()))))
+        body(text(move || format!("Created {}", relative(created, now.get().max(made)))))
             .text_color(muted_ink)
             .px(px(4.0))
             .into_element(),
