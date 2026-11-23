@@ -52,12 +52,12 @@ those systems, linking to the matching section below) and "Source on GitHub" (se
 
 | Computer | File | Size | Link |
 | --- | --- | ---: | --- |
-| Mac with Apple Silicon (M1 or later), macOS 14 or later | `Stellarator_0.4.0_aarch64.dmg` | 32.1 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_aarch64.dmg |
-| Mac with an Intel processor, macOS 14 or later | `Stellarator_0.4.0_x64.dmg` | 34.7 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64.dmg |
-| Windows 10 or 11 (installer for your account, no administrator rights) | `Stellarator_0.4.0_x64-setup.exe` | 19.5 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64-setup.exe |
+| Mac with Apple Silicon (M1 or later), macOS 14 or later | `Stellarator_0.4.0_aarch64.dmg` | 32.2 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_aarch64.dmg |
+| Mac with an Intel processor, macOS 14 or later | `Stellarator_0.4.0_x64.dmg` | 34.8 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64.dmg |
+| Windows 10 or 11 (installer for your account, no administrator rights) | `Stellarator_0.4.0_x64-setup.exe` | 19.6 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64-setup.exe |
 | Windows 10 or 11 (MSI, for your account, no administrator rights) | `Stellarator_0.4.0_x64_en-US.msi` | 20.1 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64_en-US.msi |
 | Linux (x86-64) with GTK 4.14 or later: Ubuntu 24.04 or later, Debian 13 or later | `Stellarator_0.4.0_amd64.AppImage` | 28.0 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_amd64.AppImage |
-| Linux (x86-64), as a package: Ubuntu 24.04 or later, Debian 13 or later | `Stellarator_0.4.0_amd64.deb` | 22.2 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_amd64.deb |
+| Linux (x86-64), as a package: Ubuntu 24.04 or later, Debian 13 or later | `Stellarator_0.4.0_amd64.deb` | 22.3 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_amd64.deb |
 
 Each new release changes the version in the six file names, so update the links with it. The sizes
 are those of the CI build of the 0.4.0 code (Release (nsh) run 45134172926); check them against

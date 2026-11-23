@@ -20,8 +20,8 @@ Each version's section is copied into its GitHub release under "What's new".
   macOS 26 and 21 MiB of private memory on Windows. 0.3 also ran the system web view's processes;
   on Linux those held about 240 MB more.
 - The installers are larger, because the app carries its own fonts and drawing code instead of
-  using the system's web view: the Apple Silicon `.dmg` is 32.1 MB (16.0 MB in 0.3.1), the
-  Windows `-setup.exe` 19.5 MB (10.5 MB). The AppImage is smaller, 28.0 MB instead of 93.5 MB, as
+  using the system's web view: the Apple Silicon `.dmg` is 32.2 MB (16.0 MB in 0.3.1), the
+  Windows `-setup.exe` 19.6 MB (10.5 MB). The AppImage is smaller, 28.0 MB instead of 93.5 MB, as
   it no longer bundles WebKitGTK.
 
 ### New installers
