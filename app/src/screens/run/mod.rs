@@ -26,11 +26,11 @@ use nsh_core::prelude::*;
 
 use self::actions::RunActions;
 use self::chart::{LiveNow, throughput_chart};
-use self::data::{EndpointProblem, Notice, checks_endpoint, endpoint_problem, is_active, poll_every, run_notice};
+use self::data::{ActionFacts, EndpointProblem, Notice, checks_endpoint, endpoint_problem, is_active, poll_every, run_notice};
 use self::in_flight::in_flight_list;
 use self::progress::run_progress;
 use self::samples::samples_section;
-use self::seqs::seqs_control;
+use self::seqs::{SeqsChange, seqs_control};
 use crate::api::types::{EndpointOut, RunLive, RunOut, RunStatus};
 use crate::data::{call, now_utc};
 use crate::format::{date_time, int, relative, time};
@@ -192,6 +192,8 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
     let the_run = move || run.get().expect("loaded");
     let export_open = signal(false);
     let actions = RunActions::new();
+    // A seqs change on its way outlives the panels, which are made again as the run starts or stops.
+    let seqs_change = SeqsChange::new();
 
     // A run the server sent back after a change: shown at once, then read again.
     let updated: Rc<dyn Fn(RunOut)> = {
@@ -233,10 +235,11 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
             r.as_ref().map(|r| (r.id, r.status, r.model.clone(), r.endpoint_id, r.endpoint_name.clone(), r.prompt_set_id, r.prompt_set_name.clone(), r.created_at))
         })
     });
-    // What the actions depend on.
+    // What the actions depend on: only the fields their buttons read, so a running run's counts
+    // (every second) do not make them again, nor close their open "…" menu.
     let action_facts = computed(move || {
         let elsewhere = !matches!(problem.get(), EndpointProblem::None);
-        run.with(|r| r.as_ref().map(|r| (r.clone(), elsewhere)))
+        run.with(|r| r.as_ref().map(|r| ActionFacts::of(r, elsewhere)))
     });
 
     let on_export: Rc<dyn Fn()> = Rc::new(move || export_open.set(true));
@@ -245,8 +248,8 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
         .wide()
         .meta(move || chip_facts.get().map(|f| run_chips(f).into_element()).unwrap_or_else(|| view().into_element()))
         .actions(move || {
-            let Some((r, elsewhere)) = action_facts.get() else { return view().into_element() };
-            actions.buttons(&r, on_export.clone(), elsewhere, actions_updated.clone())
+            let Some(facts) = action_facts.get() else { return view().into_element() };
+            actions.buttons(&facts, on_export.clone(), actions_updated.clone())
         });
 
     // Lost contact: the figures stay, with when they were read.
@@ -310,7 +313,7 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
             if !show_chart {
                 return view().into_element();
             }
-            let chart_panel = throughput_panel(id, live, run, seqs_shown, finished, updated.clone());
+            let chart_panel = throughput_panel(id, live, run, seqs_shown, seqs_change, finished, updated.clone());
             let in_flight = active.then(|| in_flight_panel(live, run));
             let side_by_side = active && window_width() >= 1280.0;
             if side_by_side {
@@ -460,6 +463,7 @@ fn throughput_panel(
     live: Signal<Live>,
     run: Memo<Option<RunOut>>,
     seqs_shown: Signal<Option<i64>>,
+    seqs_change: SeqsChange,
     finished: bool,
     updated: Rc<dyn Fn(RunOut)>,
 ) -> AnyElement {
@@ -480,12 +484,11 @@ fn throughput_panel(
     } else {
         seqs_control(
             id,
+            seqs_change,
             move || run.with(|r| r.as_ref().map(|r| r.concurrency).unwrap_or(1)),
             move |n| seqs_shown.set(n),
-            move |r| {
-                seqs_shown.set(None);
-                updated(r);
-            },
+            // The control clears `seqs_shown` once no newer change waits.
+            move |r| updated(r),
         )
         .into_element()
     };

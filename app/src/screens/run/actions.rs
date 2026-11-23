@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use nsh_core::prelude::*;
 
-use super::data::{Primary, primary_action};
+use super::data::{ActionFacts, Primary};
 use crate::api::types::{RunOut, RunStatus};
 use crate::data::call;
 use crate::format::{count, int};
@@ -50,7 +50,7 @@ impl RunActions {
     }
 
     /// Pause, resume or retry; `updated` gets the run the server sent back.
-    fn act(self, run: &RunOut, what: &'static str, updated: Rc<dyn Fn(RunOut)>) {
+    fn act(self, run: &ActionFacts, what: &'static str, updated: Rc<dyn Fn(RunOut)>) {
         if self.busy.get_untracked().is_some() {
             return;
         }
@@ -83,13 +83,13 @@ impl RunActions {
         );
     }
 
-    /// The buttons for `run`. `on_export` opens the export dialog; `primary_elsewhere` holds while
-    /// Edit endpoint is (or may become) the primary action.
-    pub fn buttons(self, run: &RunOut, on_export: Rc<dyn Fn()>, primary_elsewhere: bool, updated: Rc<dyn Fn(RunOut)>) -> AnyElement {
+    /// The buttons for `run` (its primary action already decided: none while Edit endpoint is, or
+    /// may become, the primary). `on_export` opens the export dialog.
+    pub fn buttons(self, run: &ActionFacts, on_export: Rc<dyn Fn()>, updated: Rc<dyn Fn(RunOut)>) -> AnyElement {
         let completed = run.status == RunStatus::Completed;
-        let exportable = run.done > 0;
+        let exportable = run.exportable;
         let can_retry = run.failed > 0 && completed;
-        let primary = primary_action(run, primary_elsewhere);
+        let primary = run.primary;
         let phone = window_width() < 640.0;
         let busy = self.busy;
         let variant = |p: Primary| if primary == Some(p) { Variant::Primary } else { Variant::Secondary };

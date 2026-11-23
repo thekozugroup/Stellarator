@@ -334,6 +334,36 @@ pub enum Primary {
     Retry,
 }
 
+/// What the run's action buttons show and do (`RunActions::buttons`): the fields of the run they
+/// read, and no more. While a run goes its counts change every second; these change only when a
+/// button would, so the buttons (and an open "…" menu) are not made again each second.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionFacts {
+    pub id: i64,
+    pub name: String,
+    pub status: RunStatus,
+    /// It has records to export.
+    pub exportable: bool,
+    /// Its failed samples where a button uses them: a finished run's Retry failed, a paused run's
+    /// Resume (which retries them). 0 while it goes.
+    pub failed: i64,
+    pub primary: Option<Primary>,
+}
+
+impl ActionFacts {
+    pub fn of(run: &RunOut, primary_elsewhere: bool) -> Self {
+        let going = matches!(run.status, RunStatus::Running | RunStatus::Pausing);
+        ActionFacts {
+            id: run.id,
+            name: run.name.clone(),
+            status: run.status,
+            exportable: run.done > 0,
+            failed: if going { 0 } else { run.failed },
+            primary: primary_action(run, primary_elsewhere),
+        }
+    }
+}
+
 pub fn primary_action(run: &RunOut, primary_elsewhere: bool) -> Option<Primary> {
     if primary_elsewhere {
         return None;
@@ -457,6 +487,29 @@ mod tests {
             EndpointProblem::Error("The server rejected the API key (401)".into())
         );
         assert_eq!(endpoint_problem(&run(RunStatus::Running), None, None), EndpointProblem::None);
+    }
+
+    #[test]
+    fn the_actions_change_only_with_what_their_buttons_show() {
+        let mut going = run(RunStatus::Running);
+        let before = ActionFacts::of(&going, false);
+        // A second later: more done, more failed, more tokens.
+        going.done += 40;
+        going.failed += 2;
+        going.completion_tokens += 9000;
+        going.active_seconds += 1.0;
+        assert_eq!(ActionFacts::of(&going, false), before);
+        // What a button shows: the status, the first record, a rename.
+        let mut paused = going.clone();
+        paused.status = RunStatus::Paused;
+        assert_ne!(ActionFacts::of(&paused, false), before);
+        assert_eq!(ActionFacts::of(&paused, false).failed, 5);
+        let mut first = run(RunStatus::Running);
+        first.done = 0;
+        assert_ne!(ActionFacts::of(&first, false), before);
+        let mut renamed = going.clone();
+        renamed.name = "Distill gsm8k again".into();
+        assert_ne!(ActionFacts::of(&renamed, false), before);
     }
 
     #[test]

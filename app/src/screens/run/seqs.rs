@@ -12,7 +12,7 @@ use nsh_core::element::input;
 use nsh_core::prelude::*;
 
 use crate::api::types::RunOut;
-use crate::data::call;
+use crate::data::{SignalExt, call};
 use crate::format::int;
 use crate::theme::text::{body, meta};
 use crate::theme::{muted_ink, radius, token};
@@ -42,11 +42,45 @@ pub fn invalid_seqs(draft: &str) -> bool {
     !draft.trim().is_empty() && parse_seqs(draft).is_none()
 }
 
-/// The seqs control of run `run_id`. `concurrency` is the value the screen shows (reactive);
-/// `show` sets the value the screen shows before the server confirms it (`None`: the server's);
-/// `saved` gets the run the server sent back.
+/// A seqs change on its way: the wait before it is sent, the request, and the last value the
+/// server confirmed. The run's screen keeps it, not the control: the panels that hold the control
+/// are made again when the run starts or stops, and a change made just before (Resume pressed
+/// within the quiet time) must still be sent, and the shown value go back to the server's after.
+#[derive(Clone, Copy)]
+pub struct SeqsChange {
+    /// The change waiting out the quiet time (its number: a newer one cancels it), or 0.
+    waiting: Signal<u64>,
+    next_wait: Stored<u64>,
+    /// A request on its way.
+    sending: Signal<bool>,
+    /// The last value the server confirmed (`None` until a control shows one).
+    settled: Stored<Option<i64>>,
+    /// Bumped when a change failed: the field shows the settled value again, even while typed in.
+    reverted: Signal<u64>,
+    /// The owner of the wait: the one it is made under.
+    owner: Owner,
+}
+
+impl SeqsChange {
+    /// Made where it outlives the control (the loaded run screen).
+    pub fn new() -> Self {
+        SeqsChange {
+            waiting: signal(0),
+            next_wait: stored(0),
+            sending: signal(false),
+            settled: stored(None),
+            reverted: signal(0),
+            owner: Owner::current(),
+        }
+    }
+}
+
+/// The seqs control of run `run_id`, over the screen's `change`. `concurrency` is the value the
+/// screen shows (reactive); `show` sets the value the screen shows before the server confirms it
+/// (`None`: the server's); `saved` gets the run the server sent back.
 pub fn seqs_control(
     run_id: i64,
+    change: SeqsChange,
     concurrency: impl Fn() -> i64 + 'static,
     show: impl Fn(Option<i64>) + 'static,
     saved: impl Fn(RunOut) + 'static,
@@ -56,52 +90,59 @@ pub fn seqs_control(
     let saved = Rc::new(saved);
     let draft = signal(untracked(|| concurrency()).to_string());
     let editing = signal(false);
-    // A change waiting out the quiet time (its number, so a newer one cancels it), and a request
-    // on its way.
-    let waiting = signal(0_u64);
-    let next_wait = Rc::new(Cell::new(0_u64));
-    let sending = signal(false);
-    // The last value the server confirmed.
-    let settled = Rc::new(Cell::new(untracked(|| concurrency())));
+    let SeqsChange { waiting, next_wait, sending, settled, reverted, owner } = change;
+    if settled.get().is_none() {
+        settled.replace(Some(untracked(|| concurrency())));
+    }
 
-    // Follow the server while nothing is being typed or sent.
+    // Follow the server while nothing is being typed or sent; after a failed change, at once.
     {
-        let settled = settled.clone();
         let concurrency = concurrency.clone();
+        let seen = Cell::new(untracked(|| reverted.get()));
         effect(move || {
             let c = concurrency();
-            if !editing.get() && waiting.get() == 0 && !sending.get() {
+            let back = reverted.get();
+            let follow = !editing.get() && waiting.get() == 0 && !sending.get();
+            if follow {
+                settled.replace(Some(c));
+            }
+            if follow || seen.replace(back) != back {
                 draft.set(c.to_string());
-                settled.set(c);
             }
         });
     }
 
+    // The answer comes under the screen, maybe after this control was made again: it writes the
+    // change's signals (with `try_set`: the loaded screen may have gone) and the screen's.
     let send: Rc<dyn Fn(i64)> = {
-        let settled = settled.clone();
         let show = show.clone();
         Rc::new(move |n: i64| {
             sending.set(true);
-            let settled = settled.clone();
             let show = show.clone();
             let saved = saved.clone();
             call(
                 move |api| async move { api.update_run(run_id, &serde_json::json!({ "concurrency": n })).await },
                 move |result| {
+                    // A newer change waiting keeps its value on screen until it is settled too.
+                    let newer = waiting.try_get().is_some_and(|w| w != 0);
                     match result {
                         Ok(run) => {
-                            settled.set(run.concurrency);
-                            show(None);
+                            settled.try_with(|s| *s = Some(run.concurrency));
+                            if !newer {
+                                show(None);
+                            }
                             saved(run);
                         }
                         Err(e) => {
-                            let back = settled.get();
-                            draft.set(back.to_string());
-                            show(None);
+                            let back = settled.try_with(|s| *s).flatten().unwrap_or(n);
+                            if !newer {
+                                show(None);
+                            }
+                            reverted.try_update(|r| *r += 1);
                             toast_error_with(format!("Couldn’t change seqs. {}", e.message), format!("Seqs stays at {}.", int(back)));
                         }
                     }
-                    sending.set(false);
+                    sending.try_set(false);
                 },
             );
         })
@@ -112,28 +153,31 @@ pub fn seqs_control(
         // Waiting first: while it waits the field does not follow the shown value (which is about
         // to become this one), so the last confirmed value stays the settled one.
         let id = next_wait.get() + 1;
-        next_wait.set(id);
+        next_wait.replace(id);
         waiting.set(id);
         draft.set(next.to_string());
         // The hint and the chart show the new value straight away.
         show(Some(next));
-        let settled = settled.clone();
         let send = send.clone();
         let show = show.clone();
-        let _ = set_timeout(QUIET, move || {
-            if waiting.get_untracked() != id {
-                return;
-            }
-            // Decided before the wait ends: the end of the wait lets the field follow the shown
-            // value again, which would make it the settled one.
-            let changed = next != settled.get();
-            if changed {
-                send(next);
-            }
-            waiting.set(0);
-            if !changed {
-                show(None);
-            }
+        // The wait is the screen's (`change`'s owner), not this control's: it ends as it would
+        // when the panels are made again meanwhile.
+        let _ = owner.run(move || {
+            set_timeout(QUIET, move || {
+                if waiting.get_untracked() != id {
+                    return;
+                }
+                // Decided before the wait ends: the end of the wait lets the field follow the shown
+                // value again, which would make it the settled one.
+                let changed = Some(next) != settled.get();
+                if changed {
+                    send(next);
+                }
+                waiting.set(0);
+                if !changed {
+                    show(None);
+                }
+            })
         });
     });
 
