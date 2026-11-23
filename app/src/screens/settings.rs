@@ -24,9 +24,12 @@ pub fn screen() -> impl IntoElement {
     let reload = move || call(|api| async move { api.settings().await }, move |r| load.set(Load::from(r)));
     reload();
     let settings = move || load.with(|l| l.loaded().cloned());
+    // The page is made again only when the read fails or recovers, not when the settings change
+    // (a saved token): the Hugging Face form keeps its state, which a save's answer writes.
+    let failed = computed(move || load.with(|l| l.error().map(str::to_owned)));
 
     let content = dynamic(move || -> AnyElement {
-        if let Some(message) = load.with(|l| l.error().map(str::to_owned)) {
+        if let Some(message) = failed.get() {
             return view()
                 .max_w(px(640.0))
                 .child(error_block(
@@ -61,25 +64,26 @@ fn hugging_face(load: Signal<Load<Settings>>) -> impl IntoElement {
     let saving = signal(false);
     let field = element_ref();
 
-    // PUT the token ("" removes it).
+    // PUT the token ("" removes it). The form's signals belong to the page's content, which a
+    // failed read makes again: the answer writes them with `try_set`.
     let write = move |value: String| {
         saving.set(true);
         let sent = !value.is_empty();
         call(
             move |api| async move { api.save_hf_token(&value).await },
             move |result| {
-                saving.set(false);
+                saving.try_set(false);
                 match result {
                     Ok(s) => {
                         load.set(Load::Loaded(s));
                         toast_success(if sent { "Hugging Face token saved." } else { "Hugging Face token removed." });
-                        editing.set(false);
-                        token_text.set(String::new());
-                        confirm_remove.set(false);
+                        editing.try_set(false);
+                        token_text.try_set(String::new());
+                        confirm_remove.try_set(false);
                     }
                     Err(e) => {
-                        error.set(Some(e.fields.get("hf_token").cloned().unwrap_or(e.message)));
-                        confirm_remove.set(false);
+                        error.try_set(Some(e.fields.get("hf_token").cloned().unwrap_or(e.message)));
+                        confirm_remove.try_set(false);
                     }
                 }
             },
@@ -134,7 +138,6 @@ fn hugging_face(load: Signal<Load<Settings>>) -> impl IntoElement {
                         .on_press(move || {
                             error.set(None);
                             editing.set(true);
-                            let _ = request_animation_frame(move |_| field.focus());
                         }),
                 )
                 .child(s.hf_token_set.then(|| button("Remove token").variant(Variant::Ghost).on_press(move || confirm_remove.set(true)))),
@@ -162,6 +165,9 @@ fn hugging_face(load: Signal<Load<Settings>>) -> impl IntoElement {
 
     let form_rows = dynamic(move || {
         editing.get().then(|| {
+            // The field takes the focus as it appears. (Asked from Add token's press, the frame
+            // would belong to the button, which `editing` has just made again: it would never come.)
+            let _ = request_animation_frame(move |_| field.focus());
             let eye = dynamic(move || {
                 let shown = show.get();
                 Button::icon(if shown { icon::EYE_OFF } else { icon::EYE }, if shown { "Hide token" } else { "Show token" })
