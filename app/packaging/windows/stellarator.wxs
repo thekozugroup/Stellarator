@@ -1,0 +1,50 @@
+<!--
+  The Windows Installer package of the nsh app (WiX 5): the packaged app (nsh package
+  -target windows, .nsh\out\Stellarator) for the current user, under
+  %LOCALAPPDATA%\Programs\Stellarator, with a Start menu shortcut. Apps & features uninstalls it;
+  a newer version replaces an older one.
+
+    wix build app\packaging\windows\stellarator.wxs -arch x64 -d Version=0.4.0
+      -d Source=app\.nsh\out\Stellarator -o Stellarator_0.4.0_x64_en-US.msi
+
+  The UpgradeCode stays the same for every version: it is what lets one replace another.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Stellarator" Manufacturer="The Kozu Group" Version="$(var.Version)"
+           UpgradeCode="abd42302-7ca6-496d-b889-55fc9927da1d" Scope="perUser" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Stellarator is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="StellaratorIcon" SourceFile="$(var.Source)\Stellarator.exe" />
+    <Property Id="ARPPRODUCTICON" Value="StellaratorIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/thekozugroup/Stellarator" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Stellarator" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Stellarator">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.Source)\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="StellaratorShortcut" Name="Stellarator" Description="Distill datasets from LLMs"
+                  Target="[INSTALLFOLDER]Stellarator.exe" WorkingDirectory="INSTALLFOLDER" Icon="StellaratorIcon" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\The Kozu Group\Stellarator" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Fragment>
+</Wix>

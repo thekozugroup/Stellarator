@@ -349,6 +349,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Windows: aws-lc-sys (rustls) uses its prebuilt assembly when NASM is not installed.
           AWS_LC_SYS_PREBUILT_NASM: "1"
+          # The Tauri app's webview loads the React UI (frontend/dist); the server embeds the nsh
+          # web build by default (crates/server/build.rs).
+          STELLARATOR_WEB_UI: react
           # Signs the update bundles. Read only when the updater step turned the updater on.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -375,6 +378,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AWS_LC_SYS_PREBUILT_NASM: "1"
+          STELLARATOR_WEB_UI: react
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:

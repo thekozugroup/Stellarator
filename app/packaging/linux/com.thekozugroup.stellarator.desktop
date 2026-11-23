@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Stellarator
+GenericName=Dataset distillation
+Comment=Distill datasets from LLMs
+Exec=stellarator %U
+Icon=com.thekozugroup.stellarator
+Terminal=false
+Categories=Development;
+Keywords=LLM;distillation;dataset;fine-tuning;
+StartupWMClass=com.thekozugroup.stellarator
+StartupNotify=true

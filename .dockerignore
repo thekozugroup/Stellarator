@@ -26,6 +26,10 @@ screenshots
 **/screenshots
 *.png
 !frontend/public/**
+# The nsh app's icons and assets (the web build ships them).
+!app/assets/**
+!app/icons/**
+app/.nsh
 docs
 Dockerfile
 docker-compose.yml
