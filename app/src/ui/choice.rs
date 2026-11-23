@@ -16,6 +16,7 @@ use nsh_core::Checked;
 use nsh_core::prelude::*;
 
 use super::icon::{self, icon};
+use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::text::body;
 use crate::theme::{muted_ink, radius, token};
 
@@ -32,7 +33,7 @@ pub fn segmented<V: Clone + PartialEq + 'static>(
     accessibility: &'static str,
     fill: bool,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(move || value.get()), Rc::new(move |v| value.set(v)), accessibility, fill, 13.0)
+    segmented_with(options, Rc::new(move || value.get()), Rc::new(move |v| value.set(v)), accessibility, fill, 13.0, false)
 }
 
 /// A segmented control with 12 px labels whose value is read with `get` and changed with `set`
@@ -43,7 +44,7 @@ pub fn segmented_small<V: Clone + PartialEq + 'static>(
     set: impl Fn(V) + 'static,
     accessibility: &'static str,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0)
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, false)
 }
 
 /// A segmented control whose value is read with `get` and changed with `set`, 13 px labels;
@@ -55,7 +56,18 @@ pub fn segmented_with_get<V: Clone + PartialEq + 'static>(
     accessibility: &'static str,
     fill: bool,
 ) -> impl IntoElement {
-    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0)
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0, false)
+}
+
+/// A segmented control with mono 12 px labels, for names
+/// like `max_tokens` (the New run form's "Sent as"). Read with `get`, changed with `set`.
+pub fn segmented_mono<V: Clone + PartialEq + 'static>(
+    options: Vec<(V, &'static str)>,
+    get: impl Fn() -> V + 'static,
+    set: impl Fn(V) + 'static,
+    accessibility: &'static str,
+) -> impl IntoElement {
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0, true)
 }
 
 fn segmented_with<V: Clone + PartialEq + 'static>(
@@ -65,6 +77,7 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
     accessibility: &'static str,
     fill: bool,
     text_size: f32,
+    mono: bool,
 ) -> impl IntoElement {
     let segments = options.into_iter().map(move |(v, label)| {
         let chosen: Rc<dyn Fn() -> bool> = {
@@ -104,14 +117,15 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
                 let v = v.clone();
                 move || set(v.clone())
             })
-            .child(
-                text(label)
+            .child({
+                let t = text(label)
                     .text_size(px(text_size))
                     .line_height(px(if text_size >= 13.0 { 18.0 } else { 16.0 }))
                     .number_of_lines(1)
                     .text_color(move || if c4() { theme().foreground } else { theme().muted_foreground })
-                    .style_when(move || c5(), |s| s.font_weight(FontWeight::MEDIUM)),
-            );
+                    .style_when(move || c5(), |s| s.font_weight(FontWeight::MEDIUM));
+                if mono { t.font_family(ROBOTO_MONO.family) } else { t }
+            });
         if fill {
             seg = seg.flex_1();
         }

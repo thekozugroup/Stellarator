@@ -15,6 +15,7 @@ pub const CABLE: ImageAsset = asset!("icons/cable.svg");
 pub const GIT_COMPARE_ARROWS: ImageAsset = asset!("icons/git-compare-arrows.svg");
 pub const SETTINGS: ImageAsset = asset!("icons/settings.svg");
 pub const PLUS: ImageAsset = asset!("icons/plus.svg");
+pub const MINUS: ImageAsset = asset!("icons/minus.svg");
 pub const X: ImageAsset = asset!("icons/x.svg");
 pub const CHECK: ImageAsset = asset!("icons/check.svg");
 pub const CHEVRON_RIGHT: ImageAsset = asset!("icons/chevron-right.svg");

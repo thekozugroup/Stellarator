@@ -22,10 +22,10 @@ use crate::theme::text::{body, meta};
 use crate::theme::{radius, token};
 
 /// The classes of a list item: 32 px, 8 px corners, the highlight `accent`.
-const ITEM_CLASS: &str = "min-h-8 rounded-sm px-2.5 py-1.5 text-[13px] text-popover-foreground focus:bg-accent selected:font-medium disabled:opacity-50";
+pub(super) const ITEM_CLASS: &str = "min-h-8 rounded-sm px-2.5 py-1.5 text-[13px] text-popover-foreground focus:bg-accent selected:font-medium disabled:opacity-50";
 
 /// The popup of a list or menu: the thick material, 14 px corners, 6 px padding, at least 128 px.
-fn popup(s: StyleRefinement) -> StyleRefinement {
+pub(super) fn popup(s: StyleRefinement) -> StyleRefinement {
     material_float(material_thick(s.rounded(px(radius::LG)).p(px(6.0)).min_w(px(128.0))))
 }
 

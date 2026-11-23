@@ -30,6 +30,7 @@ use crate::theme::{muted_ink, radius, token};
 pub struct TextField {
     value: Signal<String>,
     placeholder: Option<SharedString>,
+    placeholder_fn: Option<Rc<dyn Fn() -> String>>,
     masked: Option<Rc<dyn Fn() -> bool>>,
     mono: bool,
     numeric: bool,
@@ -40,6 +41,10 @@ pub struct TextField {
     disabled: Option<Rc<dyn Fn() -> bool>>,
     on_change: Option<Rc<dyn Fn(&str)>>,
     on_submit: Option<Rc<dyn Fn()>>,
+    on_blur: Option<Rc<dyn Fn()>>,
+    centered: bool,
+    tabular: bool,
+    height: Option<f32>,
     trailing: Option<AnyElement>,
     accessibility: Option<SharedString>,
     element: Option<ElementRef>,
@@ -51,6 +56,7 @@ pub fn text_field(value: Signal<String>) -> TextField {
     TextField {
         value,
         placeholder: None,
+        placeholder_fn: None,
         masked: None,
         mono: false,
         numeric: false,
@@ -61,6 +67,10 @@ pub fn text_field(value: Signal<String>) -> TextField {
         disabled: None,
         on_change: None,
         on_submit: None,
+        on_blur: None,
+        centered: false,
+        tabular: false,
+        height: None,
         trailing: None,
         accessibility: None,
         element: None,
@@ -76,6 +86,18 @@ pub fn text_area(value: Signal<String>) -> TextField {
 impl TextField {
     pub fn placeholder(mut self, text: impl Into<SharedString>) -> Self {
         self.placeholder = Some(text.into());
+        self
+    }
+
+    /// A placeholder that follows what `text` reads (the run name's default).
+    pub fn placeholder_with(mut self, text: impl Fn() -> String + 'static) -> Self {
+        self.placeholder_fn = Some(Rc::new(text));
+        self
+    }
+
+    /// Tabular figures and the numeric keyboard, left-aligned (a number in a form row).
+    pub fn tabular(mut self) -> Self {
+        self.tabular = true;
         self
     }
 
@@ -132,6 +154,24 @@ impl TextField {
         self
     }
 
+    /// Runs when the field loses the focus (the web UI's blur validation).
+    pub fn on_blur(mut self, f: impl Fn() + 'static) -> Self {
+        self.on_blur = Some(Rc::new(f));
+        self
+    }
+
+    /// A text area's height in points (96 by default; the web UI's `rows={3} min-h-20` is 80).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = Some(h);
+        self
+    }
+
+    /// Centered text (the number stepper's field).
+    pub fn centered(mut self) -> Self {
+        self.centered = true;
+        self
+    }
+
     /// A control inside the field's end (an icon button, 28 px).
     pub fn trailing(mut self, element: impl IntoElement) -> Self {
         self.trailing = Some(element.into_element());
@@ -180,7 +220,7 @@ impl IntoElement for TextField {
             })
             .multiline(self.multiline)
             .min_h(px(if self.multiline { 64.0 } else { CONTROL }))
-            .h(px(if self.multiline { 96.0 } else { CONTROL }))
+            .h(px(self.height.unwrap_or(if self.multiline { 96.0 } else { CONTROL })))
             .px(px(12.0))
             .py(px(if self.multiline { 8.0 } else { 0.0 }))
             .rounded(px(radius::MD))
@@ -204,11 +244,17 @@ impl IntoElement for TextField {
         if let Some(p) = self.placeholder {
             field = field.placeholder(p.to_string());
         }
+        if let Some(f) = self.placeholder_fn {
+            field = field.placeholder(move || f());
+        }
         if let Some(m) = self.masked {
             field = field.masked(move || m());
         }
         if self.mono {
             field = field.font_family(ROBOTO_MONO.family).letter_spacing(px(0.0));
+        }
+        if self.tabular {
+            field = field.keyboard_type(KeyboardType::Numeric).tabular_nums();
         }
         if self.numeric {
             field = field.keyboard_type(KeyboardType::Numeric).text_right().tabular_nums();
@@ -227,6 +273,12 @@ impl IntoElement for TextField {
         }
         if let Some(f) = self.on_submit {
             field = field.on_submit(move |_: &str| f());
+        }
+        if let Some(f) = self.on_blur {
+            field = field.on_blur(move || f());
+        }
+        if self.centered {
+            field = field.text_center().tabular_nums();
         }
         let field = match self.width {
             Some(w) => field.w(px(w)),
@@ -420,6 +472,7 @@ pub struct FormRow {
     optional: Option<Rc<dyn Fn() -> bool>>,
     info: Option<SharedString>,
     hint: Option<HintFn>,
+    hint_element: Option<Rc<dyn Fn() -> Option<AnyElement>>>,
     error: Option<Signal<Option<String>>>,
     end: bool,
     stacked: bool,
@@ -432,6 +485,7 @@ pub fn form_row(text_label: impl Into<SharedString>, control: impl IntoElement) 
         optional: None,
         info: None,
         hint: None,
+        hint_element: None,
         error: None,
         end: false,
         stacked: false,
@@ -468,6 +522,13 @@ impl FormRow {
         self
     }
 
+    /// A hint that is an element, made again when what it reads changes; `None` hides it (the
+    /// Endpoint row's "Key rejected at last check. Edit endpoint"). The error takes its place.
+    pub fn hint_element(mut self, hint: impl Fn() -> Option<AnyElement> + 'static) -> Self {
+        self.hint_element = Some(Rc::new(hint));
+        self
+    }
+
     pub fn error(mut self, error: Signal<Option<String>>) -> Self {
         self.error = Some(error);
         self
@@ -501,7 +562,15 @@ impl IntoElement for FormRow {
             )
             .child(self.info.map(|i| info_tip(self.label.clone(), i)));
         let end = self.end && side_by_side;
-        let mut control_col = view().gap(px(6.0)).min_w(px(0.0)).child(self.control).child(note(self.hint, self.error, end));
+        // A hint that is an element (a sentence with a link) shows while there is no error.
+        let hint_element = self.hint_element.map(|make| {
+            let error = self.error;
+            dynamic(move || -> Option<AnyElement> {
+                if error.is_some_and(|e| e.with(|m| m.as_ref().is_some_and(|m| !m.is_empty()))) { None } else { make() }
+            })
+        });
+        let mut control_col =
+            view().gap(px(6.0)).min_w(px(0.0)).child(self.control).child(note(self.hint, self.error, end)).child(hint_element);
         if self.end && side_by_side {
             control_col = control_col.items_end();
         }
