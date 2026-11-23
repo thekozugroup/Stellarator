@@ -5,8 +5,8 @@
 //! `assets/nsh-updater.json`. Without it nothing here runs and no update request is made.
 //!
 //! - The manifest is `nsh-latest.json` of the latest release, signed with the release key
-//!   (`latest.json.sig` beside it). Its own name keeps it apart from the Tauri app's `latest.json`
-//!   while both apps are released.
+//!   (`latest.json.sig` beside it). It is not `latest.json`, which the 0.3.x Tauri app's updater
+//!   reads and could not use.
 //! - The first check runs a few seconds after start, then one every 6 hours while the app runs.
 //! - A newer version opens a dialog: Install and Restart, or Later. Later stops the automatic
 //!   prompts for that version until the app restarts.

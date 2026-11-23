@@ -11,7 +11,7 @@ exports the result as a training dataset. A desktop app for macOS, Windows and L
 container next to your GPU.
 
 [![CI](https://github.com/thekozugroup/Stellarator/actions/workflows/ci.yml/badge.svg)](https://github.com/thekozugroup/Stellarator/actions/workflows/ci.yml)
-[![Desktop](https://github.com/thekozugroup/Stellarator/actions/workflows/desktop.yml/badge.svg)](https://github.com/thekozugroup/Stellarator/actions/workflows/desktop.yml)
+[![Installers](https://github.com/thekozugroup/Stellarator/actions/workflows/release-nsh.yml/badge.svg)](https://github.com/thekozugroup/Stellarator/actions/workflows/release-nsh.yml)
 [![Release](https://img.shields.io/github/v/release/thekozugroup/Stellarator)](https://github.com/thekozugroup/Stellarator/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -43,10 +43,10 @@ on the same Mac, or a hosted API.
 
 | Computer | File |
 | --- | --- |
-| Mac with Apple Silicon (M1 or later) | `Stellarator_<version>_aarch64.dmg` |
-| Mac with Intel | `Stellarator_<version>_x64.dmg` |
-| Windows 10 or 11 | `Stellarator_<version>_x64-setup.exe` (or the `.msi`) |
-| Linux (Ubuntu 22.04+, Debian 12+) | `Stellarator_<version>_amd64.AppImage` or `.deb` |
+| Mac with Apple Silicon (M1 or later), macOS 14+ | `Stellarator_<version>_aarch64.dmg` |
+| Mac with Intel, macOS 14+ | `Stellarator_<version>_x64.dmg` |
+| Windows 10 or 11, 64-bit | `Stellarator_<version>_x64-setup.exe` (or the `.msi`) |
+| Linux with GTK 4.14+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) | `Stellarator_<version>_amd64.deb` or `.AppImage` |
 
 On a Mac, open the `.dmg` and drag Stellarator to Applications. The app is not notarized yet, so
 macOS blocks the first open; run this once:
@@ -56,10 +56,13 @@ xattr -dr com.apple.quarantine /Applications/Stellarator.app
 ```
 
 Or open the app once, then click Open Anyway in System Settings > Privacy & Security. On Windows,
-SmartScreen asks too: More info, then Run anyway.
+SmartScreen asks too: More info, then Run anyway. Both Windows installers install for your account
+only, without administrator rights.
 
-Once installed, the app checks the releases for a newer version and offers to install it (the `.deb`
-updates through the package manager instead; see [Updates](docs/desktop.md#updates)).
+Coming from 0.3 or earlier (the Tauri app)? Download 0.4.0 by hand: the old updater cannot install
+it. Your runs and settings are kept; [docs/desktop.md](docs/desktop.md#coming-from-03-the-tauri-app)
+has the details. Builds made with the update keys check the releases for a newer version and offer
+to install it ([Updates](docs/desktop.md#updates)).
 
 <details>
 <summary>Or run it in Docker, on the GPU server itself (a DGX Spark, for example)</summary>
@@ -72,8 +75,8 @@ docker compose up -d --build
 
 Open `http://<server>:8080` from any browser on your network, phones included. A model server on
 the same machine is at `http://host.docker.internal:<port>/v1`. Data is kept in the
-`stellarator-data` volume. The image is about 170 MB; [docs/docker.md](docs/docker.md) has the DGX
-Spark notes and network options.
+`stellarator-data` volume. [docs/docker.md](docs/docker.md) has the DGX Spark notes and network
+options.
 
 To try it without a GPU, start the bundled mock server as well and add an endpoint with base URL
 `http://mock:9100/v1`:
@@ -84,11 +87,13 @@ docker compose --profile mock up -d --build
 
 </details>
 
-Either way it is one process, the server with its web UI, and one data folder.
+Either way it is one process and one data folder, with the same screens: the desktop app draws
+them with the system's own toolkit, and the server sends the same code to browsers as WebAssembly.
 
 > **There is no sign-in.** Anyone who can reach the port can use Stellarator and the API keys saved
 > in it, which are stored unencrypted in the data folder. Run it on a trusted network and do not
-> expose it to the internet. The desktop app listens on `127.0.0.1` and answers only its own window.
+> expose it to the internet. The desktop app opens no port: its window calls the server inside the
+> same process.
 
 ## What it looks like
 
@@ -113,7 +118,9 @@ the pair.
 Export. Pick a format and where the thinking trace goes, and the first record is shown exactly as
 it will be written.
 
-The screenshots use sample data: the bundled mock server and a small set of prepared answers.
+The screenshots are the browser build of the app at 1280 x 800, captured in Playwright with the
+macOS window frame drawn around it (`store/scripts`), with sample data: the bundled mock server and
+a small set of prepared answers.
 
 ## What it does
 
@@ -182,8 +189,9 @@ rejected for every prompt.
 
 The server is Rust. Measured on Linux (release build): about 13 MB idle and 32 MB at peak during a
 run with 256 sequences in flight; a 100,000-sample run at 512 seqs holds at about 46 MB. The
-desktop window is the system's webview, which uses memory of its own; see
-[docs/desktop.md](docs/desktop.md#memory). Runs keep going with the window hidden.
+desktop app adds its window in the same process, with no web view: idle on the Runs screen, macOS
+reports a 16 MiB footprint and Windows 21 MiB of private memory
+([docs/desktop.md](docs/desktop.md#memory) has how). Runs keep going with the window hidden.
 
 ## Export formats
 
@@ -219,7 +227,6 @@ Everything else is set in the app. These environment variables are read at start
 | `STELLARATOR_BIND` | `0.0.0.0:8080` | Server and Docker: the address to listen on |
 | `STELLARATOR_PORT` | `8080` | Docker Compose: the host port |
 | `HF_TOKEN` | none | Hugging Face token for gated datasets and Hub pushes; wins over the one saved in Settings |
-| `STELLARATOR_DESKTOP_PORT` | `47823` | Desktop app: the local port to try first |
 | `RUST_LOG` | `info` | Log detail, for example `debug` |
 
 The desktop app's data lives in `~/Library/Application Support/com.thekozugroup.stellarator` on a
@@ -227,22 +234,28 @@ Mac; [docs/desktop.md](docs/desktop.md) lists the folders for Windows and Linux.
 
 ## Development
 
-The web UI is built first, because the server embeds it:
+The app is Rust on [nsh](https://nsh.dev) 0.6.1 (Native Shell): one crate, `app/`, drawn with AppKit
+on macOS, Win32 on Windows and GTK 4 on Linux, and compiled to WebAssembly for the browser. The
+server is a Cargo workspace in `crates/`, which the app runs in-process and Docker runs alone.
+
+You need Rust and, for the app, the nsh CLI (`curl -fsSL https://nsh.dev/install.sh | sh`); on
+Linux also GTK 4.14+ (`libgtk-4-dev` on Ubuntu 24.04).
 
 ```bash
-cd frontend && npm ci && npm run build && cd ..
-cargo run -p stellarator-server        # http://localhost:8080, data in ./data
-cargo run -p stellarator-mock -- --port 9100
+(cd app && cargo run)                          # the desktop app, a debug build
+(cd app && nsh package --target web --out .nsh/web)   # the browser UI the server serves
+cargo run -p stellarator-server                # http://localhost:8080, data in ./data
+cargo run -p stellarator-mock -- --port 9100   # a fake model server
 ```
 
-For frontend work, `npm run dev` in `frontend/` proxies `/api` to port 8080. The desktop app is in
-`desktop/` (Tauri 2); building it is described in [docs/desktop.md](docs/desktop.md).
+[docs/desktop.md](docs/desktop.md#building-it-yourself) has the installers and the icon,
+[app/COMPONENTS.md](app/COMPONENTS.md) the app's code.
 
 Tests:
 
 ```bash
 cargo test --workspace
-(cd frontend && npm test)
+(cd app && cargo test --lib)
 ```
 
 The black-box API suite in [`tests/contract`](tests/contract) starts its own server and mock:
@@ -252,23 +265,23 @@ cargo build -p stellarator-server -p stellarator-mock
 STELLARATOR_START=rust uv run --project tests/contract pytest tests/contract -m "not v1"
 ```
 
-To release, set the same version in `Cargo.toml`, `desktop/src-tauri/Cargo.toml` and
-`desktop/package.json`, add its section to [CHANGELOG.md](CHANGELOG.md) and push to `main`: the
-installers are built for every platform and the release is published when they succeed, with the
-changelog section as its notes. Details in [docs/desktop.md](docs/desktop.md#builds-and-releases-ci).
+To release, set the same version in `Cargo.toml`, `app/Cargo.toml` and `app/nsh.json`, add its
+section to [CHANGELOG.md](CHANGELOG.md) and push to `main`: the installers are built for every
+platform and the release is published when they succeed, with the changelog section as its notes.
+Details in [docs/desktop.md](docs/desktop.md#builds-and-releases-ci).
 
 ## Project layout
 
 ```
+app/              The app: screens and components in Rust on nsh; installers in app/packaging
 crates/core       API contract, database, settings, endpoint presets
 crates/engine     Runs: worker pool, streaming, thinking-trace extraction, retries, metrics
 crates/import     Hugging Face (Parquet range reads), file and pasted-text imports
 crates/export     Dataset formats, JSONL/JSON/Parquet/CSV writers, Hugging Face Hub push
 crates/server     HTTP routes and the embedded web UI; the stellarator-server binary
 crates/mock       A fake OpenAI-compatible server, for trying it out and for tests
-frontend/         Web UI: React, Vite, Tailwind, shadcn/ui
-desktop/          Tauri 2 desktop app: the window and the server in one process
 tests/contract/   Black-box HTTP tests for the API
+store/            Store listings, screenshots and the scripts that make them
 docs/             Desktop app, Docker, images
 ```
 
@@ -276,8 +289,8 @@ docs/             Desktop app, Docker, images
 
 ## Contributing
 
-Issues and pull requests are welcome. `cargo test --workspace` and `npm test` in `frontend/` must
-pass.
+Issues and pull requests are welcome. `cargo test --workspace` and `cargo test --lib` in `app/`
+must pass.
 
 ## License
 

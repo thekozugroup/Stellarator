@@ -5,6 +5,7 @@ use nsh_core::prelude::*;
 use nsh_core::url_scheme::HistoryBehavior;
 
 use crate::nav::{self, Route};
+use crate::theme::shape::WindowShape;
 
 /// The origin (`http://127.0.0.1:8000`) of the page address `url`; empty when it has none.
 pub fn origin_of(url: &str) -> String {
@@ -44,6 +45,9 @@ pub fn follow_address() {
     });
     let _ = spawn(async move {
         let page = app_url().await.unwrap_or_default();
+        if let Some(shape) = frame_of(&page) {
+            global::<WindowShape>().set(shape);
+        }
         let route = Route::from_path(&page).unwrap_or(Route::Runs);
         let path = route.path();
         if nav::path_of_address(&page) != path {
@@ -67,6 +71,15 @@ pub fn follow_address() {
     });
 }
 
+/// `?frame=mac`, `windows` or `linux` in the address the page opens with: the screens laid out as in
+/// that platform's window (its corner radius, and on macOS the band the traffic lights sit in). For
+/// the store screenshots (store/scripts/capture.mjs), which draw that window's frame around the
+/// page.
+fn frame_of(address: &str) -> Option<WindowShape> {
+    let query = address.split_once('?')?.1.split('#').next().unwrap_or_default();
+    WindowShape::frame(query.split('&').find_map(|pair| pair.strip_prefix("frame="))?)
+}
+
 /// Shows the screen of `url`, an address the browser moved to, without a new history entry.
 fn go_to(url: &str, shown: Signal<Option<String>>) {
     if let Some(route) = Route::from_path(url) {
@@ -77,12 +90,20 @@ fn go_to(url: &str, shown: Signal<Option<String>>) {
 
 #[cfg(test)]
 mod tests {
-    use super::origin_of;
+    use super::{frame_of, origin_of};
+    use crate::theme::shape::WindowShape;
 
     #[test]
     fn the_origin_is_scheme_and_host() {
         assert_eq!(origin_of("http://127.0.0.1:8000/runs?x=1#a"), "http://127.0.0.1:8000");
         assert_eq!(origin_of("https://stellarator.example"), "https://stellarator.example");
         assert_eq!(origin_of("about:blank"), "");
+    }
+
+    #[test]
+    fn a_frame_in_the_address_shapes_the_window() {
+        assert_eq!(frame_of("http://127.0.0.1:8096/runs/1?frame=mac"), WindowShape::frame("mac"));
+        assert_eq!(frame_of("http://h/runs?x=1&frame=windows#top"), WindowShape::frame("windows"));
+        assert_eq!(frame_of("http://h/runs"), None);
     }
 }

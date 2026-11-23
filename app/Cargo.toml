@@ -7,8 +7,8 @@ edition = "2024"
 license = "MIT"
 publish = false
 
-# Its own workspace, like desktop/src-tauri: nsh's dependencies stay out of the server builds and
-# the root workspace (which does not list app/). Builds go to app/target.
+# Its own workspace: nsh's dependencies stay out of the server builds and the root workspace
+# (which excludes app/). Builds go to app/target.
 [workspace]
 
 [lib]

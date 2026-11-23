@@ -32,7 +32,7 @@ Distill datasets from LLMs
 © 2026 The Kozu Group
 ```
 
-## Version 0.3.0
+## Version 0.4.0
 
 ### Promotional text (154 of 170 characters)
 
@@ -77,7 +77,7 @@ FEATURES
 • JSONL, JSON, Parquet or CSV files, saved to disk or pushed to the Hugging Face Hub
 • Light and dark appearance
 
-Requires macOS 12 or later, and a model server that this Mac can reach: on the Mac itself or on another computer.
+Requires macOS 14 or later, and a model server that this Mac can reach: on the Mac itself or on another computer.
 
 Stellarator is free and open source under the MIT license. The source code is at github.com/thekozugroup/Stellarator.
 ```
@@ -93,18 +93,17 @@ distillation,dataset,LLM,SFT,DPO,KTO,fine-tuning,preference,reasoning,training d
 
 ### What's New in This Version (1,012 of 4,000 characters)
 
-From the 0.3.0 section of CHANGELOG.md.
+From the 0.4.0 section of CHANGELOG.md.
 
 ```text
-A new look.
+Stellarator is now a native Mac app.
 
-• A new design: Inter for text and Roboto Mono for data, neutral grays with a periwinkle accent, coral for attention and green for success, and cards set apart by tone instead of borders.
-• Detail screens open with a large title, chips for the status, model, endpoint and prompt set, and the key facts as tiles. The toolbar shows where you are.
-• Frosted, tinted materials on the toolbar, menus, dialogs, sheets and toasts, and on the action bars of New run, Import and preference review, which now float above the content.
-• The run chart counts back from now, leaves out paused time, and shows the change in tokens per second after you change seqs. The sequences in flight read like a log.
-• Endpoints and prompt sets get a small pixel-field tile.
-• On macOS 26 the window has the larger corners of apps with a toolbar, and the window controls sit where macOS puts them. The sidebar, dialogs and sheets follow those corners.
-• A simpler mark, and an app icon in the style of the macOS system apps.
+• The window is drawn with AppKit instead of a web page, and the server runs inside the app with no network port. Every screen, dialog and export works as before, with the same design.
+• Less memory: one process and no web view. Idle on the Runs screen, the app's footprint is about 16 MB.
+• Only one copy runs per data folder: opening the app again brings its window forward.
+• The window opens where you left it, with its size and position.
+• The menu bar has Settings… (Command-comma) in the app menu and Back (Command-[) in View, and the Window menu lists the window.
+• Requires macOS 14 or later.
 ```
 
 ### URLs
@@ -196,18 +195,18 @@ To try it without a key: install LM Studio or Ollama on the same Mac, start its 
 
 Hugging Face import: on the Hugging Face tab of Import prompts, enter openai/gsm8k. Public datasets need no token.
 
-The app runs a small HTTP server on 127.0.0.1 for its own window. It is not reachable from other computers, and it answers only requests from the app's window.
+The app's server runs inside the app's own process and opens no network port: nothing on this Mac or on the network can reach it.
 ```
 
 ## Before a real submission
 
 The current builds are made for direct download. An App Store build would need:
 
-- the App Sandbox, with outgoing network connections, incoming connections on `127.0.0.1` (the app's
-  own server) and read-write access to files the user selects (imports and exports);
+- the App Sandbox, with outgoing network connections and read-write access to files the user
+  selects (imports and exports); the app opens no port, so it needs no incoming connections;
 - no self-updater (builds without the update signing key already have none);
-- signing with an Apple Distribution certificate (the current builds are ad-hoc signed and not
-  notarized);
+- signing with an Apple Distribution certificate (the current builds are ad hoc signed and not
+  notarized unless the Developer ID secrets are set);
 - the data folder inside the sandbox container
   (`~/Library/Containers/com.thekozugroup.stellarator/Data/Library/Application Support/...`),
   which changes the paths in docs/desktop.md.

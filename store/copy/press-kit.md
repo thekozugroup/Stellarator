@@ -30,14 +30,14 @@
 | --- | --- |
 | Name | Stellarator (one word, capital S) |
 | Developer | The Kozu Group |
-| Current version | 0.3.0, released November 22, 2026 |
+| Current version | 0.4.0 [OWNER: release date] |
 | First release | 0.2.0, November 17, 2026 |
 | Price | Free. No in-app purchases, no ads, no account. |
 | License | MIT |
-| Platforms | macOS 12 or later (Apple Silicon and Intel); Windows 10 and 11 (x64); Linux x86-64 (Ubuntu 22.04 or later, Debian 12 or later); Docker on Linux (x86-64 and ARM64) |
+| Platforms | macOS 14 or later (Apple Silicon and Intel); Windows 10 and 11 (x64); Linux x86-64 with GTK 4.14 or later (Ubuntu 24.04 or later, Debian 13 or later); Docker on Linux (x86-64 and ARM64), used in a browser |
 | Model servers | Any OpenAI-compatible server; presets for OpenRouter, LM Studio, Ollama, vLLM, SGLang and llama.cpp |
 | Export formats | Chat messages, ShareGPT, Alpaca, prompt-completion and raw records; DPO and KTO pairs; as JSONL, JSON, Parquet or CSV, or pushed to the Hugging Face Hub |
-| Built with | Rust (server), Tauri 2 (desktop window), React (interface) |
+| Built with | Rust: the server, and the interface on nsh (Native Shell), drawn with AppKit, Win32 or GTK 4, and compiled to WebAssembly for the browser |
 | Website | `https://digital.kozugroup.com/stellarator` (placeholder path) |
 | Source and downloads | https://github.com/thekozugroup/Stellarator |
 | Press contact | [OWNER: contact line] |

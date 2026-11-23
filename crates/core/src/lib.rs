@@ -1,5 +1,5 @@
 //! Shared pieces of the Stellarator backend: configuration, the SQLite database, the API contract
-//! (request and response types, mirrored by `frontend/src/lib/types.ts`), errors, and helpers for
+//! (request and response types, from `stellarator-api`), errors, and helpers for
 //! talking to OpenAI-compatible servers.
 //!
 //! Conventions every crate follows:

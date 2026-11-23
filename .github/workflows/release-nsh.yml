@@ -1,26 +1,26 @@
-# The installers of the nsh app (app/): macOS (Apple Silicon and Intel), Windows and Linux. It is
-# to replace the Tauri app's release (desktop.yml), with the same file names and download table.
+# The installers of the app (app/): macOS (Apple Silicon and Intel), Windows and Linux, with the
+# file names and download table of the releases before 0.4.0.
 #
 # Every run uploads the installers as workflow artifacts:
 #   macOS    Stellarator_<v>_aarch64.dmg, Stellarator_<v>_x64.dmg
 #   Windows  Stellarator_<v>_x64-setup.exe (Inno Setup, made by `nsh package`), Stellarator_<v>_x64_en-US.msi (WiX)
 #   Linux    Stellarator_<v>_amd64.deb, Stellarator_<v>_amd64.AppImage
 #
-# Publishing is off until the switch from the Tauri app: set PUBLISH below to "true". desktop.yml
-# reads that line and then stops publishing (docs/desktop.md). Then a GitHub release tagged
-# v<version in Cargo.toml> is made as desktop.yml makes it: by a push to main whose version has no
+# Publishing is off until PUBLISH below is "true" (docs/desktop.md, "Builds and releases"). Then a
+# GitHub release tagged v<version in Cargo.toml> is made by a push to main whose version has no
 # published release yet, by Run workflow with "Publish a release" checked, or by a v* tag push.
 # One draft is created first, the builds upload into it, and it is published (and marked latest)
 # only when all of them succeed.
 #
-# macOS signing and notarization are optional, with the secrets desktop.yml reads (all of them):
+# macOS signing and notarization are optional, with these secrets (all of them):
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY  Developer ID signing
 #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID                                 notarization
 # Without them the app is ad hoc signed and users open it as docs/desktop.md describes.
 #
 # In-app updates are optional too (app/src/updater.rs), with nsh's own keys (`nsh keygen`; the
-# Tauri app's minisign keys do not fit). With both secrets set, the builds turn the updater on
-# (nsh.json "updater") and the release gets nsh-latest.json, signed, and the update archives:
+# minisign keys of the 0.3.x Tauri app do not fit). With both secrets set, the builds turn the
+# updater on (nsh.json "updater") and the release gets nsh-latest.json, signed, and the update
+# archives:
 #   NSH_UPDATER_PUBLIC_KEY  the public key (the contents of the .pub file)
 #   NSH_UPDATER_SECRET_KEY  the secret key (the contents of the .secret file)
 
@@ -45,8 +45,7 @@ on:
         default: false
 
 env:
-  # The switch: "false" builds the installers only; "true" also publishes releases, and stops
-  # desktop.yml publishing (it greps this line: keep it on one line, indented two spaces).
+  # "false" builds the installers only; "true" also publishes releases.
   PUBLISH: "false"
   CARGO_TERM_COLOR: always
   CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
@@ -157,7 +156,7 @@ jobs:
               { printf "## What's new\n"; cat notes.md; printf "\n"; cat body.md; } > body.new && mv body.new body.md
             fi
           fi
-          # As desktop.yml: a published release of this version is final; a draft from an earlier
+          # A published release of this version is final; a draft from an earlier
           # run is reused (duplicates deleted); otherwise one is created.
           found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$tag\" or (.draft and .name == \"Stellarator $tag\")) | \"\(.id) \(.draft)\"")
           if grep -q ' false$' <<<"$found"; then
@@ -188,8 +187,8 @@ jobs:
     needs: [version, release]
     if: ${{ !cancelled() && !failure() }}
     # Both builds run on the Intel runner and Apple Silicon's is cross-compiled
-    # (`nsh package --arch arm64`): as desktop.yml notes, jobs on the arm64 runners sat queued until
-    # GitHub cancelled them in November 2026.
+    # (`nsh package --arch arm64`): in November 2026 jobs on the arm64 runners (macos-latest,
+    # macos-26) sat queued until GitHub cancelled them; the Intel runners are a separate pool.
     runs-on: macos-26-intel
     timeout-minutes: 90
     strategy:
@@ -235,7 +234,7 @@ jobs:
         run: |
           out="$RUNNER_TEMP/icon-build"
           mkdir -p "$out"
-          if xcrun actool desktop/icon-src/Stellarator.icon --compile "$out" \
+          if xcrun actool app/icon-src/Stellarator.icon --compile "$out" \
               --output-format human-readable-text --notices --warnings --errors \
               --output-partial-info-plist "$out/partial.plist" --app-icon Stellarator \
               --include-all-app-icons --enable-on-demand-resources NO --development-region en \
@@ -591,8 +590,8 @@ jobs:
       - uses: actions/checkout@v5
 
       # nsh-latest.json: the version, and per platform its update archive with its size and
-      # SHA-256, signed with the release key (latest.json.sig). The Tauri app's latest.json is a
-      # different file, so both apps can be released side by side.
+      # SHA-256, signed with the release key (latest.json.sig). It is not named latest.json: that
+      # is the 0.3.x Tauri app's manifest, which its updater would read and reject.
       - name: Update manifest (when the updater is on)
         if: needs.version.outputs.updater == 'true'
         env:

@@ -1,9 +1,9 @@
 //! The Stellarator API contract: request and response bodies, as JSON types with no server
 //! dependencies (no sqlx, tokio or axum), so the server crates and every client, the nsh app's
 //! web build included, share one definition. `stellarator_core::schemas` re-exports them with
-//! their validation (the `Validate` impls). `frontend/src/lib/types.ts` mirrors this file; change
-//! both together. Field names, defaults and validation messages match the Python backend
-//! this replaced, except where marked "v2" (background imports, prompts-only imports, presets).
+//! their validation (the `Validate` impls). Field names, defaults and validation messages match the
+//! Python backend this replaced, except where marked "v2" (background imports, prompts-only
+//! imports, presets).
 
 use std::collections::BTreeMap;
 

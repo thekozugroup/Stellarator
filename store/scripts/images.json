@@ -1,5 +1,5 @@
 {
-  "_comment": "Every store image: where it goes (under store/images/), its pixel size, which raw screen it frames (capture.mjs), the frame, the background and the words. compose.mjs reads this file; capture.mjs reads it to know which screens to capture. Backgrounds: indigo (#5566dc to #2c3684, from the app icon), light (#eef1fe to #c3cffb), neutral (#f0f0f2). Frames: mac (26 pt corners and traffic lights), windows (8 px corners, Windows 11 title bar), linux (GTK title bar).",
+  "_comment": "Every store image: where it goes (under store/images/), its pixel size, which raw screen it frames (capture.mjs), the frame, the background and the words. compose.mjs reads this file; capture.mjs reads it to know which screens to capture. Backgrounds: indigo (#5566dc to #2c3684, from the app icon), light (#eef1fe to #c3cffb), neutral (#f0f0f2); the README's screenshots (layout readme, written to docs/assets/) use a pixel field instead (field: a seed and a ramp: plasma, dawn or ice). Frames: mac (26 pt corners and traffic lights), windows (8 px corners, Windows 11 title bar), linux (GTK title bar).",
   "images": [
     {
       "file": "mac-app-store/01-live-run.png",
@@ -213,15 +213,51 @@
       "theme": "dark",
       "frame": "mac",
       "background": "light"
+    },
+    {
+      "file": "../../docs/assets/screenshot-run.png",
+      "size": [1920, 1200],
+      "layout": "readme",
+      "shot": "run-live",
+      "theme": "dark",
+      "frame": "mac",
+      "field": { "seed": "run-1", "ramp": "plasma" }
+    },
+    {
+      "file": "../../docs/assets/screenshot-sample.png",
+      "size": [1920, 1200],
+      "layout": "readme",
+      "shot": "sample",
+      "theme": "light",
+      "frame": "mac",
+      "field": { "seed": "sample-2", "ramp": "dawn" }
+    },
+    {
+      "file": "../../docs/assets/screenshot-preferences.png",
+      "size": [1920, 1200],
+      "layout": "readme",
+      "shot": "preferences",
+      "theme": "dark",
+      "frame": "mac",
+      "field": { "seed": "preferences-1", "ramp": "ice" }
+    },
+    {
+      "file": "../../docs/assets/screenshot-export.png",
+      "size": [1920, 1200],
+      "layout": "readme",
+      "shot": "export",
+      "theme": "light",
+      "frame": "mac",
+      "field": { "seed": "export-7", "ramp": "dawn" }
     }
   ],
   "icons": [
-    { "file": "icon/stellarator-macos-1024.png", "source": "desktop/icon-src/icon-macos.svg", "size": 1024 },
-    { "file": "icon/stellarator-macos-512.png", "source": "desktop/icon-src/icon-macos.svg", "size": 512 },
-    { "file": "icon/stellarator-macos-256.png", "source": "desktop/icon-src/icon-macos.svg", "size": 256 },
-    { "file": "icon/stellarator-1024.png", "source": "desktop/icon-src/icon.svg", "size": 1024 },
-    { "file": "icon/stellarator-512.png", "source": "desktop/icon-src/icon.svg", "size": 512 },
-    { "file": "icon/stellarator-256.png", "source": "desktop/icon-src/icon.svg", "size": 256 },
-    { "file": "icon/stellarator-square-1024.png", "source": "desktop/icon-src/icon-square.svg", "size": 1024, "opaque": true }
+    { "file": "icon/stellarator-macos-1024.png", "source": "app/icon-src/icon-macos.svg", "size": 1024 },
+    { "file": "icon/stellarator-macos-512.png", "source": "app/icon-src/icon-macos.svg", "size": 512 },
+    { "file": "icon/stellarator-macos-256.png", "source": "app/icon-src/icon-macos.svg", "size": 256 },
+    { "file": "icon/stellarator-1024.png", "source": "app/icon-src/icon.svg", "size": 1024 },
+    { "file": "icon/stellarator-512.png", "source": "app/icon-src/icon.svg", "size": 512 },
+    { "file": "icon/stellarator-256.png", "source": "app/icon-src/icon.svg", "size": 256 },
+    { "file": "icon/stellarator-square-1024.png", "source": "app/icon-src/icon-square.svg", "size": 1024, "opaque": true }
   ]
 }

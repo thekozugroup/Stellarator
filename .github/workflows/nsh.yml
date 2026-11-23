@@ -58,15 +58,15 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/nsh" --version
 
-      # As .github/workflows/desktop.yml: compile the Icon Composer document with actool; when it
-      # works, nsh.json's macos.infoPlist names the icon and Assets.car goes into the app below.
+      # Compile the Icon Composer document (app/icon-src) with actool; when it works, nsh.json's
+      # macos.infoPlist names the icon and Assets.car goes into the app below.
       - name: Liquid Glass icon (actool)
         id: glass
         run: |
           out="$RUNNER_TEMP/icon-build"
           mkdir -p "$out"
           xcrun actool --version || true
-          if xcrun actool desktop/icon-src/Stellarator.icon --compile "$out" \
+          if xcrun actool app/icon-src/Stellarator.icon --compile "$out" \
               --output-format human-readable-text --notices --warnings --errors \
               --output-partial-info-plist "$out/partial.plist" --app-icon Stellarator \
               --include-all-app-icons --enable-on-demand-resources NO --development-region en \

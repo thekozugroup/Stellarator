@@ -1,5 +1,5 @@
-# Compiles the macOS 26 Icon Composer document (desktop/icon-src/Stellarator.icon) with actool, the
-# way the Desktop workflow does, in a couple of minutes instead of a full app build. It also
+# Compiles the macOS 26 Icon Composer document (app/icon-src/Stellarator.icon) with actool, the
+# way release-nsh.yml does, in a couple of minutes instead of a full app build. It also
 # compiles simpler variants of the document, from Icon Composer's minimal default up to the full
 # design, so a rejected document shows which part actool objects to. The artifact holds each
 # variant's actool output and, for the ones that compile, Apple's flattened rendering as PNG, plus
@@ -11,7 +11,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "desktop/icon-src/**"
+      - "app/icon-src/**"
       - ".github/workflows/icon.yml"
   workflow_dispatch:
 
@@ -34,7 +34,7 @@ jobs:
           python3 - <<'PY'
           import copy, json, os, shutil, subprocess
 
-          src = "desktop/icon-src/Stellarator.icon"
+          src = "app/icon-src/Stellarator.icon"
           full = json.load(open(f"{src}/icon.json"))
           pos = {"scale": 1, "translation-in-points": [0, 0]}
           mark = {"image-name": "mark.svg", "name": "mark", "position": pos}
@@ -80,7 +80,7 @@ jobs:
                    "--notices", "--warnings", "--errors", "--output-partial-info-plist", f"{out}/partial.plist",
                    "--app-icon", "Stellarator", "--include-all-app-icons", "--enable-on-demand-resources", "NO",
                    "--development-region", "en", "--target-device", "mac",
-                   "--minimum-deployment-target", "12.0", "--platform", "macosx"],
+                   "--minimum-deployment-target", "14.0", "--platform", "macosx"],
                   capture_output=True, text=True)
               log = r.stdout + r.stderr
               open(f"{d}/actool.log", "w").write(log)
@@ -108,7 +108,7 @@ jobs:
           "$ictool" --help 2>&1 | head -60 || true
           mkdir -p icon-check/appearances
           for a in Light Dark TintedLight TintedDark ClearLight ClearDark; do
-            "$ictool" desktop/icon-src/Stellarator.icon --export-preview macOS "$a" 512 512 1 0 \
+            "$ictool" app/icon-src/Stellarator.icon --export-preview macOS "$a" 512 512 1 0 \
               "icon-check/appearances/$a.png" 2>&1 | head -5 || true
           done
           ls -la icon-check/appearances

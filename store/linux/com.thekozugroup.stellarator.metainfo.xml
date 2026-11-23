@@ -93,6 +93,26 @@
   </screenshots>
 
   <releases>
+    <!-- OWNER: the date 0.4.0 is published. -->
+    <release version="0.4.0" date="2026-11-23">
+      <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.4.0</url>
+      <description>
+        <p>A native app.</p>
+        <ul>
+          <li>The window is drawn with GTK 4 instead of a web page, and the server runs inside the app with no network port</li>
+          <li>Less memory: one process and no web view</li>
+          <li>Only one copy runs per data folder, and the window opens where you left it</li>
+          <li>Needs GTK 4.14 or later: Ubuntu 24.04, Debian 13, Fedora 40 or later</li>
+          <li>Users of 0.3 download this version by hand; their data is kept</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.3.1" date="2026-11-23">
+      <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.3.1</url>
+      <description>
+        <p>Windows: the app opens its database again.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-22">
       <url type="details">https://github.com/thekozugroup/Stellarator/releases/tag/v0.3.0</url>
       <description>

@@ -50,7 +50,7 @@ Stellarator is free and open source under the MIT license. The source code is at
 ## What's new in this version (479 of 1,500 characters)
 
 ```text
-A new look: Inter for text and Roboto Mono for data, neutral grays with a periwinkle accent, and cards set apart by tone. Detail screens open with a large title, chips for the status, model, endpoint and prompt set, and the key facts as tiles. Menus, dialogs, sheets and the floating action bars use a frosted material. The run chart counts back from now, leaves out paused time, and shows the change in tokens per second after you change seqs. A simpler mark and a new app icon.
+Stellarator is now a native Windows app: the window is drawn by Windows itself instead of a web page, and the server runs inside the app with no network port. Every screen, dialog and export works as before, with the same design. It uses less memory (about 21 MB of private memory when idle) and no longer needs the WebView2 runtime. Only one copy runs per data folder, and the window opens where you left it. Both installers install for your account, without administrator rights.
 ```
 
 ## Product features (longest 115 of 200 characters each)
@@ -105,8 +105,7 @@ reasoning traces
 | --- | --- | --- |
 | OS | Windows 10 (64-bit) | Windows 11 |
 | Architecture | x64 | x64 |
-| Memory | Not set; the app's own process uses tens of MB, plus the WebView2 runtime | Not set |
-| Other | The Microsoft Edge WebView2 runtime (the installer adds it when missing) | |
+| Memory | Not set; idle, the app's one process uses about 21 MiB of private memory (measured in CI on Windows Server 2025) | Not set |
 
 Additional requirement text:
 

@@ -1,5 +1,5 @@
 //! One process per data folder. Two processes writing one SQLite database (the desktop app opened
-//! twice, the nsh app beside the Tauri app, a server started from a terminal on the app's folder)
+//! twice, or a server started from a terminal on the app's folder)
 //! would interleave runs and imports, so opening a data folder takes an exclusive lock on
 //! `stellarator.lock` in it, held until the process ends. A second process gets
 //! [`DataFolderInUse`] and says so instead of opening the database.

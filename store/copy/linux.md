@@ -44,7 +44,7 @@ Data stays on your computer. There is no account and no sign-in.
 
 | Field | Value |
 | --- | --- |
-| App ID | `com.thekozugroup.stellarator` (the `identifier` in `desktop/src-tauri/tauri.conf.json`) |
+| App ID | `com.thekozugroup.stellarator` (the `id` in `app/nsh.json`) |
 | Developer | The Kozu Group |
 | License | MIT (metadata: CC0-1.0) |
 | Category | Development |
@@ -52,8 +52,8 @@ Data stays on your computer. There is no account and no sign-in.
 | Content rating | OARS 1.1, no content (all "none") |
 | Homepage | `https://github.com/thekozugroup/Stellarator` (switch to `https://digital.kozugroup.com/stellarator` once that page is live) |
 | Bug tracker | `https://github.com/thekozugroup/Stellarator/issues` |
-| Requirements | x86-64; WebKitGTK 4.1 (Ubuntu 22.04 or later, Debian 12 or later); a model server it can reach |
-| Downloads | `Stellarator_0.3.0_amd64.AppImage`, `Stellarator_0.3.0_amd64.deb` |
+| Requirements | x86-64; GTK 4.14 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 40 or later); a model server it can reach |
+| Downloads | `Stellarator_0.4.0_amd64.AppImage`, `Stellarator_0.4.0_amd64.deb` |
 
 ## Screenshots
 

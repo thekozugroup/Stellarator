@@ -52,6 +52,20 @@ impl WindowShape {
     }
 }
 
+impl WindowShape {
+    /// The window of `name` (`mac`: macOS 26, `windows`, `linux`), for the web build's `?frame=`
+    /// address (web.rs): store screenshots draw that platform's frame around the page.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub fn frame(name: &str) -> Option<WindowShape> {
+        match name {
+            "mac" => Some(WindowShape::expected(Some(Os::MacOs), (26, 0))),
+            "windows" => Some(WindowShape::expected(Some(Os::Windows), (10, 0))),
+            "linux" => Some(WindowShape::expected(Some(Os::Linux), (0, 0))),
+            _ => None,
+        }
+    }
+}
+
 /// The main window's shape (reactive).
 pub fn window_shape() -> WindowShape {
     global::<WindowShape>().get()
@@ -97,5 +111,13 @@ mod tests {
         assert_eq!(WindowShape::expected(Some(Os::Web), (0, 0)).radius, 26.0);
         assert!(WindowShape::expected(Some(Os::MacOs), (26, 0)).overlay_title_bar);
         assert!(!WindowShape::expected(Some(Os::Windows), (10, 0)).overlay_title_bar);
+    }
+
+    #[test]
+    fn a_frame_name_gives_that_platforms_window() {
+        assert_eq!(WindowShape::frame("mac"), Some(WindowShape { radius: 26.0, overlay_title_bar: true }));
+        assert_eq!(WindowShape::frame("windows"), Some(WindowShape { radius: 8.0, overlay_title_bar: false }));
+        assert_eq!(WindowShape::frame("linux"), Some(WindowShape { radius: 0.0, overlay_title_bar: false }));
+        assert_eq!(WindowShape::frame("amiga"), None);
     }
 }

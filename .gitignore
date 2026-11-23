@@ -6,9 +6,8 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# Node
+# Node (the store scripts' Playwright)
 node_modules/
-frontend/dist/
 
 # Data and secrets
 /data/
@@ -21,12 +20,6 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
-backend/stellarator/static/
 
 # Rust
 target/
-desktop/src-tauri/target/
-desktop/src-tauri/gen/
-
-# Built in CI from desktop/icon-src/Stellarator.icon (see docs/desktop.md)
-desktop/src-tauri/icons/Assets.car

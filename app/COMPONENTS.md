@@ -1,13 +1,16 @@
-# The nsh app's components
+# The app's components
 
 The app's UI is Rust on nsh 0.6.1. Screens are built from the components in `src/ui/`, which
-follow DESIGN.md and frontend/src/index.css (sizes, radii, colors). Use them; do not style raw
+follow DESIGN.md (sizes, radii, colors). Use them; do not style raw
 views where a component exists. Every component draws with theme tokens only (`theme().<field>`
 or `crate::theme::token("name")`), so light and dark follow the system without a render.
 
 Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one screen
 (`src/screens/gallery.rs`); the Linux CI job uploads a screenshot of it (`gallery.png` in the
 `nsh-linux` artifact).
+
+Module comments that name a `frontend/...` file point to the React UI the screen was ported from.
+It was removed in 0.4.0; it is in the repository at tag `v0.3.1`.
 
 ## Where things are
 
@@ -18,7 +21,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | `src/ui/` | The components below |
 | `src/api.rs` | The typed API client (in-process router on desktops, `fetch` on the web) |
 | `src/data.rs` | `Load<T>` and `call`: loading API data into a screen |
-| `src/format.rs` | Numbers, dates, durations (frontend/src/lib/format.ts) |
+| `src/format.rs` | Numbers, dates, durations |
 | `src/shortcuts.rs` | Keyboard shortcuts |
 | `src/desktop.rs` | Around the window: one instance, showing the window at launch, the macOS menu bar, the start-failure dialog |
 | `src/updater.rs` | In-app updates (on in builds with the update keys; docs/desktop.md) |
@@ -27,7 +30,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 
 ## Components
 
-| Component | Rust | Replaces (frontend/src/components) |
+| Component | Rust | Ported from (the React UI's `frontend/src/components`, removed in 0.4.0) |
 | --- | --- | --- |
 | Page frame | `page("Runs")`, `page_with(\|\| Some(name))` then `.actions(f)`, `.bar_actions(f)`, `.meta(f)`, `.bottom_bar(f)`, `.wide()`, `.bottom_bar_below_lg()` (the bar floats below 1024 px only), `.child(el)` | `shared/page.tsx` `Page` |
 | Card | `panel(title, description, actions, content)`; `panel_tight(..)` (body padding 8 px, 4 px on top) | `shared/page.tsx` `Panel` |
@@ -50,7 +53,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Toggle | `toggle(label, signal)` | `ui/toggle.tsx` |
 | Checkbox | `checkbox(label, signal)`, `checkbox_with(label, get, set)` | `ui/checkbox.tsx` |
 | Radio | `radio_group(options, signal)` | `ui/radio-group.tsx` |
-| Switch | `switch(label, signal)` | (none in the web UI yet) |
+| Switch | `switch(label, signal)` | (none) |
 | Tooltip | `view().tooltip(tooltip_bubble("…"))` | `ui/tooltip.tsx` |
 | Key | `kbd(shortcuts::label("mod+["))` | `ui/kbd.tsx` |
 | Copy button | `copy_button(value, "Copy base URL")` | `shared/copy-button.tsx` |
@@ -58,7 +61,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Status | `pill(Tone::Positive, "Reachable")`, `pill_small(..)`, `status_badge(tone, glyph, word)`, `run_status_pill(s)`, `run_status_badge(s)`, `sample_status_pill(s, finish_reason)` | `shared/status-pill.tsx`, `RunStatusBadge`, `SampleStatusPill` |
 | Chips | `chip(label).mono().leading(plasma(..)).on_press(f).selected(f)`; `chip_row(vec)` | `shared/chip.tsx` |
 | Tiles | `tiles(vec![tile("Models", f).unit(..).span().child(bar).background(dialog_muted)])` | `shared/tiles.tsx` |
-| Pixel tile | `plasma(seed, cells, size, radius, deep)`; `plasma_cells` gives the same colors as the web | `shared/plasma.tsx` |
+| Pixel tile | `plasma(seed, cells, size, radius, deep)`; `plasma_cells` gives the colors the React UI gave the same seed | `shared/plasma.tsx` |
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
 | Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)`, `Column::share("Name", 1.1)` (a share of the free space) | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
@@ -77,19 +80,18 @@ draws the preview, the Hugging Face push and Download; the options are built wit
 `choice_group`, `option_group` + `check_option` and `file_type_group`. Its module comment shows how
 to use it; `screens/export/run.rs` (a run's export) is the worked example.
 
-Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px), as the web UI's inputs.
+Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px).
 Inside a dialog or sheet, `muted` cards read as `dialog_muted` (the ground in light, the raised
 tone in dark): pass `.in_dialog()` to form groups and `.background(dialog_muted)` to tiles.
-Cards there have 10 px corners (26 - 16), as index.css gives `rounded-xl` inside dialogs; form
-groups `in_dialog()` take them.
+Cards there have 10 px corners (26 - 16); form groups `in_dialog()` take them.
 
 ## Links between screens
 
 | Call | What |
 | --- | --- |
-| `screens::endpoints::open_edit(id, EditFocus::Key)` | Switches to Endpoints and opens that endpoint's edit dialog with the key (`EditFocus::Url`: the URL; `EditFocus::None`: the name) focused: the web UI's `/endpoints?edit=<id>&focus=key`. Closing the dialog, saved or not, goes back to the destination the call came from, as the web UI's `return` does |
+| `screens::endpoints::open_edit(id, EditFocus::Key)` | Switches to Endpoints and opens that endpoint's edit dialog with the key (`EditFocus::Url`: the URL; `EditFocus::None`: the name) focused. Closing the dialog, saved or not, goes back to the destination the call came from |
 | `screens::endpoints::status::endpoint_trouble(Some(&ep))` | `Some(Trouble::KeyRejected)` or `Some(Trouble::Unreachable)` when the last check failed; `.word()` and `.field()` (the `EditFocus` that fixes it) |
-| `screens::new_run::open(Prefill { endpoint, prompt_set, from })` | Shows New run starting from an endpoint, a prompt set, or a run to copy ("Run again…": `from`): the web UI's `/runs/new?endpoint=&prompt_set=&from=` |
+| `screens::new_run::open(Prefill { endpoint, prompt_set, from })` | Shows New run starting from an endpoint, a prompt set, or a run to copy ("Run again…": `from`) |
 
 ## Adding a screen
 
@@ -179,17 +181,17 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | The Linux window has a minimum width of 900 px | Phone layouts are checked in the web build at 390 px |
 | On Linux, Escape in a focused text field only leaves the field | A second Escape (or the X, or the scrim) closes the dialog |
 | No stacked toast deck | Toasts are a list at the bottom right (three at most, 4 s each) |
-| `TextView` highlights code with its own palette | Code blocks keep nsh's colors, not index.css's three hues |
+| `TextView` highlights code with its own palette | Code blocks keep nsh's colors, not the three hues the React UI used |
 | `mask-image` is not drawn on Windows (nsh's note) | A clamped prompt's fade shows there as a plain cut |
-| No call to scroll a page to an element | Paging in a prompt set keeps the scroll position (the web UI scrolls to the list's top) |
-| A select's items are plain titles | A column select says "question · text" in one face (the web UI sets the name in mono) |
+| No call to scroll a page to an element | Paging in a prompt set keeps the scroll position (the React UI scrolled to the list's top) |
+| A select's items are plain titles | A column select says "question · text" in one face (the React UI set the name in mono) |
 | A task started from a handler after a signal that rebuilds the pressed control is owned by the control, which is gone | Start the request with `data::call` first, then set the signals (Import's button) |
 | Crossing 768 px rebuilds the shell | The open screen is made again (an open dialog closes); its scroll position is kept |
 | A screen's key bindings still fire while a dialog or menu of the same window is open | The screen checks its own dialogs' signals (and `menu_with_open`) before acting, as the preference review does |
 | `TextView`'s part styles are read once | `model_text_with` makes the text view again when its color changes (a response marked rejected) |
 | No `scrollIntoView` with a margin | The preference review reveals a zero-height mark placed the toolbar's height above the prompt |
 | `TextViewParts` given with `provide_context` do not reach a text view made in a `dynamic` | `model_text_with` also passes the size, line height and color as the root's classes |
-| `TextView` reads `$x$` as a formula (the web UI keeps single dollars as text) | `normalize_math` escapes single dollars outside code |
+| `TextView` reads `$x$` as a formula (single dollars are prices more often than math) | `normalize_math` escapes single dollars outside code |
 | `Plot`'s marks take dashes only from a JS style, and its axes size themselves and keep the time labels inside the plot | The run's throughput chart is a canvas with the labels, the flag and the readout as views over it |
 | No CSS grid | Grid tiles take their width from the row's `on_layout` (`tile_width` in `screens/run/progress.rs`); a panel beside another takes its height with an absolutely placed scroll view |
 | No `position: sticky` inside a dialog's scroll area | The export preview moves down by the scroll offset (`translate_y`), held inside the options' height |

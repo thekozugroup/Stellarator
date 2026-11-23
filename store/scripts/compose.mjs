@@ -2,7 +2,8 @@
 //
 // Each image is an HTML page (background, headline, the window with its platform frame) that
 // headless Chromium screenshots at the exact pixel size. Text is set in Inter from the app's own
-// font files, so no fonts need installing.
+// font files (app/assets/fonts), so no fonts need installing. The README's screenshots (layout
+// "readme") put the window over a field of pixels, the app's plasma tiles at 48 px a cell.
 //
 //   node store/scripts/compose.mjs [--only <substring>] [--raw <dir>] [--out <dir>]
 //
@@ -37,13 +38,18 @@ function loadPlaywright() {
 }
 
 const url = (p) => pathToFileURL(p).href
-const fonts = join(repo, "frontend", "node_modules", "@fontsource-variable", "inter", "files")
-const FONT_CSS = ["latin", "latin-ext"]
+const fonts = join(repo, "app", "assets", "fonts")
+const FONT_CSS = [
+  ["Inter Store", "Inter-Regular.ttf", 400],
+  ["Inter Store", "Inter-Medium.ttf", 500],
+  ["Inter Store", "Inter-SemiBold.ttf", 600],
+  ["Inter Display Store", "InterDisplay-SemiBold.ttf", 600],
+]
   .map(
-    (subset) => `@font-face {
-  font-family: "Inter Store";
-  src: url("${url(join(fonts, `inter-${subset}-opsz-normal.woff2`))}") format("woff2");
-  font-weight: 100 900;
+    ([family, file, weight]) => `@font-face {
+  font-family: "${family}";
+  src: url("${url(join(fonts, file))}") format("truetype");
+  font-weight: ${weight};
   font-style: normal;
 }`,
   )
@@ -66,8 +72,53 @@ const FRAMES = {
   linux: { radius: [8, 8, 0, 0], bar: 38 },
 }
 
-const ICON_32 = url(join(repo, "desktop", "src-tauri", "icons", "32x32.png"))
-const ICON_MAC = url(join(repo, "desktop", "icon-src", "icon-macos.svg"))
+const ICON_32 = url(join(repo, "app", "icon-src", "icon.svg"))
+const ICON_MAC = url(join(repo, "app", "icon-src", "icon-macos.svg"))
+
+/**
+ * The pixel field (DESIGN.md, Identity; app/src/ui/plasma.rs): `cols` x `rows` cells stepping
+ * through a palette ramp with 4 x 4 ordered dithering. The seed sets the angle and the bend.
+ */
+const RAMPS = {
+  plasma: ["#141a40", "#3a46b4", "#5566dc", "#a1b5f8", "#fc885e"],
+  dawn: ["#3a46b4", "#5566dc", "#a1b5f8", "#f5c2ab", "#fc885e"],
+  ice: ["#141a40", "#2c3684", "#5566dc", "#a1b5f8", "#dde5fd"],
+}
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => v / 16 - 0.5)
+function fieldCells(seed, ramp, cols, rows) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  h >>>= 0
+  const angle = ((h >>> 8) % 8) * (Math.PI / 4)
+  const bend = (((h >>> 16) % 7) - 3) / 6
+  const [dx, dy] = [Math.cos(angle), Math.sin(angle)]
+  const levels = ramp.length - 1
+  const side = Math.max(cols, rows)
+  const out = []
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const u = x / (side - 1) - 0.5
+      const v = y / (side - 1) - 0.5
+      const t = Math.min(1, Math.max(0, 0.5 + (u * dx + v * dy) / 1.42 + bend * (-u * dy + v * dx) ** 2))
+      const level = Math.round(t * levels + BAYER[(y % 4) * 4 + (x % 4)] * 0.9)
+      out.push(ramp[Math.min(levels, Math.max(0, level))])
+    }
+  }
+  return out
+}
+
+/** The field as an SVG data URL filling a W x H canvas with `cell` px cells. */
+function fieldBackground([W, H], { seed, ramp }, cell = 48) {
+  const cols = Math.ceil(W / cell)
+  const rows = Math.ceil(H / cell)
+  const cells = fieldCells(seed, RAMPS[ramp], cols, rows)
+  const rects = cells.map((fill, i) => `<rect x="${(i % cols) * cell}" y="${Math.floor(i / cols) * cell}" width="${cell}" height="${cell}" fill="${fill}"/>`)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" shape-rendering="crispEdges">${rects.join("")}</svg>`
+  return `url("data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}")`
+}
 
 function titleBar(frame, theme) {
   const dark = theme === "dark"
@@ -128,11 +179,15 @@ function windowHtml(img, raw, x, y, scale, bg) {
 /** Positions, in canvas px, for the three layouts: headline above the window, the window alone, social card. */
 function page(img, raw) {
   const [W, H] = img.size
-  const bg = BACKGROUNDS[img.background]
+  const bg = img.field ? { ...BACKGROUNDS.indigo, css: fieldBackground(img.size, img.field) } : BACKGROUNDS[img.background]
   const f = FRAMES[img.frame]
   const winH = raw.height + f.bar
   let body = ""
-  if (img.layout === "social") {
+  if (img.layout === "readme") {
+    // The window at 1.2x, centered, over the field.
+    const scale = 1.2
+    body = windowHtml(img, raw, Math.round((W - 1280 * scale) / 2), Math.round((H - winH * scale) / 2) + 8, scale, "indigo")
+  } else if (img.layout === "social") {
     // Text on the left; the window to the right, running off the right edge.
     const scale = 0.62
     body = `<div class="social">
@@ -172,8 +227,8 @@ html, body { margin: 0; width: ${W}px; height: ${H}px; overflow: hidden; }
 body { position: relative; background: ${bg.css}; font-family: "Inter Store", sans-serif; font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
 .head { position: absolute; left: 0; right: 0; text-align: center; }
-.hl { font-weight: 600; letter-spacing: -0.025em; line-height: 1.12; }
-.sl { font-weight: 450; letter-spacing: -0.006em; line-height: 1.3; }
+.hl { font-family: "Inter Display Store", "Inter Store", sans-serif; font-weight: 600; letter-spacing: -0.025em; line-height: 1.12; }
+.sl { font-weight: 500; letter-spacing: -0.006em; line-height: 1.3; }
 .win { position: absolute; overflow: hidden; isolation: isolate; }
 .inner { position: relative; }
 .shot { display: block; }
@@ -189,9 +244,9 @@ body { position: relative; background: ${bg.css}; font-family: "Inter Store", sa
 .gbtn { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 .social { position: absolute; left: 72px; top: 0; bottom: 0; width: 540px; display: flex; flex-direction: column; justify-content: center; }
 .appicon { width: 148px; height: 148px; margin: -14px 0 6px -14px; }
-.name { font-size: 76px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
-.desc { font-size: 30px; font-weight: 450; letter-spacing: -0.012em; line-height: 1.25; margin-top: 18px; max-width: 520px; }
-.note { font-size: 21px; font-weight: 450; line-height: 1.3; margin-top: 22px; opacity: 0.85; }
+.name { font-family: "Inter Display Store", "Inter Store", sans-serif; font-size: 76px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+.desc { font-size: 30px; font-weight: 500; letter-spacing: -0.012em; line-height: 1.25; margin-top: 18px; max-width: 520px; }
+.note { font-size: 21px; font-weight: 400; line-height: 1.3; margin-top: 22px; opacity: 0.85; }
 </style></head><body>${body}</body></html>`
 }
 

@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/api", "crates/core", "crates/engine", "crates/import", "crates/export", "crates/server", "crates/mock"]
-exclude = ["desktop"]
-# The desktop app (desktop/src-tauri) is its own workspace so its heavy dependencies don't slow
-# down server builds; it depends on crates/server by path.
+exclude = ["app"]
+# The app (app/) is its own workspace so nsh's dependencies don't slow down server builds; it
+# depends on crates/server by path.
 
 [workspace.package]
 version = "0.3.1"

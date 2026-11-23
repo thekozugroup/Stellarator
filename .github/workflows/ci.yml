@@ -1,6 +1,6 @@
-# Checks on every push and pull request: the web UI builds and type-checks, the Rust workspace
-# passes its tests, and the API contract tests pass against the Rust server and mock.
-# The desktop app (desktop/, its own Cargo workspace) is built by desktop.yml.
+# Checks on every push and pull request: the Rust workspace passes its tests, and the API contract
+# tests pass against the Rust server and mock. The app (app/, its own Cargo workspace) is built,
+# tested and packaged by nsh.yml and release-nsh.yml.
 
 name: CI
 
@@ -17,22 +17,12 @@ permissions:
 
 jobs:
   test:
-    name: Web UI, Rust tests, contract tests
+    name: Rust tests, contract tests
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v5
-
-      # The web UI first: the server embeds frontend/dist when it compiles.
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Web UI (install, type-check, test, build)
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund && npx tsc -b && npm test && npm run build
 
       - uses: dtolnay/rust-toolchain@stable
         with:

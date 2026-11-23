@@ -1,6 +1,6 @@
 //! API errors. Every error reaches the browser as
 //! `{"detail": "One sentence saying what happened and how to fix it.", "fields": {...}}`,
-//! the same shape the Python backend used, so the frontend's `ApiError` keeps working.
+//! the same shape the Python backend used; the app's API client (app/src/api.rs) reads it.
 
 use std::collections::BTreeMap;
 

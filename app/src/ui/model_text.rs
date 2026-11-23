@@ -389,4 +389,38 @@ mod tests {
         assert_eq!(normalize_math("`\\( x \\)` and $$y$$"), "`\\( x \\)` and $$y$$");
         assert_eq!(normalize_math("```\n\\[ x \\]\n```"), "```\n\\[ x \\]\n```");
     }
+
+    // The cases of the web UI's math tests (frontend/tests/math.test.ts, removed in 0.4.0): the
+    // text view reads `$$` on lines of their own as display math and `$$ … $$` within a line as
+    // inline math.
+    #[test]
+    fn an_equation_on_its_own_line_is_display_math() {
+        assert_eq!(
+            normalize_math("The rate is\n\n$$r = 6 - 2 = 4$$\n\nso it empties."),
+            "The rate is\n\n$$\nr = 6 - 2 = 4\n$$\n\nso it empties."
+        );
+        assert_eq!(normalize_math("The rate is\n$$r = 4$$\nso it empties."), "The rate is\n$$\nr = 4\n$$\nso it empties.");
+        assert_eq!(normalize_math("$$ t = 60 $$   "), "$$\nt = 60\n$$");
+        assert_eq!(normalize_math("- step one\n\n  $$z = 3$$\n"), "- step one\n\n  $$\n  z = 3\n  $$\n");
+    }
+
+    #[test]
+    fn double_dollars_within_a_sentence_stay_inline() {
+        assert_eq!(normalize_math("Then $$x^2$$ is positive."), "Then $$x^2$$ is positive.");
+        assert_eq!(normalize_math("$$a$$ and $$b$$"), "$$a$$ and $$b$$");
+    }
+
+    #[test]
+    fn latex_delimiters_and_display_blocks() {
+        assert_eq!(normalize_math("Let \\(x = 1\\) here."), "Let $$x = 1$$ here.");
+        assert_eq!(normalize_math("So\n\\[ y = 2 \\]\ndone"), "So\n\n$$\ny = 2\n$$\n\ndone");
+        assert_eq!(normalize_math("$$\nw = 1\n$$"), "$$\nw = 1\n$$");
+    }
+
+    #[test]
+    fn prices_and_code_are_not_math() {
+        assert_eq!(normalize_math("It costs $12 an hour and $15 on Sundays."), "It costs \\$12 an hour and \\$15 on Sundays.");
+        assert_eq!(normalize_math("```\n$$not math$$\n```"), "```\n$$not math$$\n```");
+        assert_eq!(normalize_math("Write `$$x$$` for math."), "Write `$$x$$` for math.");
+    }
 }

@@ -34,8 +34,9 @@ material in the manner of Android 17's blurred surfaces, opaque enough to read o
 
 ## Color
 
-Tokens live in `frontend/src/index.css` (OKLCH there; hex here for reading). Components use the
-roles, never raw values.
+Tokens live in `app/theme.json` (OKLCH there, named without the `--`; hex here for reading). The
+app reads them with `theme::token("muted")` (`app/src/theme`). Components use the roles, never raw
+values.
 
 | Role | Token | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
@@ -78,7 +79,7 @@ Rules:
 
 Floating chrome is a frosted, tinted material, in the manner of Android 17's blurred surfaces: a
 strong blur behind a mostly opaque fill that carries a faint tint. It is not clear glass and it
-does not refract. Tokens and utilities live in `frontend/src/index.css`.
+does not refract. The materials are `app/src/ui/material.rs`; their tokens are in `app/theme.json`.
 
 | Utility | Fill | Blur | Used on |
 | --- | --- | --- | --- |
@@ -146,9 +147,8 @@ Rules:
 | Table rows | 44 px | 52 px (as stacked rows) |
 | Checkboxes, radios | 16 px, invisible 44 pt hit area on touch | same |
 
-`text-sm` and `text-base` read `--text-sm` and `--text-base`, which change under
-`@media (pointer: fine)`. The touch rules in `index.css` (44 pt minimums, 16 px fields) are
-unlayered so no utility can undercut them.
+The type scale is `app/src/theme/text.rs`, at the pointer-fine sizes; text fields are 16 px below
+768 px (`app/src/ui/field.rs`).
 
 ## Shape: one concentric chain
 
@@ -156,7 +156,7 @@ Every radius derives from the window's. `--window-radius` is the window's real c
 
 | Where | `--window-radius` | Why |
 | --- | --- | --- |
-| macOS 26 app | 26 px | the window has an empty unified toolbar (`desktop/src-tauri/src/titlebar.rs`), which gives macOS 26's toolbar-window corners. Measured on macOS 26.6: a title-bar-only window has 16 pt corners; with a unified toolbar, 26 pt. |
+| macOS 26 app | 26 px | the window has an empty unified toolbar (`use_toolbar_window` in `app/src/platform/macos.rs`), which gives macOS 26's toolbar-window corners. Measured on macOS 26.6: a title-bar-only window has 16 pt corners; with a unified toolbar, 26 pt. |
 | macOS 11 to 15 app | 10 px | those systems' window corners |
 | Windows and Linux app | 8 px | Windows 11 corners; the native frame stays |
 | Browser | 26 px | no window corners; the design value, so the browser matches the Mac app |
@@ -184,9 +184,9 @@ When the window radius is under 20 px (macOS 15 and earlier, Windows, Linux) the
 a floating panel: it fills the window's left edge with a 1 px `--border` divider, its corners are
 the window's, and rows keep 10 px. Nothing in the page touches a window corner on those systems.
 
-The Tailwind scale in `index.css` is: `rounded-xs` 5, `rounded-sm` 8, `rounded-md` 10,
-`rounded-lg` 14, `rounded-xl` 16, `rounded-2xl` 18, `rounded-3xl` 26; `rounded-full` for
-capsules. Use the scale or `rounded-(--panel-radius)`; never a raw radius.
+The radius scale in `app/theme.json` is: `radius-xs` 5, `radius-sm` 8, `radius-md` 10,
+`radius-lg` 14, `radius-xl` 16, `radius-2xl` 18, `radius-3xl` 26; a full radius for capsules. Use
+the scale or the panel radius (`panel_radius()` in `app/src/theme/shape.rs`); never a raw radius.
 
 Elevation: no shadows on cards. Shadows only on floating material (`material-float`) and on the
 raised segment of a segmented control (one 1 px shadow).
@@ -203,8 +203,8 @@ raised segment of a segmented control (one 1 px shadow).
 - macOS app: the window has an empty unified toolbar, so macOS centers the traffic lights at
   (26, 26) pt: 19 pt from the left edge, inside the sidebar panel's top band. The top 52 px
   (`--titlebar-height`) of the sidebar is kept free for them, and the sidebar's content starts
-  below it. That band and the page toolbar's empty areas move the window (`data-tauri-drag-region`;
-  a double click zooms).
+  below it. That band and the page toolbar's empty areas move the window (`window_drag`; a
+  double click zooms).
 - Toolbar: 52 px, sticky, in the page column so its contents line up with the content.
   - Top-level screens (Runs, Prompt sets, Endpoints, Preferences, Settings): the title (the
     page's `h1`, 15 px) then the actions at the end.
@@ -232,7 +232,7 @@ raised segment of a segmented control (one 1 px shadow).
 
 ## Components
 
-shadcn/ui primitives (Radix), restyled through the tokens above.
+The components in `app/src/ui`, drawn with the tokens above; `app/COMPONENTS.md` lists them.
 
 - **Buttons** (10 px corners, 32 px, 13 px at 500): `default` ink fill, inverse text, at most one
   per view; `secondary` `--secondary` fill, ink text (toolbar actions, "Load", "Test"); `outline`
@@ -276,8 +276,8 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
   focus shows them at once). Info tips (the (i) buttons) are popovers in the same material.
 - **Buttons on cards**: a secondary button or pop-up button on a `--muted` card takes the ground
   color in light (the raised tone is too close to the card) and the raised tone in dark
-  (`--on-card-control` in `index.css`).
-- **Action bar** (`shared/action-bar.ts`): the actions of a long form or a review, in a floating
+  (`on-card-control` in `app/theme.json`).
+- **Action bar** (`app/src/ui/action_bar.rs`): the actions of a long form or a review, in a floating
   panel: `material-bar` + `material-float`, `--panel-radius` corners, sticky 8 px above the
   window's bottom edge, and on phones above the tab bar instead of stacked on it. As wide as the
   form it belongs to.
@@ -285,7 +285,7 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
   always labeled in text beside it.
 - **Log rows** (sequences in flight, events): mono time or ID in muted, a state word in its signal
   color (mono, lowercase), then the text in Inter. 32 px rows, no dividers.
-- **Plasma tile** (`shared/plasma.tsx`): a square of pixel-field cells from a seed (an endpoint's
+- **Plasma tile** (`app/src/ui/plasma.rs`): a square of pixel-field cells from a seed (an endpoint's
   or prompt set's id), 8 px corners at 28 px and 5 px at 20 px. Decorative (`aria-hidden`), always
   next to the name it stands for.
 
@@ -306,7 +306,8 @@ shadcn/ui primitives (Radix), restyled through the tokens above.
 
 ## Iconography
 
-lucide-react, 16 px, 1.75 px stroke, muted, in navigation and as single affordances only.
+Lucide (`app/assets/icons`, added with `app/tools/lucide-svg.mjs`), 16 px, 1.75 px stroke, muted,
+in navigation and as single affordances only.
 
 ## Motion
 
@@ -326,6 +327,19 @@ lucide-react, 16 px, 1.75 px stroke, muted, in navigation and as single affordan
 - Increase Contrast darkens secondary text, dividers and control edges and makes materials
   opaque; Reduce Transparency makes materials opaque; Reduce Motion removes travel; the theme
   follows the system unless set in Settings.
+
+## Platform differences
+
+The app draws every platform with the same components (nsh 0.6.1). Where a platform cannot draw
+a rule above, the app does this instead (`app/COMPONENTS.md`, "What nsh does not do"):
+
+| Rule | Where it differs | What the app does |
+| --- | --- | --- |
+| Materials blur what is behind them | Linux (GTK 4 has no backdrop blur) | The opaque fallback fill, as with Reduce Transparency |
+| The toolbar, section bars and action bars are sticky | Every platform (nsh has no `position: sticky`) | The toolbar and the action bar float over the page's scroll view; table headers scroll with their rows; the export preview moves down by the scroll offset |
+| The sidebar floats 8 px inside the window | Linux: the window's radius is 0 (GTK draws the frame); Windows: 8 | Below 20 px the sidebar fills the window's left edge with a hairline (Shape) |
+| Toasts stack in a deck | Every platform (no stacked deck in nsh) | Toasts are a list at the bottom right, three at most, 4 s each |
+| The phone layout below 768 px | Linux (the window's minimum width is 900 px) | Checked in the browser build at 390 px |
 
 ## Voice
 

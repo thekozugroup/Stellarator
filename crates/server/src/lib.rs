@@ -1,6 +1,6 @@
-//! The Stellarator HTTP server: the JSON API under `/api` and the web UI (embedded at build time
-//! from `frontend/dist`) everywhere else. Used by the `stellarator-server` binary (Docker, native)
-//! and by the desktop app, which runs it inside its own process on 127.0.0.1.
+//! The Stellarator HTTP server: the JSON API under `/api` and the web UI (the nsh app's web build,
+//! src/assets.rs) everywhere else. Used by the `stellarator-server` binary (Docker, native) and by
+//! the desktop app (app/src/backend.rs), which calls its router inside its own process.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

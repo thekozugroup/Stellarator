@@ -13,7 +13,8 @@
   "icon": {
     "macos": "icons/icon-macos.png",
     "windows": "icons/icon.png",
-    "linux": "icons/icon.png"
+    "linux": "icons/icon.png",
+    "web": "icons/icon.png"
   },
   "window": {
     "title": "Stellarator",

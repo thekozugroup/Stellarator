@@ -1,19 +1,15 @@
 .git
 .gitignore
 **/node_modules
-**/dist
 **/.venv
 **/target
-desktop
 tests
-backend
 tools
 **/__pycache__
 **/*.pyc
 **/.pytest_cache
 **/.ruff_cache
 **/*.egg-info
-backend/stellarator/static
 data
 *.db
 *.db-shm
@@ -25,11 +21,11 @@ data
 screenshots
 **/screenshots
 *.png
-!frontend/public/**
 # The nsh app's icons and assets (the web build ships them).
 !app/assets/**
 !app/icons/**
 app/.nsh
+store
 docs
 Dockerfile
 docker-compose.yml

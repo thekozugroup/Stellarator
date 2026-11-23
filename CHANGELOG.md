@@ -2,6 +2,55 @@
 
 Each version's section is copied into its GitHub release under "What's new".
 
+## 0.4.0
+
+### A native app
+
+- The desktop app is rewritten in Rust on nsh (Native Shell). Its window is drawn with each
+  system's own toolkit (AppKit on macOS, Win32 on Windows, GTK 4 on Linux) instead of a web page
+  in the system's web view, and the server runs inside the same process with no network port.
+  Every screen, dialog and export works as in 0.3, with the same design.
+- The browser UI that Docker and `stellarator-server` serve is the same code compiled to
+  WebAssembly. Each screen has its own address (`/runs/4`, `/prompts/import`, `/preferences/1`):
+  back and forward move through the app, and a link opens the screen it names.
+
+### Smaller in memory
+
+- One process and no web view. Idle on the Runs screen, measured in CI: a 16 MiB footprint on
+  macOS 26 and 21 MiB of private memory on Windows. 0.3 also ran the system web view's processes;
+  on Linux those held about 240 MB more.
+- The installers are larger, because the app carries its own fonts and drawing code instead of
+  using the system's web view: the Apple Silicon `.dmg` is 32.1 MB (16.0 MB in 0.3.1), the
+  Windows `-setup.exe` 19.5 MB (10.5 MB). The AppImage is smaller, 28.0 MB instead of 93.5 MB, as
+  it no longer bundles WebKitGTK.
+
+### New installers
+
+- macOS 14 or later, Apple Silicon and Intel. Windows 10 or 11: the `-setup.exe` and the `.msi`
+  both install for your account, without administrator rights, with a Start menu shortcut. Linux
+  with GTK 4.14 or later (Ubuntu 24.04+, Debian 13+, Fedora 40+): the `.deb` and an AppImage.
+  macOS 12 and 13, Ubuntu 22.04 and Debian 12 are no longer supported.
+- No WebView2 or WebKitGTK is needed.
+
+### Desktop behavior
+
+- One copy per data folder. Opening the app again brings its window forward, and a second
+  process on the same data folder (another copy, or `stellarator-server` started on it) says
+  "Stellarator is already open" and quits, so two processes never write one database.
+- The window opens where you left it: size, position, and maximized or full screen. It shows once
+  it is ready, with its final corners.
+- The macOS menu bar has Settings… (⌘,) in the app menu and Back (⌘[) in View; the Window menu
+  lists the window and macOS's tiling items.
+- Updates are signed with new keys and read `nsh-latest.json`.
+
+### Coming from 0.3
+
+- 0.3's updater cannot install 0.4.0: download it by hand from this release. Quit 0.3 first.
+- Your runs, prompt sets, endpoints and settings are in the same data folder and open as they are.
+  The window's size and the theme start from their defaults.
+- On Windows, uninstall 0.3 from Settings > Apps: the new installers do not remove it. On macOS,
+  dragging the app to Applications replaces 0.3; on Linux the `.deb` installs over it.
+
 ## 0.3.1
 
 ### Fixes

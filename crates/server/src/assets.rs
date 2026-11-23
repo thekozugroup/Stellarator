@@ -1,15 +1,11 @@
-//! The web UI. Release builds embed it; debug builds read the same folder from disk. Which UI is
-//! chosen when the server compiles (build.rs):
-//!
-//! - the nsh app's web build (`app/.nsh/web/Stellarator`, made by `nsh package --target web --out
-//!   .nsh/web` in app/), the default;
-//! - the React UI (`frontend/dist`), with `STELLARATOR_WEB_UI=react`: the one the Tauri desktop app
-//!   loads, kept until the switch to nsh is done.
+//! The web UI: the nsh app's web build, `app/.nsh/web/Stellarator` (`nsh package --target web
+//! --out .nsh/web` in app/). Release builds embed it; debug builds read the same folder from disk.
+//! A server built without it answers "the web UI is not built" and its API works as usual.
 //!
 //! Unknown paths that are not under `/api` get `index.html` so deep links work. Files the build
-//! ships precompressed (`x.br`, `x.gz` beside `x`, as nsh's web build does) are sent as they are to
-//! browsers that accept them. Files named by their content (nsh's `name.0123456789.ext`, Vite's
-//! `assets/`) never change and are cached for a year; everything else is revalidated.
+//! ships precompressed (`x.br`, `x.gz` beside `x`) are sent as they are to browsers that accept
+//! them. Files named by their content (`name.0123456789.ext`) never change and are cached for a
+//! year; everything else is revalidated.
 
 use std::sync::OnceLock;
 
@@ -22,20 +18,10 @@ use base64::Engine as _;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 
-#[cfg(not(web_ui_react))]
 #[derive(RustEmbed)]
 #[folder = "../../app/.nsh/web/Stellarator"]
 #[allow_missing = true]
 struct Dist;
-
-#[cfg(web_ui_react)]
-#[derive(RustEmbed)]
-#[folder = "../../frontend/dist"]
-#[allow_missing = true]
-struct Dist;
-
-/// Which UI this server serves, for the messages below.
-const UI: &str = if cfg!(web_ui_react) { "react" } else { "nsh" };
 
 pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
     let path = uri.path().trim_start_matches('/');
@@ -49,11 +35,6 @@ pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
     }
     match file("index.html", &headers) {
         Some(response) => response,
-        None if UI == "react" => (
-            StatusCode::NOT_FOUND,
-            "The web UI is not built. Run `npm run build` in frontend/, then rebuild the server.",
-        )
-            .into_response(),
         None => (
             StatusCode::NOT_FOUND,
             "The web UI is not built. Run `nsh package --target web --out .nsh/web` in app/, then rebuild the server.",
@@ -100,19 +81,18 @@ fn accepts(header: &str, name: &str) -> bool {
     })
 }
 
-/// Whether `path` is named by its content: a name with a part of ten hex digits (nsh:
-/// `nsh-page.6c2c70f7ae.css`, `browser.b998e17dc5/...`), or for the React UI Vite's `assets/`.
-/// nsh's `assets/` holds the app's files under their own names, so it is revalidated.
+/// Whether `path` is named by its content: a name with a part of ten hex digits
+/// (`nsh-page.6c2c70f7ae.css`, `browser.b998e17dc5/...`). `assets/` holds the app's files under
+/// their own names, so it is revalidated.
 fn immutable(path: &str) -> bool {
-    (UI == "react" && path.starts_with("assets/"))
-        || path.split('/').flat_map(|segment| segment.split('.')).any(|part| part.len() == 10 && part.bytes().all(|b| b.is_ascii_hexdigit()))
+    path.split('/').flat_map(|segment| segment.split('.')).any(|part| part.len() == 10 && part.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// Content-Security-Policy for every response: only this server's scripts (plus the inline scripts
 /// in index.html, allowed by their hashes), no remote images or frames, requests only to this
 /// origin. Model output is rendered as Markdown, so this is the backstop if anything slips past.
-/// The nsh UI also compiles its WebAssembly (`'wasm-unsafe-eval'`, which allows no JavaScript
-/// eval) and draws some images from blobs.
+/// The UI also compiles its WebAssembly (`'wasm-unsafe-eval'`, which allows no JavaScript eval)
+/// and draws some images from blobs.
 fn csp() -> &'static HeaderValue {
     static CSP: OnceLock<HeaderValue> = OnceLock::new();
     CSP.get_or_init(|| {
@@ -124,10 +104,9 @@ fn csp() -> &'static HeaderValue {
                 hashes.push_str(&format!(" 'sha256-{}'", base64::engine::general_purpose::STANDARD.encode(digest)));
             }
         }
-        let (wasm, images) = if UI == "nsh" { (" 'wasm-unsafe-eval'", " blob:") } else { ("", "") };
         let policy = format!(
-            "default-src 'self'; script-src 'self'{wasm}{hashes}; style-src 'self' 'unsafe-inline'; \
-             img-src 'self' data:{images}; font-src 'self' data:; connect-src 'self'; worker-src 'self'; \
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'{hashes}; style-src 'self' 'unsafe-inline'; \
+             img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; \
              object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         );
         HeaderValue::from_str(&policy).expect("valid header")
@@ -174,7 +153,7 @@ mod tests {
         assert!(!accepts("deflate", "br"));
         assert!(immutable("nsh-page.6c2c70f7ae.css"));
         assert!(immutable("browser.b998e17dc5/runtime.wasm"));
-        assert_eq!(immutable("assets/index-abc.js"), UI == "react");
+        assert!(!immutable("assets/index-abc.js"));
         assert!(!immutable("index.html"));
         assert!(!immutable("assets.json"));
     }

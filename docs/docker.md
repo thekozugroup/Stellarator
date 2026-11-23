@@ -1,8 +1,9 @@
 # Running Stellarator in Docker
 
 Stellarator ships as one image (`stellarator:latest`): a single Rust binary that serves the web UI
-and the API on container port 8080, on a Debian slim base, running as a non-root user. It has no
-sign-in. Do not expose it to the internet.
+and the API on container port 8080, on a Debian slim base, running as a non-root user. The web UI
+is the desktop app's interface compiled to WebAssembly (`app/`, `nsh package --target web`),
+embedded in the binary. It has no sign-in. Do not expose it to the internet.
 
 ## Quick start
 
@@ -106,7 +107,11 @@ Runs that were in progress when the container stopped are recovered on start.
 ## Notes
 
 - Run one container per data volume. The run engine and import jobs keep live state in the
-  process, so do not scale the service.
+  process, so do not scale the service. A second process on the same volume stops at start with
+  "Another Stellarator is already using the data folder".
+- Building the image compiles the app's interface twice: natively, to describe its screens, and to
+  WebAssembly. The first build takes longer than the server alone; later builds reuse BuildKit's
+  cache.
 - The health check is the binary itself (`stellarator-server healthcheck`); the image has no curl.
 - A data volume made by the earlier Python image opens as is: the database is upgraded in place.
 - Stopping the container pauses in-flight requests; check the run page after a restart.

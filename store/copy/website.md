@@ -15,7 +15,7 @@ with each. Images are in `store/images/website/`. The page address
 | `og:image` | `og-image.png` (1200 x 630), with `og:image:width` 1200 and `og:image:height` 630 |
 | `og:image:alt` | The Stellarator icon and name beside the app window showing a run in progress |
 | `twitter:card` | `summary_large_image` |
-| Favicon | `store/images/icon/stellarator-256.png`, or `frontend/public/favicon.svg` |
+| Favicon | `store/images/icon/stellarator-256.png`, or `app/assets/web/favicon.svg` |
 
 The title is 59 characters and the description 158, inside the 60 and 160 that search results show.
 
@@ -37,7 +37,7 @@ those systems, linking to the matching section below) and "Source on GitHub" (se
 
 **Under the buttons**
 
-> Version 0.3.0 · Free and open source (MIT) · No account
+> Version 0.4.0 · Free and open source (MIT) · No account
 
 **Image**: `hero.png` (2400 x 1350). Alt text: "Stellarator showing a run in progress: 5,838 of
 7,473 samples done, a throughput chart where tokens per second rise after seqs change from 12 to
@@ -45,21 +45,23 @@ those systems, linking to the matching section below) and "Source on GitHub" (se
 
 ## Download
 
-> **Download Stellarator 0.3.0**
+> **Download Stellarator 0.4.0**
 >
 > Free for macOS, Windows and Linux. Older versions and release notes are on the
 > [releases page](https://github.com/thekozugroup/Stellarator/releases).
 
 | Computer | File | Size | Link |
 | --- | --- | ---: | --- |
-| Mac with Apple Silicon (M1 or later) | `Stellarator_0.3.0_aarch64.dmg` | 16.0 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_aarch64.dmg |
-| Mac with an Intel processor | `Stellarator_0.3.0_x64.dmg` | 17.4 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_x64.dmg |
-| Windows 10 or 11 (installer for your account, no administrator rights) | `Stellarator_0.3.0_x64-setup.exe` | 10.5 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_x64-setup.exe |
-| Windows 10 or 11 (MSI, for all users) | `Stellarator_0.3.0_x64_en-US.msi` | 14.4 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_x64_en-US.msi |
-| Linux (x86-64): Ubuntu 22.04 or later, Debian 12 or later | `Stellarator_0.3.0_amd64.AppImage` | 93.5 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_amd64.AppImage |
-| Linux (x86-64), as a package: Ubuntu 22.04 or later, Debian 12 or later | `Stellarator_0.3.0_amd64.deb` | 16.3 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.3.0/Stellarator_0.3.0_amd64.deb |
+| Mac with Apple Silicon (M1 or later), macOS 14 or later | `Stellarator_0.4.0_aarch64.dmg` | 32.1 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_aarch64.dmg |
+| Mac with an Intel processor, macOS 14 or later | `Stellarator_0.4.0_x64.dmg` | 34.7 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64.dmg |
+| Windows 10 or 11 (installer for your account, no administrator rights) | `Stellarator_0.4.0_x64-setup.exe` | 19.5 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64-setup.exe |
+| Windows 10 or 11 (MSI, for your account, no administrator rights) | `Stellarator_0.4.0_x64_en-US.msi` | 20.1 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_x64_en-US.msi |
+| Linux (x86-64) with GTK 4.14 or later: Ubuntu 24.04 or later, Debian 13 or later | `Stellarator_0.4.0_amd64.AppImage` | 28.0 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_amd64.AppImage |
+| Linux (x86-64), as a package: Ubuntu 24.04 or later, Debian 13 or later | `Stellarator_0.4.0_amd64.deb` | 22.2 MB | https://github.com/thekozugroup/Stellarator/releases/download/v0.4.0/Stellarator_0.4.0_amd64.deb |
 
-Each new release changes the version in the six file names, so update the links with it.
+Each new release changes the version in the six file names, so update the links with it. The sizes
+are those of the CI build of the 0.4.0 code (Release (nsh) run 45134172926); check them against
+the release's files.
 
 ### On a Mac: the first open
 
@@ -74,15 +76,15 @@ Each new release changes the version in the six file names, so update the links 
 
 ### On Windows
 
-> Run the installer. Windows SmartScreen warns about an unsigned app: click More info, then Run
-> anyway. The installer adds the WebView2 runtime if Windows does not have it.
+> Run the installer. It installs for your account, without administrator rights. Windows
+> SmartScreen warns about an unsigned app: click More info, then Run anyway.
 
 ### On Linux
 
 > ```bash
-> sudo apt install ./Stellarator_0.3.0_amd64.deb
+> sudo apt install ./Stellarator_0.4.0_amd64.deb
 > # or
-> chmod +x Stellarator_0.3.0_amd64.AppImage && ./Stellarator_0.3.0_amd64.AppImage
+> chmod +x Stellarator_0.4.0_amd64.AppImage && ./Stellarator_0.4.0_amd64.AppImage
 > ```
 
 ### On a GPU server, in Docker
@@ -203,9 +205,9 @@ once and click Open Anyway in System Settings > Privacy & Security. On Windows, 
 the same: click More info, then Run anyway.
 
 **Does it update itself?**
-Not version 0.3.0: download new versions from this page or the releases page. Your data stays in
-its folder when you install over the old version. The app can check GitHub for new versions and
-install them, in builds made with the update signing key; 0.3.0 was built without it.
+Builds made with the update signing key check GitHub for new versions and install them; the Linux
+`.deb` and AppImage open the download page instead. Version 0.3 and earlier cannot update to 0.4:
+download it once from this page. Your data stays in its folder when you install the new version.
 
 **Does Stellarator train or serve models?**
 No. It sends prompts to a model server you already run or use, and writes the results as a
@@ -215,12 +217,12 @@ dataset for your trainer (TRL, Axolotl, Unsloth, LLaMA-Factory and others).
 
 | | Requirement |
 | --- | --- |
-| macOS | macOS 12 Monterey or later, Apple Silicon or Intel |
-| Windows | Windows 10 or 11, 64-bit; the WebView2 runtime (the installer adds it) |
-| Linux | x86-64; Ubuntu 22.04 or later or Debian 12 or later (WebKitGTK 4.1) |
+| macOS | macOS 14 Sonoma or later, Apple Silicon or Intel |
+| Windows | Windows 10 or 11, 64-bit |
+| Linux | x86-64 with GTK 4.14 or later: Ubuntu 24.04 or later, Debian 13 or later, Fedora 40 or later |
 | Docker | Docker with Compose on Linux, x86-64 or ARM64 (the image builds on the server itself) |
 | Model server | Any OpenAI-compatible server the computer can reach, or a hosted API key |
-| Memory | The server part uses about 13 MB idle and 32 MB at peak during a run with 256 sequences in flight (measured on Linux); the window is the system's webview, which uses memory of its own |
+| Memory | One process for the window and the server. Idle on the Runs screen: a 16 MiB footprint on macOS 26 and 21 MiB of private memory on Windows (measured in CI). The server part peaks at about 32 MB during a run with 256 sequences in flight (measured on Linux) |
 
 ## Footer
 
