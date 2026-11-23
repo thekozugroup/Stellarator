@@ -96,7 +96,7 @@ pub fn screen() -> impl IntoElement {
             error_block(format!("Couldn't load runs. {message}"), Some(Rc::new(refresh)))
         })
         .otherwise(move || {
-            when(empty, move || runs_empty(wide()))
+            when(empty, runs_empty)
             .otherwise(move || {
                 // A table from 1024 px; one stacked row per run below that (as the web UI).
                 when(wide, move || {
@@ -281,16 +281,17 @@ fn now_utc() -> DateTime<Utc> {
 
 /// No runs: the list keeps its frame (the header band, from 1024 px) and says what will appear
 /// there, then the steps to a first run (frontend/src/pages/runs-list.tsx `RunsEmpty`).
-fn runs_empty(table: bool) -> impl IntoElement {
+fn runs_empty() -> impl IntoElement {
+    let table = move || window().width.0 >= TABLE_FROM;
     view()
         .gap(px(16.0))
-        .child(table.then(|| header(&COLUMNS)))
+        .child(dynamic(move || table().then(|| header(&COLUMNS))))
         .child(
             view()
                 .flex_row()
                 .items_center()
                 .gap(px(16.0))
-                .px(px(if table { 12.0 } else { 0.0 }))
+                .px(move || px(if table() { 12.0 } else { 0.0 }))
                 .child(plasma("runs-empty", 8, 56.0, radius::MD, false))
                 .child(
                     body(text("No runs yet. Each run you start shows here with its progress and status, newest first."))

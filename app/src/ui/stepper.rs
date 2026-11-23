@@ -55,10 +55,22 @@ pub struct NumberStepper {
     on_blur: Option<Rc<dyn Fn()>>,
     on_submit: Option<Rc<dyn Fn()>>,
     element: Option<ElementRef>,
+    on_card: bool,
 }
 
 pub fn number_stepper(value: Signal<String>, name: impl Into<SharedString>, min: i64, max: i64) -> NumberStepper {
-    NumberStepper { value, name: name.into(), min, max, invalid: None, on_change: None, on_blur: None, on_submit: None, element: None }
+    NumberStepper {
+        value,
+        name: name.into(),
+        min,
+        max,
+        invalid: None,
+        on_change: None,
+        on_blur: None,
+        on_submit: None,
+        element: None,
+        on_card: false,
+    }
 }
 
 impl NumberStepper {
@@ -91,11 +103,18 @@ impl NumberStepper {
         self.element = Some(*element);
         self
     }
+
+    /// On a `muted` card (a form group): the buttons take the card's control fill, as every
+    /// secondary button on a card does.
+    pub fn on_card(mut self) -> Self {
+        self.on_card = true;
+        self
+    }
 }
 
 impl IntoElement for NumberStepper {
     fn into_element(self) -> AnyElement {
-        let NumberStepper { value, name, min, max, invalid, on_change, on_blur, on_submit, element } = self;
+        let NumberStepper { value, name, min, max, invalid, on_change, on_blur, on_submit, element, on_card } = self;
         let step = {
             let on_change = on_change.clone();
             Rc::new(move |delta: i64| {
@@ -132,7 +151,7 @@ impl IntoElement for NumberStepper {
             .items_center()
             .gap(px(4.0))
             .child(
-                Button::icon(icon::MINUS, format!("Decrease {name}"))
+                with_card(Button::icon(icon::MINUS, format!("Decrease {name}")), on_card)
                     .variant(Variant::Secondary)
                     .size(Size::Icon)
                     .without_tooltip()
@@ -146,7 +165,7 @@ impl IntoElement for NumberStepper {
                 _ => {}
             }).child(field))
             .child(
-                Button::icon(icon::PLUS, format!("Increase {name}"))
+                with_card(Button::icon(icon::PLUS, format!("Increase {name}")), on_card)
                     .variant(Variant::Secondary)
                     .size(Size::Icon)
                     .without_tooltip()
@@ -155,6 +174,10 @@ impl IntoElement for NumberStepper {
             )
             .into_element()
     }
+}
+
+fn with_card(button: Button, on_card: bool) -> Button {
+    if on_card { button.on_card() } else { button }
 }
 
 /// The common seqs values as one segmented control: `value` is the current number (none of the

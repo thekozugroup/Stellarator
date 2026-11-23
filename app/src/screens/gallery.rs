@@ -20,6 +20,8 @@ use crate::ui::overlay::{
     toast_info,
 };
 use crate::ui::page::{page, panel};
+use crate::ui::pickers::{RichSelect, TypedCombobox};
+use crate::ui::stepper::{number_stepper, seqs_choices};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
 use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, option, select_button};
@@ -46,6 +48,10 @@ pub fn screen() -> impl IntoElement {
     let open_wide_sheet = signal(false);
     let open_wide_dialog = signal(false);
     let disclosure = signal(false);
+    let steps = signal(String::from("16"));
+    let rich = signal(Some(SharedString::from("1")));
+    let typed_model = signal(String::from("qwen3-32b"));
+    let typed_query = signal(String::new());
 
     let buttons = view()
         .flex_row()
@@ -107,6 +113,81 @@ pub fn screen() -> impl IntoElement {
                 "Model",
             ),
         )
+        .into_element(),
+        form_row(
+            "Seqs",
+            view()
+                .gap(px(6.0))
+                .items_end()
+                .child(number_stepper(steps, "seqs", 1, 4096).on_card())
+                .child(seqs_choices(move || steps.get().trim().parse().unwrap_or(-1), move |n| steps.set(n.to_string()))),
+        )
+        .align_end()
+        .hint("A stepper and the common values.")
+        .into_element(),
+        form_row(
+            "Endpoint",
+            RichSelect {
+                items: std::rc::Rc::new(|| vec![option("1", "Local vLLM"), option("2", "OpenRouter")]),
+                value: std::rc::Rc::new(move || rich.get()),
+                on_change: std::rc::Rc::new(move |v| rich.set(Some(v))),
+                shown: std::rc::Rc::new(move || {
+                    rich.get().map(|v| {
+                        view()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(plasma(&format!("endpoint-{v}"), 5, 20.0, radius::XS, false))
+                            .child(body(text(if v == "1" { "Local vLLM" } else { "OpenRouter" })))
+                            .into_element()
+                    })
+                }),
+                render_item: std::rc::Rc::new(|e| {
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(plasma(&format!("endpoint-{}", e.value), 5, 20.0, radius::XS, false))
+                        .child(body(text(format!("{} · Local", e.title))))
+                        .into_element()
+                }),
+                placeholder: "Choose an endpoint",
+                accessibility: "Endpoint",
+                invalid: std::rc::Rc::new(|| false),
+                element: None,
+            },
+        )
+        .hint("A pop-up button with tiles in its rows.")
+        .into_element(),
+        form_row(
+            "Typed model",
+            TypedCombobox {
+                items: std::rc::Rc::new(move || {
+                    let q = typed_query.get().trim().to_owned();
+                    let mut items = Vec::new();
+                    if !q.is_empty() && q != "qwen3-32b" {
+                        items.push(option(format!("typed:{q}"), format!("Use {q}")));
+                    }
+                    items.push(option("qwen3-32b", "qwen3-32b").group("Listed by this endpoint"));
+                    items
+                }),
+                value: std::rc::Rc::new(move || vec![SharedString::from(typed_model.get())]),
+                on_change: std::rc::Rc::new(move |v| {
+                    let v = v.to_string();
+                    typed_model.set(v.strip_prefix("typed:").unwrap_or(&v).to_owned());
+                }),
+                on_query: std::rc::Rc::new(move |q| typed_query.set(q.to_owned())),
+                placeholder: "Choose or type a model id",
+                accessibility: "Model id",
+                empty: std::rc::Rc::new(|| "No models listed. Type a model id.".to_owned()),
+                mono: true,
+                disabled: std::rc::Rc::new(|| false),
+                invalid: std::rc::Rc::new(|| false),
+                element: None,
+                render_item: None,
+            },
+        )
+        .hint("A combobox that also takes what is typed.")
         .into_element(),
         form_row("Notes", text_area(notes).placeholder("Anything to remember")).stacked().into_element(),
     ]);

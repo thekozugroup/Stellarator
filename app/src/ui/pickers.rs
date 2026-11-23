@@ -105,6 +105,8 @@ pub struct TypedCombobox {
     pub disabled: Rc<dyn Fn() -> bool>,
     pub invalid: Rc<dyn Fn() -> bool>,
     pub element: Option<ElementRef>,
+    /// Draws one row from what the item is; without it a row shows the item's title.
+    pub render_item: Option<Rc<dyn Fn(&SelectEntry) -> AnyElement>>,
 }
 
 impl IntoElement for TypedCombobox {
@@ -117,6 +119,7 @@ impl IntoElement for TypedCombobox {
         let on_query = self.on_query.clone();
         let empty = self.empty.clone();
         let mono = self.mono;
+        let render = self.render_item.clone();
         let mut field = combobox()
             .items(move || items())
             .placeholder(self.placeholder)
@@ -147,13 +150,17 @@ impl IntoElement for TypedCombobox {
             .border_1()
             .border_color(move || if i1() { theme().destructive } else { AdaptiveColor::TRANSPARENT })
             .style_when(move || i2(), |s| s.ring(px(3.0)).ring_color(move || theme().destructive.opacity(0.2)))
-            // As the secondary button the web UI's field is: the card's control fill, the accent
-            // under the pointer, dimmed while there is no endpoint.
-            .bg(token("on-card-control"))
+            // As the secondary button the web UI's field is: the raised fill (it stays gray on a
+            // card, as the web UI's popover trigger does), the accent under the pointer, dimmed
+            // while there is no endpoint.
+            .bg(move || theme().secondary)
             .hover(|s| s.bg(move || theme().accent))
             .disabled_style(|s| s.opacity(0.5))
             .self_stretch()
             .text_size(px(13.0));
+        if let Some(render) = render {
+            field = field.render_item(move |entry: &SelectEntry| render(entry));
+        }
         if let Some(e) = self.element {
             field = field.element_ref(&e);
         }

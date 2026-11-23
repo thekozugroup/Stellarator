@@ -222,12 +222,24 @@ fn endpoint_row(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElem
                         .items_center()
                         .gap(px(6.0))
                         .child(body(text(format!("{} at last check.", trouble.word()))).text_color(token("negative-ink")))
-                        .child(text_link("Edit endpoint", None, move || edit_endpoint(state, id, trouble)))
+                        .child(inline_link("Edit endpoint", move || edit_endpoint(state, id, trouble)))
                         .into_element()
                 }
                 None => mono(text(endpoint.base_url)).text_color(muted_ink).into_element(),
             })
         })
+}
+
+/// A link inside a line of text: the text underlined in ink, no taller than the line.
+fn inline_link(label: &'static str, on_press: impl Fn() + 'static) -> impl IntoElement {
+    view()
+        .role(AccessibilityRole::Link)
+        .label(label)
+        .focusable(true)
+        .focus_visible(|s| s.ring(px(2.0)).ring_color(token("ring")))
+        .cursor(Cursor::Pointer)
+        .on_press(on_press)
+        .child(body(text(label)).underline())
 }
 
 /// Edit endpoint, in the hint under a failing endpoint: its edit dialog with the key (or URL)
@@ -260,7 +272,7 @@ fn model_row(state: State, data: Data) -> impl IntoElement {
     let no_models = move || data.selected_endpoint(&state).is_some_and(|e| e.models.is_empty());
     // The model shows in mono once there is one; the placeholder is plain text, so the field is
     // made again when the model appears or goes.
-    let combo = move |mono: bool| TypedCombobox {
+    let combo = move |shown_in_mono: bool| TypedCombobox {
         items: Rc::new(move || model_items(state, data)),
         value: Rc::new(move || {
             let model = state.get(Field::Model);
@@ -277,10 +289,17 @@ fn model_row(state: State, data: Data) -> impl IntoElement {
         empty: Rc::new(move || {
             if no_models() { "No models listed. Type a model id." } else { "No listed model matches." }.to_owned()
         }),
-        mono,
+        mono: shown_in_mono,
         disabled: Rc::new(move || data.selected_endpoint(&state).is_none()),
         invalid: Rc::new(move || state.has_error(Field::Model)),
         element: Some(state.element(Field::Model)),
+        render_item: Some(Rc::new(|entry: &SelectEntry| {
+            // Model ids in mono 12 px; what was typed as "Use <id>".
+            match entry.value.strip_prefix(TYPED) {
+                Some(typed) => body(text("Use ")).child(mono(text(typed.to_owned()))).number_of_lines(1).into_element(),
+                None => mono(text(entry.title.clone())).number_of_lines(1).into_element(),
+            }
+        })),
     }
     .into_element();
     let combo = dynamic(move || combo(!state.get(Field::Model).is_empty()));
@@ -289,6 +308,7 @@ fn model_row(state: State, data: Data) -> impl IntoElement {
         Some(
             Button::icon(icon::RETRY, "Refresh models")
                 .variant(Variant::Secondary)
+                .on_card()
                 .size(Size::Icon)
                 .busy(move || state.refreshing.get(), "")
                 .on_press(move || refresh_models(state, data, endpoint.id)),
@@ -401,6 +421,7 @@ fn requests_rows(state: State, data: Data, submit: &Rc<dyn Fn()>) -> Vec<AnyElem
     let stepper = |field: Field, name: &'static str, min: i64, max: i64| {
         let submit = submit.clone();
         number_stepper(state.value(field), name, min, max)
+            .on_card()
             .invalid(move || state.has_error(field))
             .on_change(move |_| state.error(field).set(None))
             .on_blur(move || state.blur(field))
@@ -491,7 +512,7 @@ fn advanced_rows(state: State, submit: &Rc<dyn Fn()>) -> Vec<AnyElement> {
             .hint("Merged into every request.")
             .error(state.error(Field::ExtraBody))
             .into_element(),
-        form_row("Stream responses", checkbox_with("", move || state.stream.get(), move |on| state.stream.set(on)))
+        form_row("Stream responses", view().child(checkbox_with("", move || state.stream.get(), move |on| state.stream.set(on))))
             .align_end()
             .hint("Needed for live progress and time to first token.")
             .into_element(),

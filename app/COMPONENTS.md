@@ -32,13 +32,17 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Icon button | `Button::icon(icon::ELLIPSIS, "More actions")` (ghost, tooltip = its name) | `ui/button.tsx` size `icon*` |
 | Link | `text_link(label, trailing, f)`, `external_link(label, url)` | `<a>` in forms |
 | Icon | `icon(icon::PLAY, 16.0, color_fn)`; add glyphs with `tools/lucide-svg.mjs` | lucide-react |
-| Text field | `text_field(signal).placeholder(..).mono().numeric().masked(f).search().width(96.0).invalid(f).trailing(el).element(&ref).on_change(f).on_submit(f)`; `text_area(signal)` | `ui/input.tsx`, `ui/textarea.tsx`, `ui/input-group.tsx` |
+| Text field | `text_field(signal).placeholder(..).placeholder_with(f).mono().numeric().tabular().centered().masked(f).search().width(96.0).invalid(f).trailing(el).element(&ref).on_change(f).on_blur(f).on_submit(f)`; `text_area(signal).height(80.0)` (`numeric` is right-aligned, `tabular` left-aligned figures) | `ui/input.tsx`, `ui/textarea.tsx`, `ui/input-group.tsx` |
 | Field | `field(label, control).hint(..).hint_when(f).error(signal).info(text).optional()` | `shared/field.tsx` |
-| Grouped form | `form_group(rows).title(..).footnote(el).in_dialog()`; `form_row(label, control).hint(..).error(signal).optional_when(f).align_end().stacked().info(..)`; `form_item(el)`; `form_disclosure(title, summary_fn, open, rows_fn, in_dialog)` | `shared/form-group.tsx` |
+| Grouped form | `form_group(rows).title(..).footnote(el).in_dialog()`; `form_row(label, control).hint(..).hint_element(f).error(signal).optional_when(f).align_end().stacked().info(..)` (`hint_element` makes the hint a sentence with a link; the error takes its place); `form_item(el)`; `form_disclosure(title, summary_fn, open, rows_fn, in_dialog)` | `shared/form-group.tsx` |
 | Pop-up button | `select_button(vec![option("vllm", "vLLM")], value, title_fn, placeholder, label)` | `ui/select.tsx` |
 | Menu | `menu_button(label, vec![menu_entry(Some(icon::PENCIL), "Edit…", f), MenuEntry::Separator, menu_destructive(..)], Some(176.0))`; `menu_with(trigger, entries, width)` | `ui/dropdown-menu.tsx` |
 | Combobox | `combobox_field(options, value, placeholder, label)` | `ui/command.tsx` (as a combobox) |
-| Segmented control | `segmented(options, signal, label, fill)`, `segmented_with_get(options, get, set, label, fill)`, `segmented_small(..)` (12 px) | `ui/toggle-group.tsx` with `spacing={0}` |
+| Rich pop-up button | `RichSelect { items, value, on_change, shown, render_item, placeholder, accessibility, invalid, element }` (`ui/pickers.rs`): the screen draws the trigger and the rows (a tile, a name, a muted detail); full width, on a card | `ui/select.tsx` with custom items |
+| Typed combobox | `TypedCombobox { items, value, on_change, on_query, placeholder, accessibility, empty, mono, disabled, invalid, element }` (`ui/pickers.rs`): a field that filters the listed items and lets the screen offer what was typed as one more | `runs/model-combobox.tsx` |
+| Number stepper | `number_stepper(signal, "seqs", 1, 4096).invalid(f).on_change(f).on_blur(f).on_submit(f).element(&ref)` (`ui/stepper.rs`): a whole-number field with minus and plus; the buttons clamp, Up and Down step | `runs/number-stepper.tsx` |
+| Seqs choices | `seqs_choices(get, set)`, `SEQS_CHOICES` (`ui/stepper.rs`): 1, 4, 8, 16, 32, 64, 128, 256 as one segmented row; none chosen for another number | `runs/seqs-choices.tsx` |
+| Segmented control | `segmented(options, signal, label, fill)`, `segmented_with_get(options, get, set, label, fill)`, `segmented_small(..)` (12 px), `segmented_mono(options, get, set, label)` (mono 12 px labels) | `ui/toggle-group.tsx` with `spacing={0}` |
 | Line tabs | `line_tabs(vec![(value, "Samples", Some(count_fn))], signal)` | `ui/tabs.tsx` variant line |
 | Toggle | `toggle(label, signal)` | `ui/toggle.tsx` |
 | Checkbox | `checkbox(label, signal)`, `checkbox_with(label, get, set)` | `ui/checkbox.tsx` |
@@ -73,6 +77,14 @@ to use it; `screens/export/run.rs` (a run's export) is the worked example.
 Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px), as the web UI's inputs.
 Inside a dialog or sheet, `muted` cards read as `dialog_muted` (the ground in light, the raised
 tone in dark): pass `.in_dialog()` to form groups and `.background(dialog_muted)` to tiles.
+
+## Links between screens
+
+| Call | What |
+| --- | --- |
+| `screens::endpoints::open_edit(id, EditFocus::Key)` | Switches to Endpoints and opens that endpoint's edit dialog with the key (`EditFocus::Url`: the URL; `EditFocus::None`: the name) focused: the web UI's `/endpoints?edit=<id>&focus=key`. Closing the dialog, saved or not, goes back to the destination the call came from, as the web UI's `return` does |
+| `screens::endpoints::status::endpoint_trouble(Some(&ep))` | `Some(Trouble::KeyRejected)` or `Some(Trouble::Unreachable)` when the last check failed; `.word()` and `.field()` (the `EditFocus` that fixes it) |
+| `screens::new_run::open(Prefill { endpoint, prompt_set, from })` | Shows New run starting from an endpoint, a prompt set, or a run to copy ("Run again…": `from`): the web UI's `/runs/new?endpoint=&prompt_set=&from=` |
 
 ## Adding a screen
 
