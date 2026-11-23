@@ -19,7 +19,7 @@
 use std::time::Duration;
 
 use nsh_core::desktop::MenuRole;
-use nsh_core::element::desktop::{MenuItem, main_window, quit, set_application_menu};
+use nsh_core::element::desktop::{MenuItem, main_window, set_application_menu};
 use nsh_core::platform::Os;
 use nsh_core::prelude::*;
 
@@ -77,7 +77,7 @@ fn startup_failure() {
         show_window();
         let _ = spawn(async move {
             let _ = nsh_base::alert_dialog().title(title).description(error).action("quit", "Quit").show().await;
-            quit();
+            nsh_core::element::desktop::quit();
         });
     }
 }
