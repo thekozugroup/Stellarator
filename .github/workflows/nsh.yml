@@ -127,6 +127,13 @@ jobs:
         run: |
           swiftc -O app/ci/window-id.swift -o "$RUNNER_TEMP/window-id"
           swiftc -O app/ci/mouse-drag.swift -o "$RUNNER_TEMP/mouse-drag"
+          swiftc -O app/ci/icon-of.swift -o "$RUNNER_TEMP/icon-of"
+
+      - name: The icon macOS shows for the app
+        run: |
+          mkdir -p shots
+          "$RUNNER_TEMP/icon-of" "$PWD/app/.nsh/out/Stellarator.app" shots/app-icon.png 512
+          xcrun assetutil --info "$PWD/app/.nsh/out/Stellarator.app/Contents/Resources/Assets.car" 2> /dev/null | grep -E '"(Name|RenditionName|AssetType)"' | sort | uniq -c | head -20 || true
 
       - name: Run (light, empty data folder, then seeded, then without the toolbar)
         run: |
@@ -147,16 +154,16 @@ jobs:
         run: |
           app/ci/macos-session.sh light-open "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id"
 
-      # The system setting first (`defaults write -g AppleInterfaceStyle`, which running sessions
-      # may not pick up), then the app's own argument domain, which AppKit reads at launch.
+      # Dark mode the way the user turns it on (System Settings > Appearance), through System
+      # Events. `defaults write -g AppleInterfaceStyle` and the app's argument domain
+      # (-AppleInterfaceStyle Dark) did not change the appearance AppKit reports on this runner.
       - name: Run (dark)
         run: |
           app="$PWD/app/.nsh/out/Stellarator.app"
-          defaults write -g AppleInterfaceStyle -string Dark
-          echo "AppleInterfaceStyle: $(defaults read -g AppleInterfaceStyle 2>&1)"
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' || echo "could not switch to dark mode"
+          echo "dark mode: $(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode' 2>&1)"
           app/ci/macos-session.sh dark "$app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id"
-          defaults delete -g AppleInterfaceStyle || true
-          app/ci/macos-session.sh dark-argument "$app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" -AppleInterfaceStyle Dark
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false' || true
 
       - name: Drag the window by its top band
         run: |
