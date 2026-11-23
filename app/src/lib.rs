@@ -83,6 +83,11 @@ pub fn App() -> impl IntoElement {
     platform::setup_window();
     shortcuts::install();
     theme::appearance::apply_saved();
+    // The component gallery, for checking the components by eye (not in the navigation).
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::var_os("STELLARATOR_GALLERY").is_some() {
+        nav::push(nav::Route::Gallery, None);
+    }
     ui::shell::shell()
 }
 

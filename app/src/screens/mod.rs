@@ -6,6 +6,7 @@
 //! `screens/<name>.rs` with `pub fn screen(...) -> impl IntoElement`, and add its arm below.
 
 mod endpoints;
+mod gallery;
 mod placeholder;
 mod runs;
 mod settings;
@@ -29,5 +30,6 @@ pub fn view(route: Route) -> AnyElement {
         Route::PromptSet { .. } => placeholder::screen("Prompt set", "The prompt set").into_element(),
         Route::Import => placeholder::screen("Import prompts", "Importing prompts").into_element(),
         Route::PreferenceSet { .. } => placeholder::screen("Preference set", "The preference set").into_element(),
+        Route::Gallery => gallery::screen().into_element(),
     }
 }

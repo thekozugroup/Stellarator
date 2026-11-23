@@ -69,6 +69,8 @@ pub fn select_button(
         .popup_style(popup)
         .item_class(ITEM_CLASS)
         .trigger(trigger)
+        // As wide as its title (`w-fit`), not its column.
+        .self_start()
 }
 
 /// An entry of a menu.

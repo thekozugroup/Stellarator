@@ -432,7 +432,7 @@ fn phone_page(p: Page) -> AnyElement {
                         .items_center()
                         .justify_end()
                         .gap(px(8.0))
-                        .child(bar_actions.map(|a| a())),
+                        .child(dynamic(move || bar_actions.as_ref().map(|a| a()))),
                 ),
         );
 

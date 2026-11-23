@@ -69,6 +69,8 @@ pub enum Route {
     PromptSet { id: i64 },
     Import,
     PreferenceSet { id: i64 },
+    /// Every component on one screen (`STELLARATOR_GALLERY=1`), under Settings.
+    Gallery,
 }
 
 impl Route {
@@ -79,7 +81,7 @@ impl Route {
             Route::PromptSets | Route::PromptSet { .. } | Route::Import => Destination::PromptSets,
             Route::Endpoints => Destination::Endpoints,
             Route::Preferences | Route::PreferenceSet { .. } => Destination::Preferences,
-            Route::Settings => Destination::Settings,
+            Route::Settings | Route::Gallery => Destination::Settings,
         }
     }
 
@@ -102,6 +104,7 @@ impl Route {
             Route::PromptSet { id } => format!("Prompt set {id}"),
             Route::Import => "Import prompts".into(),
             Route::PreferenceSet { id } => format!("Preference set {id}"),
+            Route::Gallery => "Components".into(),
         }
     }
 }
