@@ -28,7 +28,7 @@ use crate::ui::icon::{self, icon};
 use crate::ui::material::{material_float, material_thick};
 use crate::ui::page::window_width;
 use crate::ui::status::sample_status_pill;
-use crate::ui::table::{Column, cell, header, row};
+use crate::ui::table::{Column, bound, cell, header, row};
 
 /// The width from which the samples are a table and the filter is line tabs (Tailwind's `lg`).
 const TABLE_FROM: f32 = 1024.0;
@@ -57,6 +57,16 @@ struct Key {
     filter: SampleFilter,
     q: String,
     page: i64,
+}
+
+/// What the rows region shows, and only what decides its structure: the rows themselves follow
+/// the page in place (`each`), so the reads every 3 s while the run goes do not make the list again.
+#[derive(Debug, Clone, PartialEq)]
+enum Shape {
+    Failed(String),
+    Loading,
+    Empty { key: Key, total: i64 },
+    List { wide: bool, thinking: bool, status: bool },
 }
 
 /// The rows shown and how they came.
@@ -175,20 +185,32 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
     let r1 = run.clone();
     let bar = filter_bar(move || r1(), filter, q, search, page, selected);
     let r2 = run.clone();
+    let shape = computed(move || {
+        let wide = window_width() >= TABLE_FROM;
+        let thinking_wide = window_width() >= THINKING_FROM;
+        rows.with(|r| match (&r.data, &r.error) {
+            (None, Some(e)) => Shape::Failed(e.clone()),
+            (None, None) => Shape::Loading,
+            (Some((k, p)), _) if p.items.is_empty() => Shape::Empty { key: k.clone(), total: p.total },
+            (Some((k, p)), _) => Shape::List {
+                wide,
+                thinking: wide && thinking_wide && p.items.iter().any(no_trace),
+                status: show_status(k.filter, &p.items),
+            },
+        })
+    });
+    let page_items = computed(move || rows.with(|r| r.data.as_ref().map(|(_, p)| p.items.clone()).unwrap_or_default()));
+    // The page shown is not the one asked for yet: it stays at 60% until the next one comes.
+    let stale = move || rows.with(|r| r.data.as_ref().map(|(k, _)| k.clone())) != Some(key());
     let body_rows = dynamic(move || {
-        let (data, error) = rows.with(|r| (r.data.clone(), r.error.clone()));
-        let want = untracked(key);
-        match data {
-            None if error.is_some() => view()
+        match shape.get() {
+            Shape::Failed(error) => view()
                 .py(px(16.0))
-                .child(error_block(
-                    format!("Couldn’t load samples. {}", error.unwrap_or_default()),
-                    Some(Rc::new(move || fetch(untracked(key)))),
-                ))
+                .child(error_block(format!("Couldn’t load samples. {error}"), Some(Rc::new(move || fetch(untracked(key))))))
                 .into_element(),
-            None => rows_loading().into_element(),
-            Some((k, p)) if p.items.is_empty() => {
-                let past = k.page > 1 && p.total > 0;
+            Shape::Loading => rows_loading().into_element(),
+            Shape::Empty { key: k, total } => {
+                let past = k.page > 1 && total > 0;
                 let action = if !k.q.is_empty() {
                     Some(
                         button("Clear search")
@@ -206,15 +228,15 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
                 let words = if past { format!("Page {} is past the last page.", int(k.page)) } else { k.filter.empty_text(&k.q) };
                 empty_block(vec![body(text(words)).text_color(muted_ink).into_element()], action).into_element()
             }
-            Some((k, p)) => {
+            Shape::List { wide, thinking, status } => {
                 let spp = untracked(&r2).params.samples_per_prompt;
-                let stale = k != want;
-                let list = if window_width() >= TABLE_FROM {
-                    sample_table(p.items, spp, k.filter, selected, open_sample).into_element()
+                let items = move || page_items.get();
+                let list = if wide {
+                    sample_table(items, spp, thinking, status, selected, open_sample).into_element()
                 } else {
-                    stacked_rows(p.items, spp, k.filter, selected, open_sample).into_element()
+                    stacked_rows(items, spp, status, selected, open_sample).into_element()
                 };
-                view().opacity(if stale { 0.6_f32 } else { 1.0 }).child(list).into_element()
+                view().opacity(move || if stale() { 0.6_f32 } else { 1.0 }).child(list).into_element()
             }
         }
     });
@@ -470,79 +492,83 @@ fn response_text(s: &SampleSummary) -> String {
     s.response_preview.clone().filter(|r| !r.is_empty()).unwrap_or_else(|| DASH.into())
 }
 
-/// From 1024 px: the table.
+/// A sample row's accessible name: its prompt.
+fn prompt_label(s: ReadSignal<SampleSummary>) -> impl Fn() -> SharedString + 'static {
+    move || SharedString::from(s.with(|s| s.prompt_preview.clone()))
+}
+
+/// From 1024 px: the table. A row is made once per sample; what a running sample changes (the
+/// response, the tokens, the latency, the status) is bound inside it.
 fn sample_table(
-    items: Vec<SampleSummary>,
+    items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
-    filter: SampleFilter,
+    thinking: bool,
+    status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
 ) -> impl IntoElement {
-    let status = show_status(filter, &items);
-    let thinking = window_width() >= THINKING_FROM && items.iter().any(no_trace);
     let columns: &'static [Column] = match (thinking, status) {
         (false, false) => &PLAIN,
         (true, false) => &WITH_THINKING,
         (false, true) => &WITH_STATUS,
         (true, true) => &WITH_BOTH,
     };
-    let n = items.len();
-    let rows: Vec<AnyElement> = items
-        .into_iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let id = s.id;
-            let mut cells = vec![
-                cell(NUMBER, mono_meta(sample_label(s.prompt_idx, s.sample_idx, spp))).into_element(),
-                cell(PROMPT, body(text(non_empty(&s.prompt_preview))).number_of_lines(1).flex_1().min_w(px(0.0))).into_element(),
-                cell(RESPONSE, body(text(response_text(&s))).text_color(muted_ink).number_of_lines(1).flex_1().min_w(px(0.0))).into_element(),
-            ];
-            if thinking {
-                cells.push(cell(THINKING, body(text(if no_trace(&s) { "None" } else { "" })).text_color(muted_ink)).into_element());
-            }
-            let tokens_known = s.completion_tokens.is_some();
-            cells.push(
-                cell(
-                    TOKENS,
-                    body(text(int_opt(s.completion_tokens))).tabular_nums().text_color(move || if tokens_known { theme().foreground } else { muted_ink() }),
-                )
+    let count = move || items().len();
+    let rows = each(items, |s: &SampleSummary| s.id, move |s, index| {
+        let (id, number) = s.with_untracked(|s| (s.id, sample_label(s.prompt_idx, s.sample_idx, spp)));
+        let mut cells = vec![
+            cell(NUMBER, mono_meta(number)).into_element(),
+            cell(PROMPT, body(text(move || s.with(|s| non_empty(&s.prompt_preview)))).number_of_lines(1).flex_1().min_w(px(0.0))).into_element(),
+            cell(RESPONSE, body(text(move || s.with(response_text))).text_color(muted_ink).number_of_lines(1).flex_1().min_w(px(0.0))).into_element(),
+        ];
+        if thinking {
+            cells.push(cell(THINKING, body(text(move || if s.with(no_trace) { "None" } else { "" })).text_color(muted_ink)).into_element());
+        }
+        cells.push(
+            cell(
+                TOKENS,
+                body(text(move || int_opt(s.with(|s| s.completion_tokens))))
+                    .tabular_nums()
+                    .text_color(move || if s.with(|s| s.completion_tokens.is_some()) { theme().foreground } else { muted_ink() }),
+            )
+            .into_element(),
+        );
+        cells.push(
+            cell(LATENCY, body(text(move || duration(s.with(|s| s.latency_ms.map(|m| m as f64))))).tabular_nums().text_color(muted_ink))
                 .into_element(),
+        );
+        if status {
+            cells.push(
+                cell(STATUS, bound(s, |s| (s.status, s.finish_reason.clone()), |s| sample_status_pill(s.status, s.finish_reason.as_deref()).into_element()))
+                    .into_element(),
             );
-            cells.push(cell(LATENCY, body(text(duration(s.latency_ms.map(|m| m as f64)))).tabular_nums().text_color(muted_ink)).into_element());
-            if status {
-                cells.push(cell(STATUS, sample_status_pill(s.status, s.finish_reason.as_deref())).into_element());
-            }
-            row(cells, move || i + 1 == n)
-                .bg(move || if selected.get() == Some(id) { theme().accent } else { AdaptiveColor::TRANSPARENT })
-                .cursor(Cursor::Pointer)
-                .role(AccessibilityRole::Link)
-                .label(s.prompt_preview.clone())
-                .on_press(move || open(id))
-                .into_element()
-        })
-        .collect();
-    view().pt(px(12.0)).child(header(columns)).children(rows)
+        }
+        row(cells, move || index.get() + 1 == count())
+            .bg(move || if selected.get() == Some(id) { theme().accent } else { AdaptiveColor::TRANSPARENT })
+            .cursor(Cursor::Pointer)
+            .role(AccessibilityRole::Link)
+            .label(prompt_label(s))
+            .on_press(move || open(id))
+    });
+    view().pt(px(12.0)).child(header(columns)).child(rows)
 }
 
-/// Below 1024 px: one stacked row per sample, its facts on the first line.
+/// Below 1024 px: one stacked row per sample, its facts on the first line (made once per sample,
+/// as the table's rows are).
 fn stacked_rows(
-    items: Vec<SampleSummary>,
+    items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
-    filter: SampleFilter,
+    status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
 ) -> impl IntoElement {
-    let status = show_status(filter, &items);
-    let rows: Vec<AnyElement> = items
-        .into_iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let id = s.id;
+    let rows = each(items, |s: &SampleSummary| s.id, move |s, index| {
+            let (id, number) = s.with_untracked(|s| (s.id, sample_label(s.prompt_idx, s.sample_idx, spp)));
             view()
                 .py(px(12.0))
                 .cursor(Cursor::Pointer)
                 .role(AccessibilityRole::Link)
-                .label(s.prompt_preview.clone())
+                .label(prompt_label(s))
                 .on_press(move || open(id))
                 .child(
                     view()
@@ -555,23 +581,34 @@ fn stacked_rows(
                         .bg(move || theme().accent)
                         .opacity(move || if selected.get() == Some(id) { 1.0_f32 } else { 0.0 }),
                 )
-                .child((i > 0).then(|| view().absolute().top(px(0.0)).left(px(0.0)).right(px(0.0)).h(px(1.0)).bg(move || theme().border)))
+                .child(
+                    view()
+                        .absolute()
+                        .top(px(0.0))
+                        .left(px(0.0))
+                        .right(px(0.0))
+                        .h(px(1.0))
+                        .bg(move || theme().border)
+                        .opacity(move || if index.get() > 0 { 1.0_f32 } else { 0.0 }),
+                )
                 .child(
                     view()
                         .flex_row()
                         .items_center()
                         .gap(px(8.0))
-                        .child(mono_meta(sample_label(s.prompt_idx, s.sample_idx, spp)))
-                        .child(status.then(|| sample_status_pill(s.status, s.finish_reason.as_deref())))
+                        .child(mono_meta(number))
+                        .child(status.then(|| {
+                            bound(s, |s| (s.status, s.finish_reason.clone()), |s| sample_status_pill(s.status, s.finish_reason.as_deref()).into_element())
+                        }))
                         .child(view().flex_1())
-                        .child(s.completion_tokens.map(|t| mono_meta(format!("{} tokens", int(t))))),
+                        .child(bound(s, |s| s.completion_tokens, |s| {
+                            s.completion_tokens.map(|t| mono_meta(format!("{} tokens", int(t))).into_element()).unwrap_or_else(|| view().into_element())
+                        })),
                 )
-                .child(body(text(non_empty(&s.prompt_preview))).number_of_lines(1).mt(px(4.0)))
-                .child(body(text(response_text(&s))).text_color(muted_ink).number_of_lines(1))
-                .into_element()
-        })
-        .collect();
-    view().children(rows)
+                .child(body(text(move || s.with(|s| non_empty(&s.prompt_preview)))).number_of_lines(1).mt(px(4.0)))
+                .child(body(text(move || s.with(response_text))).text_color(muted_ink).number_of_lines(1))
+        });
+    view().child(rows)
 }
 
 fn non_empty(s: &str) -> String {

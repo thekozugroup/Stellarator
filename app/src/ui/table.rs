@@ -86,3 +86,19 @@ pub fn row(cells: Vec<AnyElement>, last: impl Fn() -> bool + 'static) -> View {
                 .opacity(move || if last() { 0.0_f32 } else { 1.0 }),
         )
 }
+
+/// A part of a keyed row (`each`) made from its item: made again when `part` of the item changes,
+/// and only then. A list whose items are read again every second (a run that goes, an importing
+/// set) keeps its rows, their open menus and their focus; only the cells whose fields changed are
+/// made again.
+pub fn bound<T: 'static, K: PartialEq + 'static>(
+    item: ReadSignal<T>,
+    part: impl Fn(&T) -> K + 'static,
+    make: impl Fn(&T) -> AnyElement + 'static,
+) -> AnyElement {
+    let key = computed(move || item.with(&part));
+    dynamic(move || {
+        key.with(|_| ());
+        item.with_untracked(&make)
+    })
+}

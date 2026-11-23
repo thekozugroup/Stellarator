@@ -43,17 +43,20 @@ pub fn screen() -> impl IntoElement {
     let empty = move || sets.with(|l| l.loaded().is_some_and(Vec::is_empty));
     let no_runs = move || runs.with(|l| l.loaded().is_some_and(Vec::is_empty));
 
-    let content = dynamic(move || -> AnyElement {
-        let state = sets.with(|l| match l {
+    // What decides the page's structure, and only that: a reload changes the rows in place.
+    let state = computed(move || {
+        sets.with(|l| match l {
             Load::Loading => 0,
             Load::Failed(_) => 1,
             Load::Loaded(v) if v.is_empty() => 2,
             Load::Loaded(_) => 3,
-        });
-        match state {
+        })
+    });
+    let content = dynamic(move || -> AnyElement {
+        match state.get() {
             0 => loading_rows().into_element(),
             1 => {
-                let message = sets.with(|l| l.error().unwrap_or_default().to_owned());
+                let message = sets.with_untracked(|l| l.error().unwrap_or_default().to_owned());
                 error_block(
                     format!("Couldn't load preference sets. {message}"),
                     Some(Rc::new(move || {

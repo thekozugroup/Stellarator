@@ -27,7 +27,7 @@ use crate::ui::icon::icon as glyph;
 use crate::ui::page::{page, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::status::run_status_pill as run_status;
-use crate::ui::table::{Column, cell, header, row};
+use crate::ui::table::{Column, bound, cell, header, row};
 
 /// How often the list is read again.
 const REFRESH: Duration = Duration::from_secs(2);
@@ -103,12 +103,10 @@ pub fn screen() -> impl IntoElement {
                         .child(header(&COLUMNS))
                         .child(each(runs, |r: &Run| r.id, move |run, index| {
                             let last = move || index.get() + 1 == count();
-                            dynamic(move || run_row(run.get(), now, last))
+                            run_row(run, now, last)
                         }))
                 })
-                .otherwise(move || {
-                    view().child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || stacked_row(run.get(), now))))
-                })
+                .otherwise(move || view().child(each(runs, |r: &Run| r.id, move |run, _| stacked_row(run, now))))
             })
         })
     });
@@ -138,11 +136,22 @@ pub fn screen() -> impl IntoElement {
         .child(content)
 }
 
+/// The run's name, read in a binding.
+fn name_of(run: ReadSignal<Run>) -> impl Fn() -> String + Copy + 'static {
+    move || run.with(|r| r.name.clone())
+}
+
+/// What a row's progress shows.
+fn progress_part(r: &Run) -> (i64, i64, i64) {
+    (r.done, r.failed, r.total)
+}
+
 /// Below 1024 px: the name and the status, then the facts (and from 640 px the date), then the
-/// progress; a chevron at the end, as every row that opens a screen. A press opens the run.
-fn stacked_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
-    let created = run.created_at;
-    let (id, name) = (run.id, run.name.clone());
+/// progress; a chevron at the end, as every row that opens a screen. A press opens the run. Made
+/// once per run: what a going run changes is bound inside it.
+fn stacked_row(run: ReadSignal<Run>, now: Signal<DateTime<Utc>>) -> impl IntoElement {
+    let (id, created) = run.with_untracked(|r| (r.id, r.created_at));
+    let name = name_of(run);
     view()
         .flex_row()
         .items_center()
@@ -150,8 +159,8 @@ fn stacked_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
         .py(px(12.0))
         .cursor(Cursor::Pointer)
         .role(AccessibilityRole::Link)
-        .label(run.name.clone())
-        .on_press(move || nav::push(Route::Run { id }, Some(name.clone())))
+        .label(move || SharedString::from(name()))
+        .on_press(move || nav::push(Route::Run { id }, Some(name())))
         .child(
             view()
                 .flex_1()
@@ -166,30 +175,29 @@ fn stacked_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
                                 .flex_1()
                                 .min_w(px(0.0))
                                 .gap(px(2.0))
-                                .child(label(text(run.name.clone())).number_of_lines(1))
+                                .child(label(text(name)).number_of_lines(1))
                                 .child(
-                                    meta(text({
-                                        let facts = facts(&run).join(" · ");
-                                        move || {
-                                            if window_width() >= 640.0 {
-                                                format!("{facts} · {}", relative(created, now.get()))
-                                            } else {
-                                                facts.clone()
-                                            }
+                                    meta(text(move || {
+                                        let facts = run.with(|r| facts(r).join(" · "));
+                                        if window_width() >= 640.0 {
+                                            format!("{facts} · {}", relative(created, now.get()))
+                                        } else {
+                                            facts
                                         }
                                     }))
                                     .number_of_lines(1),
                                 ),
                         )
-                        .child(run_status(run.status)),
+                        .child(bound(run, |r| r.status, |r| run_status(r.status).into_element())),
                 )
-                .child(
+                .child(bound(run, progress_part, |r| {
                     view()
                         .mt(px(10.0))
                         .gap(px(6.0))
-                        .child(progress_figures(&run))
-                        .child(progress_bar_full(run.done, run.failed, run.total)),
-                ),
+                        .child(progress_figures(r))
+                        .child(progress_bar_full(r.done, r.failed, r.total))
+                        .into_element()
+                })),
         )
         .child(glyph(icon::CHEVRON_RIGHT, 16.0, muted_ink))
         .child(view().absolute().left(px(0.0)).right(px(0.0)).bottom(px(0.0)).h(px(1.0)).bg(move || nsh_base::theme().border))
@@ -210,24 +218,22 @@ fn facts(run: &Run) -> Vec<String> {
     out
 }
 
-/// One run's row.
-fn run_row(run: Run, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> impl IntoElement {
-    let created = run.created_at;
+/// One run's row, made once per run: what a going run changes is bound inside it.
+fn run_row(run: ReadSignal<Run>, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> impl IntoElement {
+    let (id, created) = run.with_untracked(|r| (r.id, r.created_at));
+    let name = name_of(run);
     row(vec![
-        cell(NAME, name_cell(&run)).into_element(),
-        cell(PROGRESS, progress_cell(&run)).into_element(),
-        cell(SEQS, body(text(int(run.concurrency))).tabular_nums()).into_element(),
-        cell(STATUS, run_status(run.status)).into_element(),
+        cell(NAME, bound(run, |r| (r.name.clone(), facts(r)), |r| name_cell(r).into_element())).into_element(),
+        cell(PROGRESS, bound(run, progress_part, |r| progress_cell(r).into_element())).into_element(),
+        cell(SEQS, body(text(move || int(run.with(|r| r.concurrency)))).tabular_nums()).into_element(),
+        cell(STATUS, bound(run, |r| r.status, |r| run_status(r.status).into_element())).into_element(),
         cell(CREATED, body(text(move || relative(created, now.get()))).text_color(muted_ink).tabular_nums().number_of_lines(1))
             .into_element(),
     ], last)
     .cursor(Cursor::Pointer)
     .role(AccessibilityRole::Link)
-    .label(run.name.clone())
-    .on_press({
-        let (id, name) = (run.id, run.name.clone());
-        move || nav::push(Route::Run { id }, Some(name.clone()))
-    })
+    .label(move || SharedString::from(name()))
+    .on_press(move || nav::push(Route::Run { id }, Some(name())))
 }
 
 /// The name at 500, then in 12 px muted the model (mono), the endpoint and the prompt set, minus

@@ -21,7 +21,7 @@ use crate::ui::icon;
 use crate::ui::page::window_width;
 use crate::ui::plasma::plasma;
 use crate::ui::select::{MenuEntry, menu_button, menu_destructive, menu_entry};
-use crate::ui::table::{Column, cell, header, row};
+use crate::ui::table::{Column, bound, cell, header, row};
 use crate::ui::tooltip::copy_button;
 
 /// What a row's controls do.
@@ -56,19 +56,23 @@ const TABLE_FROM: f32 = 1024.0;
 const MODELS_FROM: f32 = 1280.0;
 
 /// The list of `endpoints` (reactive), as a table or stacked rows by the window's width.
+///
+/// A row is made once per endpoint (and again when the window crosses 1280 px, which adds the
+/// Models column): what changes in it (the status after Check now, the models, the counts) is
+/// bound inside its cells, so a reload never closes its open "…" menu.
 pub fn endpoint_list(endpoints: impl Fn() -> Vec<Endpoint> + Copy + 'static, actions: Actions) -> impl IntoElement {
     let count_now = move || endpoints().len();
     let table = move || window_width() >= TABLE_FROM;
     let a1 = actions.clone();
     when(table, move || {
         let actions = a1.clone();
-        let models = move || window_width() >= MODELS_FROM;
+        let models = computed(move || window_width() >= MODELS_FROM);
         view()
-            .child(dynamic(move || if models() { header(&WIDE).into_element() } else { header(&NARROW).into_element() }))
+            .child(dynamic(move || if models.get() { header(&WIDE).into_element() } else { header(&NARROW).into_element() }))
             .child(each(endpoints, |e: &Endpoint| e.id, move |ep, index| {
                 let actions = actions.clone();
                 let last = move || index.get() + 1 == count_now();
-                dynamic(move || table_row(ep.get(), models(), actions.clone(), last))
+                dynamic(move || table_row(ep, models.get(), actions.clone(), last))
             }))
     })
     .otherwise(move || {
@@ -76,7 +80,7 @@ pub fn endpoint_list(endpoints: impl Fn() -> Vec<Endpoint> + Copy + 'static, act
         view().child(each(endpoints, |e: &Endpoint| e.id, move |ep, index| {
             let actions = actions.clone();
             let last = move || index.get() + 1 == count_now();
-            dynamic(move || stacked_row(ep.get(), actions.clone(), last))
+            stacked_row(ep, actions.clone(), last)
         }))
     })
 }
@@ -109,35 +113,43 @@ fn models_text(endpoint: &Endpoint) -> AnyElement {
     }
 }
 
-/// Edit (from 1024 px) and the "…" menu: Edit… (below 1024 px), Check now, Delete….
-fn row_actions(endpoint: &Endpoint, actions: Actions, with_edit: bool) -> impl IntoElement {
-    let id = endpoint.id;
-    let mut entries: Vec<MenuEntry> = Vec::new();
-    if !with_edit {
-        let (e, a) = (endpoint.clone(), actions.edit.clone());
-        entries.push(menu_entry(Some(icon::PENCIL), "Edit…", move || a(e.clone())));
-    }
-    let (e, a) = (endpoint.clone(), actions.check.clone());
-    let checking = actions.checking;
-    entries.push(menu_entry(Some(icon::REFRESH), "Check now", move || a(e.clone())).disabled(move || checking.with(|c| c.contains(&id))));
-    entries.push(MenuEntry::Separator);
-    let (e, a) = (endpoint.clone(), actions.delete.clone());
-    entries.push(menu_destructive(Some(icon::TRASH), "Delete…", move || a(e.clone())));
-    let edit = with_edit.then(|| {
-        let (e, a) = (endpoint.clone(), actions.edit.clone());
-        button("Edit")
-            .variant(Variant::Ghost)
-            .size(Size::Sm)
-            .accessibility_label(format!("Edit {}", endpoint.name))
-            .on_press(move || a(e.clone()))
-    });
-    view()
-        .flex_row()
-        .items_center()
-        .justify_end()
-        .gap(px(4.0))
-        .child(edit)
-        .child(menu_button(format!("More actions for {}", endpoint.name), entries, Some(176.0)))
+/// Edit (from 1024 px) and the "…" menu: Edit… (below 1024 px), Check now, Delete…. Made once
+/// per row: the entries act on the endpoint as it is when pressed, and only a rename (its
+/// accessible names) makes them again.
+fn row_actions(ep: ReadSignal<Endpoint>, actions: Actions, with_edit: bool) -> impl IntoElement {
+    let id = ep.with_untracked(|e| e.id);
+    let name = computed(move || ep.with(|e| e.name.clone()));
+    dynamic(move || {
+        let name = name.get();
+        let mut entries: Vec<MenuEntry> = Vec::new();
+        if !with_edit {
+            let a = actions.edit.clone();
+            entries.push(menu_entry(Some(icon::PENCIL), "Edit…", move || a(ep.get_untracked())));
+        }
+        let a = actions.check.clone();
+        let checking = actions.checking;
+        entries.push(
+            menu_entry(Some(icon::REFRESH), "Check now", move || a(ep.get_untracked())).disabled(move || checking.with(|c| c.contains(&id))),
+        );
+        entries.push(MenuEntry::Separator);
+        let a = actions.delete.clone();
+        entries.push(menu_destructive(Some(icon::TRASH), "Delete…", move || a(ep.get_untracked())));
+        let edit = with_edit.then(|| {
+            let a = actions.edit.clone();
+            button("Edit")
+                .variant(Variant::Ghost)
+                .size(Size::Sm)
+                .accessibility_label(format!("Edit {name}"))
+                .on_press(move || a(ep.get_untracked()))
+        });
+        view()
+            .flex_row()
+            .items_center()
+            .justify_end()
+            .gap(px(4.0))
+            .child(edit)
+            .child(menu_button(format!("More actions for {name}"), entries, Some(176.0)))
+    })
 }
 
 /// The name (500, two lines at most) over the base URL.
@@ -150,8 +162,8 @@ fn name_block(endpoint: &Endpoint) -> impl IntoElement {
         .child(base_url(&endpoint.base_url))
 }
 
-fn table_row(endpoint: Endpoint, models: bool, actions: Actions, last: impl Fn() -> bool + 'static) -> AnyElement {
-    let now = now_utc();
+fn table_row(ep: ReadSignal<Endpoint>, models: bool, actions: Actions, last: impl Fn() -> bool + 'static) -> AnyElement {
+    let seed = ep.with_untracked(endpoint_seed);
     let mut cells = vec![
         cell(
             ENDPOINT,
@@ -161,31 +173,31 @@ fn table_row(endpoint: Endpoint, models: bool, actions: Actions, last: impl Fn()
                 .gap(px(12.0))
                 .min_w(px(0.0))
                 .py(px(4.0))
-                .child(plasma(&endpoint_seed(&endpoint), 6, 28.0, radius::SM, false))
-                .child(name_block(&endpoint)),
+                .child(plasma(&seed, 6, 28.0, radius::SM, false))
+                .child(bound(ep, |e| (e.name.clone(), e.base_url.clone()), |e| name_block(e).into_element())),
         )
         .into_element(),
-        cell(STATUS, view().py(px(4.0)).child(endpoint_status(&endpoint))).into_element(),
+        cell(STATUS, view().py(px(4.0)).child(bound(ep, |e| (e.last_ok, e.last_error.clone(), e.has_api_key), |e| endpoint_status(e).into_element()))).into_element(),
     ];
     if models {
-        cells.push(cell(MODELS, models_text(&endpoint)).into_element());
+        cells.push(cell(MODELS, bound(ep, |e| e.models.clone(), models_text)).into_element());
     }
-    cells.push(cell(CHECKED, checked_at_text(&endpoint, now)).into_element());
-    cells.push(cell(SEQS, body(text(int(endpoint.default_concurrency))).tabular_nums()).into_element());
-    cells.push(cell(RUNS, body(text(int(endpoint.run_count))).tabular_nums()).into_element());
-    cells.push(cell(ACTIONS, view().flex_1().child(row_actions(&endpoint, actions.clone(), true))).into_element());
+    cells.push(cell(CHECKED, bound(ep, |e| e.last_checked_at, |e| checked_at_text(e, now_utc()).into_element())).into_element());
+    cells.push(cell(SEQS, body(text(move || int(ep.with(|e| e.default_concurrency)))).tabular_nums()).into_element());
+    cells.push(cell(RUNS, body(text(move || int(ep.with(|e| e.run_count)))).tabular_nums()).into_element());
+    cells.push(cell(ACTIONS, view().flex_1().child(row_actions(ep, actions.clone(), true))).into_element());
     let open = actions.open.clone();
     row(cells, last)
         .cursor(Cursor::Pointer)
         .role(AccessibilityRole::Button)
-        .label(endpoint.name.clone())
-        .on_press(move || open(endpoint.clone()))
+        .label(move || SharedString::from(ep.with(|e| e.name.clone())))
+        .on_press(move || open(ep.get_untracked()))
         .into_element()
 }
 
-/// Below 1024 px: the tile, the name, the base URL and a line of facts; the menu at the end.
-fn stacked_row(endpoint: Endpoint, actions: Actions, last: impl Fn() -> bool + 'static) -> AnyElement {
-    let mut facts: Vec<AnyElement> = vec![endpoint_status_small(&endpoint).into_element()];
+/// The line of facts under a stacked row's name: the status, the models, seqs and runs.
+fn stacked_facts(endpoint: &Endpoint) -> impl IntoElement {
+    let mut facts: Vec<AnyElement> = vec![endpoint_status_small(endpoint).into_element()];
     let mut more = Vec::new();
     if !endpoint.models.is_empty() {
         more.push(count(endpoint.models.len() as i64, "model", "models"));
@@ -193,8 +205,13 @@ fn stacked_row(endpoint: Endpoint, actions: Actions, last: impl Fn() -> bool + '
     more.push(format!("{} seqs", int(endpoint.default_concurrency)));
     more.push(count(endpoint.run_count, "run", "runs"));
     facts.push(meta(text(format!(" · {}", more.join(" · ")))).tabular_nums().number_of_lines(1).into_element());
+    view().flex_row().items_center().min_w(px(0.0)).children(facts)
+}
+
+/// Below 1024 px: the tile, the name, the base URL and a line of facts; the menu at the end.
+fn stacked_row(ep: ReadSignal<Endpoint>, actions: Actions, last: impl Fn() -> bool + 'static) -> AnyElement {
+    let seed = ep.with_untracked(endpoint_seed);
     let open = actions.open.clone();
-    let e = endpoint.clone();
     view()
         .flex_row()
         .items_center()
@@ -212,22 +229,26 @@ fn stacked_row(endpoint: Endpoint, actions: Actions, last: impl Fn() -> bool + '
                 .py(px(10.0))
                 .rounded(px(radius::MD))
                 .role(AccessibilityRole::Button)
-                .label(endpoint.name.clone())
+                .label(move || SharedString::from(ep.with(|e| e.name.clone())))
                 .cursor(Cursor::Pointer)
                 .active(|s| s.bg(move || theme().accent))
-                .on_press(move || open(e.clone()))
-                .child(plasma(&endpoint_seed(&endpoint), 6, 28.0, radius::SM, false))
+                .on_press(move || open(ep.get_untracked()))
+                .child(plasma(&seed, 6, 28.0, radius::SM, false))
                 .child(
                     view()
                         .flex_1()
                         .min_w(px(0.0))
                         .gap(px(2.0))
-                        .child(label(text(endpoint.name.clone())).number_of_lines(2))
-                        .child(mono(text(middle(&endpoint.base_url, 40))).text_color(muted_ink).number_of_lines(1))
-                        .child(view().flex_row().items_center().min_w(px(0.0)).children(facts)),
+                        .child(label(text(move || ep.with(|e| e.name.clone()))).number_of_lines(2))
+                        .child(mono(text(move || ep.with(|e| middle(&e.base_url, 40)))).text_color(muted_ink).number_of_lines(1))
+                        .child(bound(
+                            ep,
+                            |e| (e.last_ok, e.last_error.clone(), e.has_api_key, e.models.len(), e.default_concurrency, e.run_count),
+                            |e| stacked_facts(e).into_element(),
+                        )),
                 ),
         )
-        .child(row_actions(&endpoint, actions, false))
+        .child(row_actions(ep, actions, false))
         .child(
             view()
                 .absolute()

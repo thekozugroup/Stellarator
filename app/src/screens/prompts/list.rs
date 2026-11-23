@@ -23,7 +23,7 @@ use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon::{self, icon as glyph};
 use crate::ui::page::{page, window_width};
 use crate::ui::plasma::plasma;
-use crate::ui::table::{Column, cell, header, row};
+use crate::ui::table::{Column, bound, cell, header, row};
 
 const NAME: Column = Column::share("Name", 1.1);
 const SOURCE: Column = Column::flex("Source");
@@ -66,17 +66,21 @@ pub fn screen() -> impl IntoElement {
     let has_sets = move || load.with(|l| l.loaded().is_some_and(|v| !v.is_empty()));
     let import = || nav::push(Route::Import, None);
 
-    let content = dynamic(move || -> AnyElement {
-        let state = load.with(|l| match l {
+    // What decides the page's structure, and only that: the reads every second while a set
+    // imports change the rows in place (`set_list`).
+    let state = computed(move || {
+        load.with(|l| match l {
             Load::Loading => 0,
             Load::Failed(_) => 1,
             Load::Loaded(v) if v.is_empty() => 2,
             Load::Loaded(_) => 3,
-        });
-        match state {
+        })
+    });
+    let content = dynamic(move || -> AnyElement {
+        match state.get() {
             0 => skeleton().into_element(),
             1 => {
-                let message = load.with(|l| l.error().unwrap_or_default().to_owned());
+                let message = load.with_untracked(|l| l.error().unwrap_or_default().to_owned());
                 error_block(
                     format!("Couldn’t load prompt sets. {message}"),
                     Some(Rc::new(move || {
@@ -131,20 +135,21 @@ fn empty_page(import: impl Fn() + Copy + 'static) -> impl IntoElement {
     .bg(move || theme().muted)
 }
 
-/// The sets, as a table or stacked rows by the window's width.
+/// The sets, as a table or stacked rows by the window's width. A row is made once per set: what an
+/// import changes every second (the status, the counts) is bound inside it.
 fn set_list(sets: impl Fn() -> Vec<PromptSet> + Copy + 'static, now: Signal<DateTime<Utc>>) -> impl IntoElement {
     let count_now = move || sets().len();
     let table = move || window_width() >= TABLE_FROM;
     when(table, move || {
         view().child(header(&COLUMNS)).child(each(sets, |s: &PromptSet| s.id, move |set, index| {
             let last = move || index.get() + 1 == count_now();
-            dynamic(move || table_row(set.get(), now, last))
+            table_row(set, now, last)
         }))
     })
     .otherwise(move || {
         view().child(each(sets, |s: &PromptSet| s.id, move |set, index| {
             let last = move || index.get() + 1 == count_now();
-            dynamic(move || stacked_row(set.get(), now, last))
+            stacked_row(set, now, last)
         }))
     })
 }
@@ -165,9 +170,14 @@ fn source_text(set: &PromptSet, small: bool) -> AnyElement {
     line.text_color(muted_ink).number_of_lines(1).children(children).into_element()
 }
 
-fn table_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> AnyElement {
-    let (id, name) = (set.id, set.name.clone());
-    let created = set.created_at;
+/// The set's name, read in a binding.
+fn name_of(set: ReadSignal<PromptSet>) -> impl Fn() -> String + Copy + 'static {
+    move || set.with(|s| s.name.clone())
+}
+
+fn table_row(set: ReadSignal<PromptSet>, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> AnyElement {
+    let (id, created) = set.with_untracked(|s| (s.id, s.created_at));
+    let name = name_of(set);
     row(
         vec![
             cell(
@@ -178,14 +188,14 @@ fn table_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool
                     .gap(px(12.0))
                     .min_w(px(0.0))
                     .py(px(4.0))
-                    .child(plasma(&set_seed(set.id), 6, 28.0, radius::SM, false))
-                    .child(label(text(set.name.clone())).number_of_lines(1).flex_shrink(1.0).min_w(px(0.0))),
+                    .child(plasma(&set_seed(id), 6, 28.0, radius::SM, false))
+                    .child(label(text(name)).number_of_lines(1).flex_shrink(1.0).min_w(px(0.0))),
             )
             .into_element(),
-            cell(SOURCE, source_text(&set, false)).into_element(),
-            cell(STATUS, set_status(set.status)).into_element(),
-            cell(PROMPTS, body(text(int(set.prompt_count))).tabular_nums()).into_element(),
-            cell(RUNS, body(text(int(set.run_count))).tabular_nums()).into_element(),
+            cell(SOURCE, bound(set, |s| (s.source_kind.clone(), s.source.clone()), |s| source_text(s, false))).into_element(),
+            cell(STATUS, bound(set, |s| s.status, |s| set_status(s.status).into_element())).into_element(),
+            cell(PROMPTS, body(text(move || int(set.with(|s| s.prompt_count)))).tabular_nums()).into_element(),
+            cell(RUNS, body(text(move || int(set.with(|s| s.run_count)))).tabular_nums()).into_element(),
             cell(CREATED, body(text(move || relative(created, now.get()))).text_color(muted_ink).tabular_nums().number_of_lines(1))
                 .into_element(),
         ],
@@ -193,15 +203,13 @@ fn table_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool
     )
     .cursor(Cursor::Pointer)
     .role(AccessibilityRole::Link)
-    .label(set.name.clone())
-    .on_press(move || nav::push(Route::PromptSet { id }, Some(name.clone())))
+    .label(move || SharedString::from(name()))
+    .on_press(move || nav::push(Route::PromptSet { id }, Some(name())))
     .into_element()
 }
 
-/// Below 1024 px: the tile, the name (two lines), the source, then the facts; a chevron at the end.
-fn stacked_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> AnyElement {
-    let (id, name) = (set.id, set.name.clone());
-    let created = set.created_at;
+/// A stacked row's facts: the status while it is not ready, the prompts and the runs.
+fn stacked_facts(set: &PromptSet) -> AnyElement {
     let mut facts: Vec<AnyElement> = Vec::new();
     if set.status != crate::api::types::PromptSetStatus::Ready {
         facts.push(set_status_small(set.status).into_element());
@@ -212,7 +220,17 @@ fn stacked_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bo
             .tabular_nums()
             .into_element(),
     );
-    facts.push(meta(text(move || format!(" · {}", relative(created, now.get())))).tabular_nums().number_of_lines(1).into_element());
+    view().flex_row().flex_wrap().items_center().children(facts).into_element()
+}
+
+/// Below 1024 px: the tile, the name (two lines), the source, then the facts; a chevron at the end.
+fn stacked_row(set: ReadSignal<PromptSet>, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> AnyElement {
+    let (id, created) = set.with_untracked(|s| (s.id, s.created_at));
+    let name = name_of(set);
+    let facts: Vec<AnyElement> = vec![
+        bound(set, |s| (s.status, s.prompt_count, s.run_count), stacked_facts),
+        meta(text(move || format!(" · {}", relative(created, now.get())))).tabular_nums().number_of_lines(1).into_element(),
+    ];
     view()
         .flex_row()
         .items_center()
@@ -223,18 +241,18 @@ fn stacked_row(set: PromptSet, now: Signal<DateTime<Utc>>, last: impl Fn() -> bo
         .py(px(10.0))
         .rounded(px(radius::MD))
         .role(AccessibilityRole::Link)
-        .label(set.name.clone())
+        .label(move || SharedString::from(name()))
         .cursor(Cursor::Pointer)
         .active(|s| s.bg(move || theme().accent))
-        .on_press(move || nav::push(Route::PromptSet { id }, Some(name.clone())))
-        .child(plasma(&set_seed(set.id), 6, 28.0, radius::SM, false))
+        .on_press(move || nav::push(Route::PromptSet { id }, Some(name())))
+        .child(plasma(&set_seed(id), 6, 28.0, radius::SM, false))
         .child(
             view()
                 .flex_1()
                 .min_w(px(0.0))
                 .gap(px(2.0))
-                .child(label(text(set.name.clone())).number_of_lines(2))
-                .child(source_text(&set, true))
+                .child(label(text(name)).number_of_lines(2))
+                .child(bound(set, |s| (s.source_kind.clone(), s.source.clone()), |s| source_text(s, true)))
                 .child(view().flex_row().flex_wrap().items_center().children(facts)),
         )
         .child(glyph(icon::CHEVRON_RIGHT, 16.0, muted_ink))

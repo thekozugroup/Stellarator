@@ -180,19 +180,23 @@ pub fn screen() -> impl IntoElement {
     };
 
     let add = move || open_form(Target::default());
+    // What decides the page's structure, and only that: a reload or Check now changes the rows in
+    // place (`endpoint_list`), so an open row menu stays open.
+    let state = computed(move || {
+        load.with(|l| match l {
+            Load::Loading => 0,
+            Load::Failed(_) => 1,
+            Load::Loaded(v) if v.is_empty() => 2,
+            Load::Loaded(_) => 3,
+        })
+    });
     let content = dynamic({
         let actions = actions.clone();
         move || -> AnyElement {
-            let state = load.with(|l| match l {
-                Load::Loading => 0,
-                Load::Failed(_) => 1,
-                Load::Loaded(v) if v.is_empty() => 2,
-                Load::Loaded(_) => 3,
-            });
-            match state {
+            match state.get() {
                 0 => list_skeleton().into_element(),
                 1 => {
-                    let message = load.with(|l| l.error().unwrap_or_default().to_owned());
+                    let message = load.with_untracked(|l| l.error().unwrap_or_default().to_owned());
                     error_block(format!("Couldn’t load endpoints. {message}"), Some(Rc::new(move || {
                         load.set(Load::Loading);
                         reload();
