@@ -15,6 +15,7 @@ fn run(params: Value) -> RunInfo {
         model: "qwen3-32b".into(),
         prompt_set_id: 1,
         params,
+        tools: None,
     }
 }
 
@@ -34,6 +35,8 @@ fn sample(reasoning: Option<&str>, response: &str) -> SampleRec {
         latency_ms: Some(100),
         ttft_ms: Some(10),
         completed_at: Some(NaiveDate::from_ymd_opt(2026, 1, 2).unwrap().and_hms_opt(3, 4, 5).unwrap()),
+        trace: None,
+        tool_calls: 0,
     }
 }
 
@@ -250,4 +253,261 @@ fn slugs_and_filenames() {
     assert_eq!(slugify("Café déjà vu"), "cafe-deja-vu");
     assert_eq!(slugify("..a__b.."), "a__b");
     assert_eq!(slugify(&"x".repeat(100)).len(), 80);
+}
+
+// ------------------------------------------------------------------------------ runs with tools
+
+use stellarator_core::schemas::{
+    McpTransport, ToolCall, ToolSnapshot, ToolSnapshotServer, ToolSnapshotTool, TraceAssistant, TraceTool,
+};
+
+fn tool_defs() -> Vec<Value> {
+    vec![
+        json!({"type": "function", "function": {"name": "lookup", "description": "Look up a term.",
+               "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}),
+        json!({"type": "function", "function": {"name": "add", "parameters": {"type": "object",
+               "properties": {"a": {"type": "number"}, "b": {"type": "number"}}}}}),
+    ]
+}
+
+fn tool_run() -> RunInfo {
+    RunInfo {
+        tools: Some(ToolSnapshot {
+            servers: vec![ToolSnapshotServer {
+                server_id: 3,
+                name: "docs".into(),
+                transport: McpTransport::Http,
+                tools: vec![
+                    ToolSnapshotTool { name: "lookup".into(), server_tool: "lookup".into() },
+                    ToolSnapshotTool { name: "add".into(), server_tool: "add".into() },
+                ],
+            }],
+            definitions: tool_defs(),
+        }),
+        ..run(json!({}))
+    }
+}
+
+fn turn(reasoning: Option<&str>, content: &str, calls: &[(&str, &str, &str)]) -> TraceMessage {
+    TraceMessage::Assistant(TraceAssistant {
+        reasoning: reasoning.map(String::from),
+        content: content.into(),
+        tool_calls: calls
+            .iter()
+            .map(|(id, name, args)| ToolCall { id: (*id).into(), name: (*name).into(), arguments: (*args).into() })
+            .collect(),
+        finish_reason: Some(if calls.is_empty() { "stop" } else { "tool_calls" }.into()),
+        prompt_tokens: Some(10),
+        completion_tokens: Some(5),
+        reasoning_tokens: Some(2),
+        latency_ms: 50,
+    })
+}
+
+fn result(id: &str, name: &str, content: &str, is_error: bool) -> TraceMessage {
+    TraceMessage::Tool(TraceTool {
+        tool_call_id: id.into(),
+        name: name.into(),
+        server: "docs".into(),
+        content: content.into(),
+        is_error,
+        truncated: false,
+        latency_ms: 7,
+    })
+}
+
+/// Two parallel calls, then an answer.
+fn tool_sample() -> SampleRec {
+    SampleRec {
+        reasoning: Some("Combine them.".into()),
+        response: Some("High tide is at 6; 2+2 is 4.".into()),
+        trace: Some(vec![
+            turn(
+                Some("I need the facts."),
+                "",
+                &[("call_1", "lookup", r#"{"query": "tides"}"#), ("call_2", "add", r#"{"a": 2, "b": 2}"#)],
+            ),
+            result("call_1", "lookup", "High tide at 6.", false),
+            result("call_2", "add", "4", false),
+            turn(Some("Combine them."), "High tide is at 6; 2+2 is 4.", &[]),
+        ]),
+        tool_calls: 2,
+        ..sample(None, "")
+    }
+}
+
+fn tool_opts(format: SftFormat, p: P, file_type: &str) -> ExportOptions {
+    serde_json::from_value(json!({"format": sft_name(format), "reasoning": placement_name(p), "file_type": file_type}))
+        .unwrap()
+}
+
+fn tool_sft(format: SftFormat, p: P, file_type: &str) -> String {
+    crate::pyjson::to_string(&sft_record(&tool_opts(format, p, file_type), &tool_run(), &tool_sample(), &prompt(), None))
+}
+
+const TOOLS_JSON: &str = r#"[{"type": "function", "function": {"name": "lookup", "description": "Look up a term.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}, {"type": "function", "function": {"name": "add", "parameters": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}}}}]"#;
+const PROMPT_MSGS: &str = r#"[{"role": "system", "content": "Be brief."}, {"role": "user", "content": "What is 2+2? é"}]"#;
+const CALLS_NATIVE: &str = r#"[{"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": {"query": "tides"}}}, {"id": "call_2", "type": "function", "function": {"name": "add", "arguments": {"a": 2, "b": 2}}}]"#;
+const RESULTS: &str = r#"{"role": "tool", "tool_call_id": "call_1", "name": "lookup", "content": "High tide at 6."}, {"role": "tool", "tool_call_id": "call_2", "name": "add", "content": "4"}"#;
+
+/// `{"messages": [...]}` with the prompt's two messages spliced in front of `rest`.
+fn golden_messages(rest: &str, tools: &str) -> String {
+    format!(r#"{{"messages": [{}, {rest}], "tools": {tools}}}"#, &PROMPT_MSGS[1..PROMPT_MSGS.len() - 1])
+}
+
+#[test]
+fn messages_with_tools_golden() {
+    // Think tags: every assistant turn carries its own thinking.
+    let want = golden_messages(
+        &format!(
+            r#"{{"role": "assistant", "content": "<think>\nI need the facts.\n</think>\n\n", "tool_calls": {CALLS_NATIVE}}}, {RESULTS}, {{"role": "assistant", "content": "<think>\nCombine them.\n</think>\n\nHigh tide is at 6; 2+2 is 4."}}"#
+        ),
+        TOOLS_JSON,
+    );
+    assert_eq!(tool_sft(SftFormat::Messages, P::ThinkTags, "jsonl"), want);
+    // reasoning_content (Qwen3, DeepSeek templates) on every assistant turn.
+    let want = golden_messages(
+        &format!(
+            r#"{{"role": "assistant", "content": "", "reasoning_content": "I need the facts.", "tool_calls": {CALLS_NATIVE}}}, {RESULTS}, {{"role": "assistant", "content": "High tide is at 6; 2+2 is 4.", "reasoning_content": "Combine them."}}"#
+        ),
+        TOOLS_JSON,
+    );
+    assert_eq!(tool_sft(SftFormat::Messages, P::ReasoningContent, "jsonl"), want);
+    // thinking (gpt-oss template) and omit.
+    let thinking = sft_record(&tool_opts(SftFormat::Messages, P::Thinking, "json"), &tool_run(), &tool_sample(), &prompt(), None);
+    assert_eq!(thinking["messages"][2]["thinking"], "I need the facts.");
+    assert_eq!(thinking["messages"][5]["thinking"], "Combine them.");
+    let omit = sft_record(&tool_opts(SftFormat::Messages, P::Omit, "jsonl"), &tool_run(), &tool_sample(), &prompt(), None);
+    assert_eq!(omit["messages"][2], json!({"role": "assistant", "content": "", "tool_calls": serde_json::from_str::<Value>(CALLS_NATIVE).unwrap()}));
+    // Parquet: arguments and the tool list as JSON text (one type per column).
+    let want = golden_messages(
+        &format!(
+            r#"{{"role": "assistant", "content": "", "tool_calls": [{{"id": "call_1", "type": "function", "function": {{"name": "lookup", "arguments": "{{\"query\": \"tides\"}}"}}}}, {{"id": "call_2", "type": "function", "function": {{"name": "add", "arguments": "{{\"a\": 2, \"b\": 2}}"}}}}]}}, {RESULTS}, {{"role": "assistant", "content": "High tide is at 6; 2+2 is 4."}}"#
+        ),
+        &crate::pyjson::to_string(&Value::String(TOOLS_JSON.into())),
+    );
+    assert_eq!(tool_sft(SftFormat::Messages, P::Omit, "parquet"), want);
+}
+
+#[test]
+fn sharegpt_with_tools_golden() {
+    let want = r#"{"conversations": [{"from": "system", "value": "Be brief."}, {"from": "human", "value": "What is 2+2? é"}, {"from": "function_call", "value": "<think>\nI need the facts.\n</think>\n\n[{\"name\": \"lookup\", \"arguments\": {\"query\": \"tides\"}}, {\"name\": \"add\", \"arguments\": {\"a\": 2, \"b\": 2}}]"}, {"from": "observation", "value": "High tide at 6.\n</tool_response>\n<tool_response>\n4"}, {"from": "gpt", "value": "<think>\nCombine them.\n</think>\n\nHigh tide is at 6; 2+2 is 4."}], "tools": "[{\"name\": \"lookup\", \"description\": \"Look up a term.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}, {\"name\": \"add\", \"parameters\": {\"type\": \"object\", \"properties\": {\"a\": {\"type\": \"number\"}, \"b\": {\"type\": \"number\"}}}}]"}"#;
+    assert_eq!(tool_sft(SftFormat::Sharegpt, P::ThinkTags, "jsonl"), want);
+    // One call: a single object, not a list. Outside placements keep the final reasoning aside.
+    let mut one = tool_sample();
+    one.trace = Some(vec![
+        turn(Some("Look it up."), "Let me check.", &[("c9", "lookup", r#"{"query": "x"}"#)]),
+        result("c9", "lookup", "X is 1.", false),
+        turn(None, "X is 1.", &[]),
+    ]);
+    one.reasoning = None;
+    let rec = sft_record(&tool_opts(SftFormat::Sharegpt, P::ReasoningContent, "jsonl"), &tool_run(), &one, &prompt(), None);
+    assert_eq!(
+        rec["conversations"].as_array().unwrap()[2..],
+        [
+            json!({"from": "function_call", "value": r#"{"name": "lookup", "arguments": {"query": "x"}}"#}),
+            json!({"from": "observation", "value": "X is 1."}),
+            json!({"from": "gpt", "value": "X is 1."}),
+        ]
+    );
+    assert_eq!(rec["reasoning"], Value::Null);
+    let keys: Vec<&String> = rec.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["conversations", "tools", "reasoning"]);
+}
+
+#[test]
+fn raw_with_tools_keeps_the_trace() {
+    let rec = sft_record(&tool_opts(SftFormat::Raw, P::ThinkTags, "jsonl"), &tool_run(), &tool_sample(), &prompt(), None);
+    let keys: Vec<&str> = rec.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(
+        keys,
+        [
+            "id", "run_id", "prompt_id", "prompt_index", "sample_index", "model", "endpoint", "messages", "reasoning",
+            "response", "finish_reason", "usage", "latency_ms", "ttft_ms", "params", "meta", "created_at", "tool_calls",
+            "trace", "tools"
+        ]
+    );
+    assert_eq!(rec["tool_calls"], 2);
+    assert_eq!(rec["tools"], serde_json::from_str::<Value>(TOOLS_JSON).unwrap());
+    assert_eq!(rec["trace"], serde_json::to_value(tool_sample().trace.unwrap()).unwrap());
+    assert_eq!(
+        crate::pyjson::to_string(&rec["trace"][1]),
+        r#"{"role": "tool", "tool_call_id": "call_1", "name": "lookup", "server": "docs", "content": "High tide at 6.", "is_error": false, "truncated": false, "latency_ms": 7}"#
+    );
+}
+
+#[test]
+fn odd_arguments_and_samples_without_a_trace() {
+    let mut s = tool_sample();
+    s.trace = Some(vec![
+        turn(None, "", &[("a", "lookup", r#"{"query": "unterminated"#), ("b", "add", "")]),
+        result("a", "lookup", "The arguments are not valid JSON.", true),
+        result("b", "add", "0", false),
+        turn(None, "Done.", &[]),
+    ]);
+    let rec = sft_record(&tool_opts(SftFormat::Messages, P::Omit, "jsonl"), &tool_run(), &s, &prompt(), None);
+    // Arguments that don't parse stay as the text the model wrote; empty ones are {}.
+    assert_eq!(rec["messages"][2]["tool_calls"][0]["function"]["arguments"], r#"{"query": "unterminated"#);
+    assert_eq!(rec["messages"][2]["tool_calls"][1]["function"]["arguments"], json!({}));
+    // In Parquet every arguments cell is valid JSON text: bad arguments become a JSON string.
+    let rec = sft_record(&tool_opts(SftFormat::Messages, P::Omit, "parquet"), &tool_run(), &s, &prompt(), None);
+    assert_eq!(rec["messages"][2]["tool_calls"][0]["function"]["arguments"], r#""{\"query\": \"unterminated""#);
+    assert_eq!(rec["messages"][2]["tool_calls"][1]["function"]["arguments"], "{}");
+    // A sample with no trace exports its final answer with the run's tools.
+    let mut plain = tool_sample();
+    plain.trace = None;
+    let rec = sft_record(&tool_opts(SftFormat::Messages, P::Omit, "jsonl"), &tool_run(), &plain, &prompt(), None);
+    assert_eq!(rec["messages"].as_array().unwrap().len(), 3);
+    assert_eq!(rec["messages"][2], json!({"role": "assistant", "content": "High tide is at 6; 2+2 is 4."}));
+    assert_eq!(rec["tools"].as_array().unwrap().len(), 2);
+    // A run without tools exports as before: no tools field.
+    let rec = sft_record(&tool_opts(SftFormat::Messages, P::Omit, "jsonl"), &run(json!({})), &plain, &prompt(), None);
+    assert!(rec.get("tools").is_none());
+}
+
+#[test]
+fn formats_that_cannot_hold_tools_say_why() {
+    assert!(tools_refusal(SftFormat::Alpaca).unwrap().starts_with("Alpaca records have no place for tool calls"));
+    assert!(tools_refusal(SftFormat::PromptCompletion).unwrap().contains("would put the tool results in the completion"));
+    for f in [SftFormat::Messages, SftFormat::Sharegpt, SftFormat::Raw] {
+        assert_eq!(tools_refusal(f), None);
+    }
+}
+
+#[test]
+fn preference_records_with_tools_golden() {
+    let mut r = tool_sample();
+    r.id = 2;
+    r.trace = Some(vec![turn(None, "No tools needed: 4.", &[])]);
+    r.tool_calls = 0;
+    let defs = tool_defs();
+    let pair = Some(PairTools { chosen: &defs, rejected: &defs[..1] });
+    let chosen = format!(
+        r#"[{{"role": "assistant", "content": "<think>\nI need the facts.\n</think>\n\n", "tool_calls": {CALLS_NATIVE}}}, {RESULTS}, {{"role": "assistant", "content": "<think>\nCombine them.\n</think>\n\nHigh tide is at 6; 2+2 is 4."}}]"#
+    );
+    let o: PrefExportOptions = serde_json::from_value(json!({"format": "dpo", "reasoning": "think_tags"})).unwrap();
+    let dpo = pref_records_with_tools(&o, &tool_sample(), &r, &prompt(), &json!({}), pair);
+    assert_eq!(
+        crate::pyjson::to_string(&dpo[0]),
+        format!(
+            r#"{{"prompt": {PROMPT_MSGS}, "chosen": {chosen}, "rejected": [{{"role": "assistant", "content": "No tools needed: 4."}}], "tools": {TOOLS_JSON}}}"#
+        )
+    );
+    let o: PrefExportOptions = serde_json::from_value(json!({"format": "kto", "reasoning": "think_tags"})).unwrap();
+    let kto = pref_records_with_tools(&o, &tool_sample(), &r, &prompt(), &json!({}), pair);
+    assert_eq!(
+        crate::pyjson::to_string(&kto[0]),
+        format!(r#"{{"prompt": {PROMPT_MSGS}, "completion": {chosen}, "label": true, "tools": {TOOLS_JSON}}}"#)
+    );
+    // Each KTO record carries its own run's tools.
+    assert_eq!(kto[1]["tools"].as_array().unwrap().len(), 1);
+    assert_eq!(kto[1]["label"], false);
+    // DPO tools: both runs' definitions, each name once.
+    let other = vec![json!({"type": "function", "function": {"name": "search", "parameters": {}}}), defs[0].clone()];
+    let merged = merge_definitions(&defs, &other);
+    let names: Vec<&str> = merged.iter().map(|d| d["function"]["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["lookup", "add", "search"]);
+    // Parquet: tools as JSON text.
+    let o: PrefExportOptions = serde_json::from_value(json!({"format": "dpo", "file_type": "parquet"})).unwrap();
+    assert!(pref_records_with_tools(&o, &tool_sample(), &r, &prompt(), &json!({}), pair)[0]["tools"].is_string());
 }

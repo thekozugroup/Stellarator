@@ -62,20 +62,26 @@ fn card(title: &str, split: &str, lines: &[String]) -> String {
     s
 }
 
+/// "Tools: lookup, add (MCP servers: docs)" for a run with tools.
+pub fn tools_line(run: &RunInfo) -> Option<String> {
+    let t = run.tools.as_ref()?;
+    let names: Vec<String> = t.servers.iter().flat_map(|s| s.tools.iter().map(|x| x.name.clone())).collect();
+    let servers: Vec<&str> = t.servers.iter().map(|s| s.name.as_str()).collect();
+    Some(format!("Tools: {} (MCP servers: {})", names.join(", "), servers.join(", ")))
+}
+
 pub fn run_card(run: &RunInfo, prompt_set_name: &str, count: i64, o: &ExportOptions, split: &str) -> String {
-    card(
-        &run.name,
-        split,
-        &[
-            format!("Model: {}", run.model),
-            format!("Endpoint: {}", run.endpoint_name),
-            format!("Prompt set: {prompt_set_name}"),
-            format!("Records: {count}"),
-            format!("Format: {} (reasoning: {})", sft_name(o.format), placement_name(o.reasoning)),
-            format!("Generation parameters: {}", param_line(&run.params)),
-            "Generated with Stellarator.".into(),
-        ],
-    )
+    let mut lines = vec![
+        format!("Model: {}", run.model),
+        format!("Endpoint: {}", run.endpoint_name),
+        format!("Prompt set: {prompt_set_name}"),
+        format!("Records: {count}"),
+        format!("Format: {} (reasoning: {})", sft_name(o.format), placement_name(o.reasoning)),
+        format!("Generation parameters: {}", param_line(&run.params)),
+    ];
+    lines.extend(tools_line(run));
+    lines.push("Generated with Stellarator.".into());
+    card(&run.name, split, &lines)
 }
 
 pub fn pref_card(

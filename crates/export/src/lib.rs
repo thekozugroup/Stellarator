@@ -28,7 +28,7 @@ use stellarator_core::schemas::{
 use stellarator_core::{settings, ApiError, ApiJson, ApiQuery, Ctx};
 
 use crate::files::TempFile;
-use crate::records::{filename_for, pref_name, sft_name, RunInfo};
+use crate::records::{filename_for, pref_name, sft_name, tools_refusal, RunInfo, PREF_TOOLS_REFUSAL};
 use crate::source::Source;
 
 pub fn router(ctx: Ctx) -> Router {
@@ -52,6 +52,7 @@ struct RunRow {
     model: String,
     prompt_set_id: i64,
     params: SqlJson<Value>,
+    tools: Option<SqlJson<Value>>,
 }
 
 impl From<RunRow> for RunInfo {
@@ -63,11 +64,29 @@ impl From<RunRow> for RunInfo {
             model: r.model,
             prompt_set_id: r.prompt_set_id,
             params: r.params.0,
+            tools: r.tools.and_then(|t| serde_json::from_value(t.0).ok()),
         }
     }
 }
 
-const RUN_COLS: &str = "id, name, endpoint_name, model, prompt_set_id, params";
+const RUN_COLS: &str = "id, name, endpoint_name, model, prompt_set_id, params, tools";
+
+/// 422 when the format cannot hold the run's tool calls.
+fn check_tools(run: &RunInfo, options: &ExportOptions) -> Result<(), ApiError> {
+    match (&run.tools, tools_refusal(options.format)) {
+        (Some(_), Some(why)) => Err(ApiError::field("format", why)),
+        _ => Ok(()),
+    }
+}
+
+/// 422 for text preference records of a set with tool runs; else whether the set has tools.
+async fn check_pref_tools(db: &SqlitePool, set_id: i64, options: &PrefExportOptions) -> Result<bool, ApiError> {
+    let tools = source::pref_has_tools(db, set_id).await?;
+    if tools && !options.conversational {
+        return Err(ApiError::field("conversational", PREF_TOOLS_REFUSAL));
+    }
+    Ok(tools)
+}
 
 async fn load_run(db: &SqlitePool, id: i64) -> Result<RunInfo, ApiError> {
     let row: Option<RunRow> =
@@ -165,6 +184,7 @@ async fn preview_run(
     ApiJson(options): ApiJson<ExportOptions>,
 ) -> Result<Json<ExportPreviewOut>, ApiError> {
     let run = load_run(&ctx.db, id).await?;
+    check_tools(&run, &options)?;
     let (count, skipped) = source::sft_counts(&ctx.db, run.id, &options).await?;
     let filename = filename_for(&run.name, sft_name(options.format), files::extension(options.file_type));
     let example = first_record(&ctx.db, Source::Sft { run: Arc::new(run), options }).await?;
@@ -182,8 +202,9 @@ async fn download_run(
     ApiQuery(options): ApiQuery<ExportOptions>,
 ) -> Result<Response, ApiError> {
     let run = load_run(&ctx.db, id).await?;
+    check_tools(&run, &options)?;
     let filename = filename_for(&run.name, sft_name(options.format), files::extension(options.file_type));
-    let schema = schema::sft_schema(&options);
+    let schema = schema::sft_schema_for(&options, run.tools.is_some());
     let file_type = options.file_type;
     let rx = source::spawn(ctx.db.clone(), Source::Sft { run: Arc::new(run), options }, source::BATCH);
     download(&ctx, file_type, schema, rx, filename).await
@@ -197,10 +218,11 @@ async fn push_run(
     let run = load_run(&ctx.db, id).await?;
     let token = settings::hf_token(&ctx).await.ok_or_else(|| ApiError::bad_request(hub::HF_TOKEN_MISSING))?;
     let options = body.options;
+    check_tools(&run, &options)?;
     let (count, _) = source::sft_counts(&ctx.db, run.id, &options).await?;
     let set_name = prompt_set_name(&ctx.db, run.prompt_set_id).await?;
     let card = hub::run_card(&run, &set_name, count, &options, &body.target.split);
-    let schema = schema::sft_schema(&options);
+    let schema = schema::sft_schema_for(&options, run.tools.is_some());
     let rx = source::spawn(ctx.db.clone(), Source::Sft { run: Arc::new(run), options }, source::BATCH);
     push_to_hub(&ctx, &token, &body.target, schema, rx, count, card).await.map(Json)
 }
@@ -213,6 +235,7 @@ async fn preview_pref(
     ApiJson(options): ApiJson<PrefExportOptions>,
 ) -> Result<Json<ExportPreviewOut>, ApiError> {
     let ps = load_pset(&ctx.db, id).await?;
+    check_pref_tools(&ctx.db, ps.id, &options).await?;
     let count = source::pref_count(&ctx.db, ps.id, &options).await?;
     let filename = filename_for(&ps.name, pref_name(options.format), files::extension(options.file_type));
     let example = first_record(&ctx.db, Source::Pref { set_id: ps.id, options }).await?;
@@ -225,8 +248,9 @@ async fn download_pref(
     ApiQuery(options): ApiQuery<PrefExportOptions>,
 ) -> Result<Response, ApiError> {
     let ps = load_pset(&ctx.db, id).await?;
+    let tools = check_pref_tools(&ctx.db, ps.id, &options).await?;
     let filename = filename_for(&ps.name, pref_name(options.format), files::extension(options.file_type));
-    let schema = schema::pref_schema(&options);
+    let schema = schema::pref_schema_for(&options, tools);
     let file_type = options.file_type;
     let rx = source::spawn(ctx.db.clone(), Source::Pref { set_id: ps.id, options }, source::BATCH);
     download(&ctx, file_type, schema, rx, filename).await
@@ -240,6 +264,7 @@ async fn push_pref(
     let ps = load_pset(&ctx.db, id).await?;
     let token = settings::hf_token(&ctx).await.ok_or_else(|| ApiError::bad_request(hub::HF_TOKEN_MISSING))?;
     let options = body.options;
+    let tools = check_pref_tools(&ctx.db, ps.id, &options).await?;
     let count = source::pref_count(&ctx.db, ps.id, &options).await?;
     let set_name = prompt_set_name(&ctx.db, ps.prompt_set_id).await?;
     let mut runs = Vec::new();
@@ -254,7 +279,7 @@ async fn push_pref(
         runs.extend(row.map(RunInfo::from));
     }
     let card = hub::pref_card(&ps.name, &set_name, &runs, count, &options, &body.target.split);
-    let schema = schema::pref_schema(&options);
+    let schema = schema::pref_schema_for(&options, tools);
     let rx = source::spawn(ctx.db.clone(), Source::Pref { set_id: ps.id, options }, source::BATCH);
     push_to_hub(&ctx, &token, &body.target, schema, rx, count, card).await.map(Json)
 }

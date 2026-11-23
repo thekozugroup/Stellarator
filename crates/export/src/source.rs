@@ -12,7 +12,7 @@ use sqlx::{FromRow, SqlitePool};
 use stellarator_core::schemas::{ExportOptions, PrefExportOptions, PrefFormat};
 use tokio::sync::mpsc;
 
-use crate::records::{pref_records, sft_record, RunInfo, SampleRec};
+use crate::records::{pref_records_with_tools, sft_record, PairTools, RunInfo, SampleRec};
 
 pub const BATCH: i64 = 500;
 
@@ -58,9 +58,14 @@ impl SftConditions {
     pub fn new(o: &ExportOptions) -> Self {
         Self {
             done: "status = 'done'".into(),
-            empty: format!("({} AND {})", blank("response"), blank("reasoning")),
+            // A sample that called tools is never empty: its trace holds the turns.
+            empty: format!("({} AND {} AND tool_calls = 0)", blank("response"), blank("reasoning")),
             extra: if o.first_sample_only { "sample_idx > 0".into() } else { "0".into() },
-            trunc: if o.exclude_truncated { "coalesce(finish_reason, '') = 'length'".into() } else { "0".into() },
+            trunc: if o.exclude_truncated {
+                "coalesce(finish_reason, '') IN ('length', 'tool_rounds')".into()
+            } else {
+                "0".into()
+            },
             noreas: if o.require_reasoning { blank("reasoning") } else { "0".into() },
         }
     }
@@ -126,8 +131,14 @@ struct SftRow {
     latency_ms: Option<i64>,
     ttft_ms: Option<i64>,
     completed_at: Option<NaiveDateTime>,
+    trace: Option<String>,
+    tool_calls: i64,
     messages: Json<Value>,
     meta: Json<Value>,
+}
+
+fn parse_trace(trace: Option<&str>) -> Option<Vec<stellarator_core::schemas::TraceMessage>> {
+    trace.and_then(|t| serde_json::from_str(t).ok())
 }
 
 impl SftRow {
@@ -147,6 +158,8 @@ impl SftRow {
             latency_ms: self.latency_ms,
             ttft_ms: self.ttft_ms,
             completed_at: self.completed_at,
+            trace: parse_trace(self.trace.as_deref()),
+            tool_calls: self.tool_calls,
         }
     }
 }
@@ -163,7 +176,7 @@ async fn sft_loop(
     let sql = format!(
         "SELECT s.id, s.run_id, s.prompt_id, s.prompt_idx, s.sample_idx, s.reasoning, s.response, \
          s.finish_reason, s.prompt_tokens, s.completion_tokens, s.reasoning_tokens, s.latency_ms, \
-         s.ttft_ms, s.completed_at, p.messages, p.meta \
+         s.ttft_ms, s.completed_at, s.trace, s.tool_calls, p.messages, p.meta \
          FROM samples s JOIN prompts p ON p.id = s.prompt_id \
          WHERE s.run_id = ?1 AND {keep} AND (s.prompt_id, s.sample_idx) > (?2, ?3) \
          ORDER BY s.prompt_id, s.sample_idx LIMIT ?4"
@@ -217,6 +230,20 @@ struct PrefSampleRow {
     sample_idx: i64,
     reasoning: Option<String>,
     response: Option<String>,
+    trace: Option<String>,
+    tool_calls: i64,
+}
+
+/// True when any run of the set has tools.
+pub async fn pref_has_tools(db: &SqlitePool, set_id: i64) -> Result<bool, sqlx::Error> {
+    let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM runs r, preference_sets ps, json_each(ps.run_ids) j \
+         WHERE ps.id = ? AND r.id = j.value AND r.tools IS NOT NULL",
+    )
+    .bind(set_id)
+    .fetch_one(db)
+    .await?;
+    Ok(n > 0)
 }
 
 async fn pref_loop(
@@ -228,6 +255,8 @@ async fn pref_loop(
 ) -> anyhow::Result<()> {
     let mut cursor = i64::MIN;
     let mut run_params: HashMap<i64, Value> = HashMap::new();
+    let mut run_tools: HashMap<i64, Vec<Value>> = HashMap::new();
+    let set_has_tools = pref_has_tools(db, set_id).await?;
     loop {
         let pairs: Vec<PairRow> = sqlx::query_as(
             "SELECT pp.chosen_sample_id, pp.rejected_sample_id, pp.prompt_id, p.messages \
@@ -247,7 +276,8 @@ async fn pref_loop(
         ids.dedup();
         let marks = vec!["?"; ids.len()].join(",");
         let sql = format!(
-            "SELECT id, run_id, prompt_id, prompt_idx, sample_idx, reasoning, response FROM samples WHERE id IN ({marks})"
+            "SELECT id, run_id, prompt_id, prompt_idx, sample_idx, reasoning, response, trace, tool_calls FROM samples \
+             WHERE id IN ({marks})"
         );
         let mut q = sqlx::query_as::<_, PrefSampleRow>(&sql);
         for id in &ids {
@@ -268,6 +298,8 @@ async fn pref_loop(
                         sample_idx: r.sample_idx,
                         reasoning: r.reasoning,
                         response: r.response,
+                        trace: parse_trace(r.trace.as_deref()),
+                        tool_calls: r.tool_calls,
                         ..Default::default()
                     },
                 )
@@ -282,9 +314,18 @@ async fn pref_loop(
             m
         };
         for rid in missing {
-            let p: Option<Json<Value>> =
-                sqlx::query_scalar("SELECT params FROM runs WHERE id = ?").bind(rid).fetch_optional(db).await?;
-            run_params.insert(rid, p.map(|j| j.0).unwrap_or(Value::Null));
+            let row: Option<(Json<Value>, Option<Json<Value>>)> =
+                sqlx::query_as("SELECT params, tools FROM runs WHERE id = ?").bind(rid).fetch_optional(db).await?;
+            let (params, tools) = match row {
+                Some((p, t)) => (p.0, t.map(|t| t.0)),
+                None => (Value::Null, None),
+            };
+            let defs = tools
+                .and_then(|t| serde_json::from_value::<stellarator_core::schemas::ToolSnapshot>(t).ok())
+                .map(|t| t.definitions)
+                .unwrap_or_default();
+            run_params.insert(rid, params);
+            run_tools.insert(rid, defs);
         }
 
         let mut records = Vec::new();
@@ -294,7 +335,12 @@ async fn pref_loop(
                 continue;
             };
             let params = run_params.get(&c.run_id).cloned().unwrap_or(Value::Null);
-            records.extend(pref_records(options, c, r, &pair.messages.0, &params));
+            let empty = Vec::new();
+            let tools = set_has_tools.then(|| PairTools {
+                chosen: run_tools.get(&c.run_id).unwrap_or(&empty),
+                rejected: run_tools.get(&r.run_id).unwrap_or(&empty),
+            });
+            records.extend(pref_records_with_tools(options, c, r, &pair.messages.0, &params, tools));
         }
         let n = pairs.len() as i64;
         if tx.send(Ok(records)).await.is_err() {

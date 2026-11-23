@@ -153,6 +153,7 @@ async fn small_batches_give_the_same_records() {
         model: "m".into(),
         prompt_set_id: s.ps,
         params: json!({}),
+        tools: None,
     };
     let options = serde_json::from_value(json!({})).unwrap();
     let mut all = vec![];
@@ -233,6 +234,7 @@ fn many(o: &Value) -> Vec<Value> {
         model: "qwen3-32b".into(),
         prompt_set_id: 1,
         params: json!({"temperature": 0.7, "stop": ["a", "b"]}),
+        tools: None,
     };
     let prompt = json!([{"role": "system", "content": "Be brief."}, {"role": "user", "content": "What is 2+2? é"}]);
     [(Some("why\nbecause \"quotes\", commas"), "line1\nline2 é"), (None, "x")]
@@ -380,4 +382,93 @@ async fn empty_parquet_is_valid() {
     let data = std::fs::read(&path).unwrap();
     assert_eq!(&data[..4], b"PAR1");
     assert_eq!(parquet_rows(&data), 0);
+}
+
+/// A run with tools and a sample with two parallel calls, for the Parquet round trips.
+fn tool_fixture() -> (stellarator_export::records::RunInfo, stellarator_export::records::SampleRec) {
+    use stellarator_core::schemas::{ToolSnapshot, TraceMessage};
+    use stellarator_export::records::{RunInfo, SampleRec};
+    let defs = vec![json!({"type": "function", "function": {"name": "lookup", "description": "Look up.",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}})];
+    let run = RunInfo {
+        id: 7,
+        name: "r".into(),
+        endpoint_name: "spark".into(),
+        model: "m".into(),
+        prompt_set_id: 1,
+        params: json!({}),
+        tools: Some(ToolSnapshot { servers: vec![], definitions: defs }),
+    };
+    let trace: Vec<TraceMessage> = serde_json::from_value(json!([
+        {"role": "assistant", "reasoning": "why", "content": "", "finish_reason": "tool_calls", "prompt_tokens": 3,
+         "completion_tokens": 2, "reasoning_tokens": 1, "latency_ms": 9,
+         "tool_calls": [{"id": "c1", "name": "lookup", "arguments": "{\"query\": \"a\"}"},
+                        {"id": "c2", "name": "lookup", "arguments": "{\"query\": \"b\", \"n\": 2}"}]},
+        {"role": "tool", "tool_call_id": "c1", "name": "lookup", "server": "docs", "content": "A.", "is_error": false, "truncated": false, "latency_ms": 1},
+        {"role": "tool", "tool_call_id": "c2", "name": "lookup", "server": "docs", "content": "B.", "is_error": true, "truncated": false, "latency_ms": 1},
+        {"role": "assistant", "reasoning": null, "content": "A and B.", "tool_calls": [], "finish_reason": "stop",
+         "prompt_tokens": 9, "completion_tokens": 3, "reasoning_tokens": null, "latency_ms": 9}
+    ]))
+    .unwrap();
+    let sample = SampleRec {
+        id: 1,
+        run_id: 7,
+        prompt_id: 1,
+        response: Some("A and B.".into()),
+        finish_reason: Some("stop".into()),
+        trace: Some(trace),
+        tool_calls: 2,
+        ..Default::default()
+    };
+    (run, sample)
+}
+
+#[tokio::test]
+async fn parquet_round_trip_with_tools() {
+    use stellarator_export::records::sft_record;
+    use stellarator_export::{files, schema};
+    let (run, sample) = tool_fixture();
+    let prompt = json!([{"role": "system", "content": "Be brief."}, {"role": "user", "content": "q é"}]);
+    let dir = tempfile::tempdir().unwrap();
+    for fmt in ["messages", "sharegpt", "raw"] {
+        for placement in ["think_tags", "reasoning_content", "thinking", "omit"] {
+            let options = serde_json::from_value(json!({"format": fmt, "reasoning": placement, "file_type": "parquet"})).unwrap();
+            let recs = vec![sft_record(&options, &run, &sample, &prompt, None)];
+            let path = dir.path().join("t.parquet");
+            files::write_parquet(&path, schema::sft_schema_for(&options, true), channel(recs.clone())).await.unwrap();
+            let mut back = read_parquet(&std::fs::read(&path).unwrap());
+            if fmt == "raw" {
+                for k in ["params", "meta", "trace", "tools"] {
+                    let t = back[0][k].as_str().unwrap().to_string();
+                    back[0][k] = serde_json::from_str(&t).unwrap();
+                }
+            }
+            let want: Vec<Value> = recs.iter().map(strip_none).collect();
+            assert_eq!(back.iter().map(strip_none).collect::<Vec<_>>(), want, "{fmt} {placement}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn pref_parquet_round_trip_with_tools() {
+    use stellarator_export::records::{pref_records_with_tools, PairTools};
+    use stellarator_export::{files, schema};
+    let (run, chosen) = tool_fixture();
+    let mut rejected = chosen.clone();
+    rejected.id = 2;
+    rejected.trace = None;
+    let defs = run.tools.clone().unwrap().definitions;
+    let prompt = json!([{"role": "user", "content": "q"}]);
+    let dir = tempfile::tempdir().unwrap();
+    for fmt in ["dpo", "kto"] {
+        let o = json!({"format": fmt, "reasoning": "reasoning_content", "file_type": "parquet"});
+        let options = serde_json::from_value(o).unwrap();
+        let pair = Some(PairTools { chosen: &defs, rejected: &defs });
+        let recs = pref_records_with_tools(&options, &chosen, &rejected, &prompt, &json!({}), pair);
+        let path = dir.path().join("p.parquet");
+        files::write_parquet(&path, schema::pref_schema_for(&options, true), channel(recs.clone())).await.unwrap();
+        let back = read_parquet(&std::fs::read(&path).unwrap());
+        let want: Vec<Value> = recs.iter().map(strip_none).collect();
+        assert_eq!(back.iter().map(strip_none).collect::<Vec<_>>(), want, "{fmt}");
+    }
 }

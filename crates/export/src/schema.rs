@@ -1,4 +1,6 @@
-//! Arrow schemas for the Parquet and CSV columns of each export format.
+//! Arrow schemas for the Parquet and CSV columns of each export format. Runs with tools add the
+//! message fields of tool calls and results, and a `tools` column (JSON text: tool schemas differ
+//! from tool to tool, and a Parquet column has one type).
 
 use std::sync::Arc;
 
@@ -15,6 +17,12 @@ fn i() -> DataType {
 }
 fn f(name: &str, t: DataType) -> Field {
     Field::new(name, t, true)
+}
+/// A JSON text column marked with Arrow's canonical `arrow.json` extension type: Hugging Face
+/// `datasets` 4.7 and later read it as JSON objects (its `Json()` feature), older readers as text.
+fn json_text(name: &str) -> Field {
+    let meta = [("ARROW:extension:name".to_string(), "arrow.json".to_string())];
+    Field::new(name, DataType::Utf8, true).with_metadata(meta.into_iter().collect())
 }
 fn list(t: DataType) -> DataType {
     DataType::List(Arc::new(Field::new("item", t, true)))
@@ -33,10 +41,46 @@ fn msg_type(extra: Option<&str>) -> DataType {
     structure(fields)
 }
 
+/// A chat message that may carry tool calls (assistant) or be a tool result (`tool_call_id`,
+/// `name`). Tool arguments are JSON text.
+fn tool_msg_type(extra: Option<&str>) -> DataType {
+    let function = structure(vec![f("name", s()), json_text("arguments")]);
+    let call = structure(vec![f("id", s()), f("type", s()), f("function", function)]);
+    let mut fields = vec![f("role", s()), f("content", s())];
+    if let Some(e) = extra {
+        fields.push(f(e, s()));
+    }
+    fields.extend([f("tool_calls", list(call)), f("tool_call_id", s()), f("name", s())]);
+    structure(fields)
+}
+
 pub fn sft_schema(o: &ExportOptions) -> Arc<Schema> {
+    sft_schema_for(o, false)
+}
+
+/// The columns of an SFT export; `tools`: the run has tools.
+pub fn sft_schema_for(o: &ExportOptions, tools: bool) -> Arc<Schema> {
     let extra = outside_key(o.reasoning);
     let outside = extra.is_some();
-    let fields = match o.format {
+    if tools {
+        match o.format {
+            SftFormat::Messages => {
+                return Arc::new(Schema::new(vec![f("messages", list(tool_msg_type(extra))), json_text("tools")]))
+            }
+            SftFormat::Sharegpt => {
+                let mut v = vec![
+                    f("conversations", list(structure(vec![f("from", s()), f("value", s())]))),
+                    f("tools", s()),
+                ];
+                if outside {
+                    v.push(f("reasoning", s()));
+                }
+                return Arc::new(Schema::new(v));
+            }
+            _ => {}
+        }
+    }
+    let mut fields = match o.format {
         SftFormat::Messages => vec![f("messages", list(msg_type(extra)))],
         SftFormat::PromptCompletion => {
             vec![f("prompt", list(msg_type(extra))), f("completion", list(msg_type(extra)))]
@@ -85,12 +129,40 @@ pub fn sft_schema(o: &ExportOptions) -> Arc<Schema> {
             f("created_at", s()),
         ],
     };
+    if tools && o.format == SftFormat::Raw {
+        // JSON-encoded in Parquet and CSV, like params and meta.
+        fields.extend([f("tool_calls", i()), json_text("trace"), json_text("tools")]);
+    }
     Arc::new(Schema::new(fields))
 }
 
 pub fn pref_schema(o: &PrefExportOptions) -> Arc<Schema> {
+    pref_schema_for(o, false)
+}
+
+/// The columns of a preference export; `tools`: the set has runs with tools (conversational only).
+pub fn pref_schema_for(o: &PrefExportOptions, tools: bool) -> Arc<Schema> {
     let outside = outside_key(o.reasoning).is_some();
     let dpo = o.format == PrefFormat::Dpo;
+    if tools && o.conversational {
+        let msgs = list(tool_msg_type(outside_key(o.reasoning)));
+        let fields = if dpo {
+            vec![
+                f("prompt", list(msg_type(outside_key(o.reasoning)))),
+                f("chosen", msgs.clone()),
+                f("rejected", msgs),
+                json_text("tools"),
+            ]
+        } else {
+            vec![
+                f("prompt", list(msg_type(outside_key(o.reasoning)))),
+                f("completion", msgs),
+                f("label", DataType::Boolean),
+                json_text("tools"),
+            ]
+        };
+        return Arc::new(Schema::new(fields));
+    }
     let fields = if o.conversational {
         let msgs = list(msg_type(outside_key(o.reasoning)));
         if dpo {

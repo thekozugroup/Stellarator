@@ -1,9 +1,25 @@
 //! Record builders: one exported record per sample (SFT) or per preference pair (DPO/KTO).
 //! A port of `backend/stellarator/services/exporters.py`; key order and text match it exactly.
+//!
+//! Runs with tools (a `RunInfo.tools` snapshot) export each sample's whole trace:
+//! - messages: the assistant turns with OpenAI `tool_calls`, a `tool` message per result, the final
+//!   answer, and a top-level `tools` list (what TRL's SFTTrainer and Hugging Face chat templates
+//!   take). The reasoning placement applies to every assistant turn.
+//! - ShareGPT: LLaMA-Factory's `function_call` and `observation` turns, `tools` as a JSON string.
+//! - raw: the stored trace, the tool count and the definitions.
+//! - DPO and KTO (conversational): chosen, rejected and completion are trajectories, plus `tools`.
+//! - Alpaca, prompt-completion and text preference records cannot hold tool calls: the routes refuse
+//!   them for runs with tools ([`tools_refusal`]).
+//!
+//! JSON and JSONL keep tool arguments and the `tools` list as JSON objects. Parquet columns need one
+//! type per field, so there the arguments and `tools` are JSON text (see [`Shape`]).
 
 use chrono::{NaiveDateTime, Timelike};
 use serde_json::{json, Map, Value};
-use stellarator_core::schemas::{ExportOptions, PrefExportOptions, PrefFormat, ReasoningPlacement, SftFormat};
+use stellarator_core::schemas::{
+    ExportOptions, FileType, PrefExportOptions, PrefFormat, ReasoningPlacement, SftFormat, ToolCall, ToolSnapshot,
+    TraceMessage,
+};
 
 /// The run fields a record needs.
 #[derive(Debug, Clone)]
@@ -14,6 +30,8 @@ pub struct RunInfo {
     pub model: String,
     pub prompt_set_id: i64,
     pub params: Value,
+    /// The tools the run sent (None: a run without tools).
+    pub tools: Option<ToolSnapshot>,
 }
 
 /// The sample columns a record needs.
@@ -33,6 +51,9 @@ pub struct SampleRec {
     pub latency_ms: Option<i64>,
     pub ttft_ms: Option<i64>,
     pub completed_at: Option<NaiveDateTime>,
+    /// The messages after the prompt (runs with tools).
+    pub trace: Option<Vec<TraceMessage>>,
+    pub tool_calls: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -205,6 +226,169 @@ pub fn iso(t: Option<NaiveDateTime>) -> Value {
     }
 }
 
+// ------------------------------------------------------------------------------ tools
+
+/// How arbitrary JSON (tool arguments, tool definitions) is written: as JSON values (JSON, JSONL,
+/// CSV, where cells are JSON text anyway) or as JSON text (Parquet, whose columns have one type).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Native,
+    Text,
+}
+
+impl Shape {
+    pub fn of(file_type: FileType) -> Shape {
+        if file_type == FileType::Parquet {
+            Shape::Text
+        } else {
+            Shape::Native
+        }
+    }
+}
+
+/// Why a format cannot export a run with tools, or None when it can.
+pub fn tools_refusal(format: SftFormat) -> Option<&'static str> {
+    match format {
+        SftFormat::Alpaca => Some(
+            "Alpaca records have no place for tool calls and tool results. For a run with tools, export Chat \
+             messages (TRL, Axolotl) or ShareGPT (LLaMA-Factory).",
+        ),
+        SftFormat::PromptCompletion => Some(
+            "Prompt-completion records would put the tool results in the completion, where a trainer learns to \
+             write them. For a run with tools, export Chat messages (TRL, Axolotl) or ShareGPT (LLaMA-Factory).",
+        ),
+        _ => None,
+    }
+}
+
+/// Why text (non-conversational) preference records cannot hold a set with tool runs.
+pub const PREF_TOOLS_REFUSAL: &str = "Text preference records cannot hold tool calls and tool results. This set has \
+     runs with tools: export conversational records.";
+
+/// The arguments as a JSON object when they parse as one (what chat templates take), else the
+/// text the model wrote. Empty arguments are `{}`. In Parquet, that value as JSON text (always
+/// valid JSON: its column is marked as JSON, see `schema::json_text`).
+fn arguments_value(raw: &str, shape: Shape) -> Value {
+    let native = if raw.trim().is_empty() {
+        json!({})
+    } else {
+        match serde_json::from_str::<Value>(raw) {
+            Ok(v @ Value::Object(_)) => v,
+            _ => Value::String(raw.to_string()),
+        }
+    };
+    match shape {
+        Shape::Native => native,
+        Shape::Text => Value::String(crate::pyjson::to_string(&native)),
+    }
+}
+
+fn tool_call_value(c: &ToolCall, shape: Shape) -> Value {
+    json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": arguments_value(&c.arguments, shape)}})
+}
+
+/// The messages after the prompt: each assistant turn (reasoning placed, `tool_calls` when it made
+/// calls) and each tool result.
+pub fn trace_messages(trace: &[TraceMessage], placement: ReasoningPlacement, shape: Shape) -> Vec<Value> {
+    trace
+        .iter()
+        .map(|m| match m {
+            TraceMessage::Assistant(a) => {
+                let mut v = assistant_message(&a.reasoning, &Some(a.content.clone()), placement);
+                if !a.tool_calls.is_empty() {
+                    if let Value::Object(o) = &mut v {
+                        let calls = a.tool_calls.iter().map(|c| tool_call_value(c, shape)).collect();
+                        o.insert("tool_calls".into(), Value::Array(calls));
+                    }
+                }
+                v
+            }
+            TraceMessage::Tool(t) => {
+                json!({"role": "tool", "tool_call_id": t.tool_call_id, "name": t.name, "content": t.content})
+            }
+        })
+        .collect()
+}
+
+/// A sample's completion as messages: its trace, or the one final answer.
+pub fn completion_messages(sample: &SampleRec, placement: ReasoningPlacement, shape: Shape) -> Vec<Value> {
+    match &sample.trace {
+        Some(t) if !t.is_empty() => trace_messages(t, placement, shape),
+        _ => vec![assistant_message(&sample.reasoning, &sample.response, placement)],
+    }
+}
+
+/// The `tools` column: the definitions, as a list or as JSON text.
+pub fn tools_value(definitions: &[Value], shape: Shape) -> Value {
+    match shape {
+        Shape::Native => Value::Array(definitions.to_vec()),
+        Shape::Text => Value::String(crate::pyjson::to_string(&Value::Array(definitions.to_vec()))),
+    }
+}
+
+/// Definitions of two runs together, each name once (the first run's wins).
+pub fn merge_definitions(a: &[Value], b: &[Value]) -> Vec<Value> {
+    let name = |d: &Value| d.pointer("/function/name").and_then(Value::as_str).unwrap_or("").to_string();
+    let mut out: Vec<Value> = a.to_vec();
+    for d in b {
+        if !out.iter().any(|x| name(x) == name(d)) {
+            out.push(d.clone());
+        }
+    }
+    out
+}
+
+/// LLaMA-Factory's tool list: `[{"name", "description", "parameters"}]` as JSON text.
+fn llama_factory_tools(definitions: &[Value]) -> String {
+    let list: Vec<Value> = definitions.iter().map(|d| d.get("function").cloned().unwrap_or(Value::Null)).collect();
+    crate::pyjson::to_string(&Value::Array(list))
+}
+
+/// ShareGPT turns for a trace, as LLaMA-Factory reads them: a `function_call` turn per assistant
+/// turn with calls (its value the call as JSON, `{"name", "arguments"}`, or a list for parallel
+/// calls, after the thinking in think tags), one `observation` turn with that turn's results
+/// (several joined with `</tool_response><tool_response>`, as LLaMA-Factory's own converter does),
+/// and `gpt` turns for answers. Text an assistant wrote next to its calls is left out: LLaMA-Factory
+/// reads a `function_call` value as JSON.
+fn sharegpt_trace(trace: &[TraceMessage], placement: ReasoningPlacement) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut results: Vec<String> = Vec::new();
+    let flush = |results: &mut Vec<String>, out: &mut Vec<Value>| {
+        if !results.is_empty() {
+            out.push(json!({"from": "observation", "value": results.join("\n</tool_response>\n<tool_response>\n")}));
+            results.clear();
+        }
+    };
+    for m in trace {
+        match m {
+            TraceMessage::Tool(t) => results.push(t.content.clone()),
+            TraceMessage::Assistant(a) => {
+                flush(&mut results, &mut out);
+                let thought = if placement == ReasoningPlacement::ThinkTags { think_wrap(nonblank(&a.reasoning), "") } else { String::new() };
+                if a.tool_calls.is_empty() {
+                    let (text, _) = assistant_text(&a.reasoning, &Some(a.content.clone()), placement);
+                    out.push(json!({"from": "gpt", "value": text}));
+                } else {
+                    let calls: Vec<Value> = a
+                        .tool_calls
+                        .iter()
+                        .map(|c| json!({"name": c.name, "arguments": arguments_value(&c.arguments, Shape::Native)}))
+                        .collect();
+                    let call = if calls.len() == 1 { calls[0].clone() } else { Value::Array(calls) };
+                    out.push(json!({"from": "function_call", "value": format!("{thought}{}", crate::pyjson::to_string(&call))}));
+                }
+            }
+        }
+    }
+    flush(&mut results, &mut out);
+    out
+}
+
+/// The last assistant turn's reasoning of a sample (the side field of text formats).
+fn final_reasoning(sample: &SampleRec) -> Option<String> {
+    sample.reasoning.clone()
+}
+
 // ------------------------------------------------------------------------------ SFT
 
 fn history_pairs(turns: &[&Msg]) -> Vec<Value> {
@@ -236,6 +420,34 @@ pub fn sft_record(
 ) -> Value {
     let prompt = render_prompt(prompt_messages, &run.params, options.include_system);
     let placement = options.reasoning;
+    let shape = Shape::of(options.file_type);
+    if let Some(tools) = &run.tools {
+        match options.format {
+            SftFormat::Messages => {
+                let mut msgs = match msgs_value(&prompt) {
+                    Value::Array(a) => a,
+                    _ => Vec::new(),
+                };
+                msgs.extend(completion_messages(sample, placement, shape));
+                return json!({"messages": msgs, "tools": tools_value(&tools.definitions, shape)});
+            }
+            SftFormat::Sharegpt => {
+                let mut conv = sharegpt_prompt(&prompt);
+                match &sample.trace {
+                    Some(t) if !t.is_empty() => conv.extend(sharegpt_trace(t, placement)),
+                    _ => conv.push(json!({"from": "gpt", "value": assistant_text(&sample.reasoning, &sample.response, placement).0})),
+                }
+                let mut rec = Map::new();
+                rec.insert("conversations".into(), Value::Array(conv));
+                rec.insert("tools".into(), Value::String(llama_factory_tools(&tools.definitions)));
+                if outside_key(placement).is_some() {
+                    rec.insert("reasoning".into(), final_reasoning(sample).filter(|r| !r.trim().is_empty()).map_or(Value::Null, Value::from));
+                }
+                return Value::Object(rec);
+            }
+            _ => {}
+        }
+    }
 
     match options.format {
         SftFormat::Raw => {
@@ -247,7 +459,7 @@ pub fn sft_record(
                 Value::Object(m) if !m.is_empty() => run.params.clone(),
                 _ => json!({}),
             };
-            json!({
+            let mut rec = json!({
                 "id": sample.id,
                 "run_id": sample.run_id,
                 "prompt_id": sample.prompt_id,
@@ -269,7 +481,16 @@ pub fn sft_record(
                 "params": params,
                 "meta": meta,
                 "created_at": iso(sample.completed_at),
-            })
+            });
+            if let (Some(tools), Value::Object(o)) = (&run.tools, &mut rec) {
+                o.insert("tool_calls".into(), sample.tool_calls.into());
+                o.insert(
+                    "trace".into(),
+                    serde_json::to_value(sample.trace.as_deref().unwrap_or(&[])).unwrap_or(Value::Null),
+                );
+                o.insert("tools".into(), Value::Array(tools.definitions.clone()));
+            }
+            rec
         }
         SftFormat::Messages => {
             let mut msgs = msgs_value(&prompt);
@@ -286,18 +507,7 @@ pub fn sft_record(
         }
         SftFormat::Sharegpt => {
             let (text, side) = assistant_text(&sample.reasoning, &sample.response, placement);
-            let mut conv: Vec<Value> = prompt
-                .iter()
-                .map(|m| {
-                    let from = match m.role.as_str() {
-                        "system" => "system",
-                        "user" => "human",
-                        "assistant" => "gpt",
-                        other => other,
-                    };
-                    json!({"from": from, "value": m.content})
-                })
-                .collect();
+            let mut conv = sharegpt_prompt(&prompt);
             conv.push(json!({"from": "gpt", "value": text}));
             let mut rec = Map::new();
             rec.insert("conversations".into(), Value::Array(conv));
@@ -332,6 +542,22 @@ pub fn sft_record(
     }
 }
 
+/// The prompt as ShareGPT turns.
+fn sharegpt_prompt(prompt: &[Msg]) -> Vec<Value> {
+    prompt
+        .iter()
+        .map(|m| {
+            let from = match m.role.as_str() {
+                "system" => "system",
+                "user" => "human",
+                "assistant" => "gpt",
+                other => other,
+            };
+            json!({"from": from, "value": m.content})
+        })
+        .collect()
+}
+
 // ------------------------------------------------------------------------------ preferences
 
 pub fn pref_records(
@@ -341,10 +567,47 @@ pub fn pref_records(
     prompt_messages: &Value,
     params: &Value,
 ) -> Vec<Value> {
+    pref_records_with_tools(options, chosen, rejected, prompt_messages, params, None)
+}
+
+/// The tools of a preference pair: whether the set has runs with tools (then every record gets a
+/// `tools` field), and the definitions of the chosen and the rejected sample's runs.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PairTools<'a> {
+    pub chosen: &'a [Value],
+    pub rejected: &'a [Value],
+}
+
+/// [`pref_records`] for a set with runs with tools: conversational records with trajectories and
+/// `tools` (DPO: both runs' definitions, each name once, the chosen run's first; KTO: each
+/// record's own run's).
+pub fn pref_records_with_tools(
+    options: &PrefExportOptions,
+    chosen: &SampleRec,
+    rejected: &SampleRec,
+    prompt_messages: &Value,
+    params: &Value,
+    tools: Option<PairTools<'_>>,
+) -> Vec<Value> {
     let prompt = render_prompt(prompt_messages, params, options.include_system);
     let placement = options.reasoning;
     let outside = outside_key(placement).is_some();
     let dpo = options.format == PrefFormat::Dpo;
+
+    if let (Some(t), true) = (tools, options.conversational) {
+        let shape = Shape::of(options.file_type);
+        let c = Value::Array(completion_messages(chosen, placement, shape));
+        let r = Value::Array(completion_messages(rejected, placement, shape));
+        let p = msgs_value(&prompt);
+        if dpo {
+            let defs = merge_definitions(t.chosen, t.rejected);
+            return vec![json!({"prompt": p, "chosen": c, "rejected": r, "tools": tools_value(&defs, shape)})];
+        }
+        return vec![
+            json!({"prompt": p.clone(), "completion": c, "label": true, "tools": tools_value(t.chosen, shape)}),
+            json!({"prompt": p, "completion": r, "label": false, "tools": tools_value(t.rejected, shape)}),
+        ];
+    }
 
     if options.conversational {
         let c = json!([assistant_message(&chosen.reasoning, &chosen.response, placement)]);
