@@ -65,7 +65,7 @@ It was removed in 0.4.0; it is in the repository at tag `v0.3.1`.
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
 | Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)`, `Column::share("Name", 1.1)` (a share of the free space) | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
-| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)` (`Xs` 320, `Sm` 384, `Md` 448, `Xl` 576, `FourXl` 896 px); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
+| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0).busy(f)` (`Xs` 320, `Sm` 384, `Md` 448, `Xl` 576, `FourXl` 896 px; while `busy` holds, Escape, the X and the scrim do nothing); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
 | Alert | `alert(open, \|\| Alert { .. }, busy_fn, error_fn, on_action)` | `ui/alert-dialog.tsx` |
 | Side sheet | `side_sheet(open, label, \|\| content)` (448 px), `side_sheet_width(open, label, 720.0, \|\| content)`; `sheet_header`, `sheet_close(open)` | `ui/sheet.tsx` (side right) |
 | Toasts | `toast_success(msg)`, `toast_error(msg)`, `toast_info(msg)`, `toast_error_with(msg, second_line)` (the shell holds the toaster) | `ui/sonner.tsx` |
@@ -132,8 +132,47 @@ reload();
 - `ApiError` has the server's `detail` as `message`, the HTTP `status`, and per-field messages in
   `fields` (show them under their fields).
 - `call` runs the request in a task owned by the open screen: a request started from a menu item
-  or a dialog is not cancelled when the popup closes. Do not use a bare `spawn` from a popup's
-  handler: it stops when the popup goes.
+  or a dialog is not cancelled when the popup closes. Do not use a bare `spawn` from a handler: it
+  stops when the popup goes, or at once when the handler's own write made its region again (below).
+- `done` runs as one batch, whenever the request ends while the screen is open. Follow the rules
+  in the next section for what it may write.
+
+## Handlers, requests and regions that go
+
+nsh runs a press (or change, submit, drop) handler under the owner of the region that made the
+control, and does not batch it: each signal it writes runs that signal's bindings before the
+handler goes on. When the handler writes a signal that the enclosing `dynamic` or `when` reads
+(Retry setting `Loading`, Next setting `page`, Clear pair changing the marks), the region is made
+again at once and the handler's owner is disposed under it (nsh-core `reactive.rs`, `dispose`: the
+current owner becomes `DISPOSED`). For the rest of the handler `use_context` finds nothing, a task
+or timer it starts (`spawn`, `set_timeout`, `request_animation_frame`) is cancelled at once, and
+the old region's signals panic when written ("written after its owner was disposed"; on the web
+the panic stops the app). A request's answer meets the same signals after a dialog closed. The
+rules, each checkable in review:
+
+1. Start every request with `data::call`. It runs the request under `data::screen_owner()`: the
+   screen from the context, else the open screen `own_calls` keeps, never a disposed owner. So
+   the order of the writes and the call in a handler does not matter. Start a request before
+   navigating away in the same handler, not after.
+2. A timer or task a handler starts that must outlive the pressed control runs under the owner of
+   the state it writes: `screen_owner().run(|| set_timeout(..))`, or an owner kept beside that
+   state (`SeqsChange` in `screens/run/seqs.rs` keeps the wait before a seqs change is sent).
+   Focus a field that a press shows from the region that makes the field (a
+   `request_animation_frame` there), not from the press.
+3. `done` runs as one batch, so a write that makes a region again (the screen's `load`) does not
+   dispose, halfway through `done`, the region's signals `done` writes next. It writes only
+   signals that outlive the request: made in the screen's body, or beside a dialog (next to its
+   `open`), not in its content or in a `dynamic`. Any other signal it writes with `try_set` or
+   `data::SignalExt::try_update`, and reads with `try_get`.
+4. A dialog that saves keeps its busy flag beside its `open` and passes it to `Dialog::busy`;
+   its Cancel is disabled with the same flag. It cannot close until the answer comes, so the
+   answer finds the form (its field errors) and a second save cannot start. Alerts take `busy`
+   already. A request whose answer may be dropped (Test connection) leaves Cancel free and writes
+   with `try_set`.
+5. A region reads only what decides its structure. A value that changes often (a running run's
+   counts, the text typed in a row) goes in a memo of the fields the region uses, or in a
+   binding inside it, so the region is not made again while the user works in it (an open "…"
+   menu, a focused field). Rows that come and go read their ids alone.
 
 ## Keyboard shortcuts
 
@@ -177,6 +216,8 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | No `position: sticky` | The toolbar and the action bar float over the page's scroll view; table headers scroll with the rows |
 | No number or date formatting by locale | `format.rs` keeps the grouping and decimal marks of the common languages and the system's hour cycle; words stay English |
 | A popup's tasks stop when it closes | `data::call` runs requests under the screen |
+| A handler is not batched: a write its region reads disposes the handler's owner while it runs | `data::screen_owner()` finds the open screen anyway; see "Handlers, requests and regions that go" |
+| Escape closes a `modal` natively (the default `close_on_escape`), whatever the app decides | `ui::overlay` sets `close_on_escape(false)`: Escape reports `on_cancel` and the dialog's or alert's `cancel` decides (a busy one stays) |
 | A menu's trigger must take the press itself | `menu_button` uses a button without a tooltip |
 | The Linux window has a minimum width of 900 px | Phone layouts are checked in the web build at 390 px |
 | On Linux, Escape in a focused text field only leaves the field | A second Escape (or the X, or the scrim) closes the dialog |
@@ -185,7 +226,7 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | `mask-image` is not drawn on Windows (nsh's note) | A clamped prompt's fade shows there as a plain cut |
 | No call to scroll a page to an element | Paging in a prompt set keeps the scroll position (the React UI scrolled to the list's top) |
 | A select's items are plain titles | A column select says "question · text" in one face (the React UI set the name in mono) |
-| A task started from a handler after a signal that rebuilds the pressed control is owned by the control, which is gone | Start the request with `data::call` first, then set the signals (Import's button) |
+| A task started from a handler after a signal that rebuilds the pressed control is owned by the control, which is gone | `data::call` runs it under the open screen whatever the order; timers go under `screen_owner()` |
 | Crossing 768 px rebuilds the shell | The open screen is made again (an open dialog closes); its scroll position is kept |
 | A screen's key bindings still fire while a dialog or menu of the same window is open | The screen checks its own dialogs' signals (and `menu_with_open`) before acting, as the preference review does |
 | `TextView`'s part styles are read once | `model_text_with` makes the text view again when its color changes (a response marked rejected) |
