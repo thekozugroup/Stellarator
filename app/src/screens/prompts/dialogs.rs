@@ -4,13 +4,15 @@
 
 use nsh_core::prelude::*;
 
-use crate::api::types::PromptSetOut as PromptSet;
+use crate::api::types::{PromptSetOut as PromptSet, PromptSetStatus};
 use crate::data::{Load, call};
 use crate::format::count;
 use crate::nav::{self, Destination};
 use crate::ui::button::{Variant, button};
 use crate::ui::field::{field, text_field};
-use crate::ui::overlay::{Alert, DialogWidth, alert, alert_with_cancel, dialog, dialog_footer, dialog_header, toast_success};
+use crate::ui::overlay::{
+    Alert, DialogWidth, alert, alert_with_cancel, dialog, dialog_footer, dialog_header, toast_info, toast_success,
+};
 
 /// Which dialogs are open.
 #[derive(Clone, Copy)]
@@ -23,20 +25,23 @@ pub struct Open {
 /// The three dialogs of the set `set` (read when one opens).
 pub fn dialogs(set: Signal<Load<PromptSet>>, open: Open) -> impl IntoElement {
     let current = move || set.with_untracked(|l| l.loaded().cloned());
+    // A rename on its way: the dialog stays open until its answer comes (beside `open`, so the
+    // answer finds it).
+    let renaming = signal(false);
     let rename = dialog(open.rename, "Rename prompt set", move || match current() {
-        Some(s) => rename_form(s, set, open.rename).into_element(),
+        Some(s) => rename_form(s, set, open.rename, renaming).into_element(),
         None => view().into_element(),
     })
-    .width(DialogWidth::Sm);
+    .width(DialogWidth::Sm)
+    .busy(move || renaming.get());
     view().child(rename).child(delete_alert(current, open.delete)).child(stop_alert(current, open.stop))
 }
 
-/// Rename: the name field with its error under it, Cancel and Save name.
-fn rename_form(prompt_set: PromptSet, set: Signal<Load<PromptSet>>, open: Signal<bool>) -> impl IntoElement {
+/// Rename: the name field with its error under it, Cancel and Save name. `busy` is the dialog's.
+fn rename_form(prompt_set: PromptSet, set: Signal<Load<PromptSet>>, open: Signal<bool>, busy: Signal<bool>) -> impl IntoElement {
     let id = prompt_set.id;
     let name = signal(prompt_set.name.clone());
     let error = signal(None::<String>);
-    let busy = signal(false);
     let name_ref = element_ref();
     let len = prompt_set.name.encode_utf16().count() as u32;
     // Opens with the name selected, as the web UI's field takes focus and selects.
@@ -68,7 +73,7 @@ fn rename_form(prompt_set: PromptSet, set: Signal<Load<PromptSet>>, open: Signal
                         open.set(false);
                     }
                     Err(e) => {
-                        error.set(Some(e.fields.get("name").cloned().unwrap_or(e.message)));
+                        error.try_set(Some(e.fields.get("name").cloned().unwrap_or(e.message)));
                         name_ref.focus();
                     }
                 }
@@ -161,7 +166,48 @@ fn delete_alert(current: impl Fn() -> Option<PromptSet> + Copy + 'static, open: 
     )
 }
 
-/// Stopping an import deletes the partial set.
+/// What Stop and delete found.
+enum Stopped {
+    /// The set was still importing: it is deleted.
+    Deleted,
+    /// The import ended while the alert was open: the set is kept.
+    Finished(PromptSet),
+}
+
+/// Stops the import of `set`, which deletes the partial set; then goes back to the list. The
+/// server's delete has no "only while importing" (crates/server `prompt_sets::remove` deletes a
+/// ready set too), so the set is read again first: one that finished importing while the alert
+/// was open is kept (the screen, which reads an importing set every second, shows it ready and
+/// reads its prompts again).
+fn stop_and_leave(set: PromptSet, open: Signal<bool>, busy: Signal<bool>, error: Signal<Option<String>>) {
+    busy.set(true);
+    let (id, name) = (set.id, set.name);
+    call(
+        move |api| async move {
+            let now = api.prompt_set(id).await?;
+            if now.status != PromptSetStatus::Importing {
+                return Ok(Stopped::Finished(now));
+            }
+            api.delete_prompt_set(id).await.map(|()| Stopped::Deleted)
+        },
+        move |result| {
+            busy.set(false);
+            match result {
+                Ok(Stopped::Deleted) => {
+                    toast_success(format!("Stopped the import of “{name}”."));
+                    nav::open(Destination::PromptSets);
+                }
+                Ok(Stopped::Finished(now)) => {
+                    toast_info(format!("“{}” finished importing before it could be stopped, so it was kept.", now.name));
+                    open.set(false);
+                }
+                Err(e) => error.set(Some(e.message)),
+            }
+        },
+    );
+}
+
+/// Stopping an import deletes the partial set (unless it finished meanwhile).
 fn stop_alert(current: impl Fn() -> Option<PromptSet> + Copy + 'static, open: Signal<bool>) -> impl IntoElement {
     let busy = signal(false);
     let error = signal(None::<String>);
@@ -183,8 +229,7 @@ fn stop_alert(current: impl Fn() -> Option<PromptSet> + Copy + 'static, open: Si
         move || error.get(),
         move || {
             if let Some(s) = current() {
-                let message = format!("Stopped the import of “{}”.", s.name);
-                delete_and_leave(s, message, busy, error);
+                stop_and_leave(s, open, busy, error);
             }
         },
     )
