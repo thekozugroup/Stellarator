@@ -10,7 +10,9 @@
 //! and images show as their alt text, as model output is untrusted.
 
 use nsh_base::{TextViewClasses, TextViewPart, TextViewParts, text_view, theme};
+use nsh_core::color::transparent_black;
 use nsh_core::element::StyleRefinement;
+use nsh_core::geometry::relative;
 use nsh_core::prelude::*;
 use nsh_core::storage::Storage;
 
@@ -116,6 +118,7 @@ fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
         }
     };
     let c: std::rc::Rc<dyn Fn() -> AdaptiveColor> = color.clone();
+    let head = color.clone();
     TextViewParts::new()
         .part(TextViewPart::Root, move |s| {
             let color = color.clone();
@@ -139,9 +142,21 @@ fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
             s.font_family(ROBOTO_MONO.family).text_size(px(12.0)).line_height(px(19.2)).px(px(12.6)).py(px(10.5))
         })
         .part(TextViewPart::Link, |s| s.text_color(ink).underline())
-        .part(TextViewPart::Table, |s| s.text_size(px(14.0)))
-        .part(TextViewPart::TableCell, |s| s.border_b_1().border_color(move || theme().border).py(px(4.9)).pr(px(10.5)))
-        .part(TextViewPart::TableHeaderCell, |s| s.font_weight(FontWeight::SEMIBOLD))
+        // Tables as `.md table`: as wide as their text (up to the column, past it they scroll), a
+        // hairline under each row, no column lines or box, the head in the text's own size and ink.
+        // The grid draws its top and left edges itself: the table clips them, its scroll view
+        // moved up and left by their width.
+        .part(TextViewPart::Table, |s| s.text_size(px(14.0)).self_start().max_w(relative(1.0)).overflow_hidden())
+        .part(TextViewPart::TableScroll, |s| s.mt(px(-1.0)).ml(px(-1.0)))
+        // Bound, as the head's own fill is: a bound style wins over a fixed one.
+        .part(TextViewPart::TableHead, |s| s.bg(|| -> AdaptiveColor { transparent_black().into() }))
+        .part(TextViewPart::TableCell, |s| {
+            s.border_r(px(0.0)).border_b_1().border_color(move || theme().border).pt(px(4.9)).pb(px(4.9)).pl(px(0.0)).pr(px(10.5))
+        })
+        .part(TextViewPart::TableHeaderCell, move |s| {
+            let color = head.clone();
+            s.font_weight(FontWeight::SEMIBOLD).text_size(px(14.0)).text_color(move || color())
+        })
         .part(TextViewPart::Rule, |s| s.border_color(move || theme().border))
 }
 
