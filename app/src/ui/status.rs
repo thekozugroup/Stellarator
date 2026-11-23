@@ -4,7 +4,7 @@
 
 use nsh_core::prelude::*;
 
-use crate::api::RunStatus;
+use crate::api::types::RunStatus;
 use crate::theme::text::body;
 use crate::theme::{ink, muted_ink, token};
 

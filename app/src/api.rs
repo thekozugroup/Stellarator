@@ -7,13 +7,15 @@
 //! - Web (wasm32): nsh's `fetch` to the same `/api` paths on the page's own origin, the server
 //!   that serves the app.
 //!
-//! The screens only see [`Api`] and the types; they do not know which transport runs.
-//! The types below mirror the fields of the server's JSON the native screens read; serde ignores
-//! the rest, so the server can add fields without breaking the app.
+//! The screens only see [`Api`] and the types; they do not know which transport runs. The
+//! request and response types are the server's own (`stellarator-api`, crates/api), re-exported
+//! here as [`types`].
 
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+pub use stellarator_api as types;
+
+use types::RunOut;
 
 /// A request that failed: the server's `detail` message or what went wrong on the way.
 #[derive(Debug, Clone, PartialEq)]
@@ -73,9 +75,9 @@ enum Transport {
     /// The server's router in this process, run on the server's runtime.
     #[cfg(not(target_arch = "wasm32"))]
     InProcess { router: axum::Router, runtime: tokio::runtime::Handle },
-    /// The browser's network stack, to the page's origin (`base`, no trailing slash).
+    /// The browser's network stack, to the page's origin.
     #[cfg(target_arch = "wasm32")]
-    Fetch { base: String },
+    Fetch,
 }
 
 impl Api {
@@ -85,10 +87,10 @@ impl Api {
         Api { transport: Transport::InProcess { router, runtime } }
     }
 
-    /// The API of the server at `base` (the page's origin, such as `http://127.0.0.1:8000`).
+    /// The API of the server that serves the page.
     #[cfg(target_arch = "wasm32")]
-    pub fn fetch(base: impl Into<String>) -> Self {
-        Api { transport: Transport::Fetch { base: base.into().trim_end_matches('/').to_owned() } }
+    pub fn same_origin() -> Self {
+        Api { transport: Transport::Fetch }
     }
 
     /// `GET /api/health`.
@@ -97,7 +99,7 @@ impl Api {
     }
 
     /// `GET /api/runs`: every run, newest first.
-    pub async fn runs(&self) -> Result<Vec<Run>, ApiError> {
+    pub async fn runs(&self) -> Result<Vec<RunOut>, ApiError> {
         self.get("/api/runs").await
     }
 
@@ -120,13 +122,14 @@ impl Api {
                 in_process::send(router.clone(), runtime, method, path, body).await
             }
             #[cfg(target_arch = "wasm32")]
-            Transport::Fetch { base } => {
+            Transport::Fetch => {
+                let base = crate::web::page_origin().await;
                 let mut request = nsh_core::platform::HttpRequest::new(method.as_str(), format!("{base}{path}"))
                     .header("accept", "application/json");
                 if let Some(json) = body {
                     request = request.header("content-type", "application/json").body(json.to_string());
                 }
-                let response = nsh_core::prelude::fetch(request).await.map_err(|e| ApiError::transport(e.to_string()))?;
+                let response = nsh_core::prelude::fetch(request).await.map_err(ApiError::transport)?;
                 Ok((response.status(), response.body))
             }
         }
@@ -213,41 +216,6 @@ pub struct Health {
     pub version: String,
 }
 
-/// A run's state (`RunStatus` in frontend/src/lib/types.ts).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RunStatus {
-    Running,
-    Pausing,
-    Paused,
-    Completed,
-}
-
-impl RunStatus {
-    /// Running or pausing: the list refreshes while one is.
-    pub fn is_active(self) -> bool {
-        matches!(self, RunStatus::Running | RunStatus::Pausing)
-    }
-}
-
-/// A run as `GET /api/runs` lists it (`Run` in frontend/src/lib/types.ts), the fields the list
-/// shows.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Run {
-    pub id: i64,
-    pub name: String,
-    pub endpoint_name: String,
-    pub model: String,
-    pub prompt_set_name: String,
-    pub concurrency: i64,
-    pub status: RunStatus,
-    pub total: i64,
-    pub done: i64,
-    pub failed: i64,
-    pub truncated: i64,
-    pub created_at: DateTime<Utc>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,8 +228,8 @@ mod tests {
             "truncated":0,"pending":277,"prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0,
             "active_seconds":12.5,"created_at":"2026-11-18T21:38:37.491158Z","started_at":null,
             "finished_at":null}"#;
-        let run: Run = serde_json::from_str(json).unwrap();
-        assert_eq!(run.status, RunStatus::Paused);
+        let run: RunOut = serde_json::from_str(json).unwrap();
+        assert_eq!(run.status, types::RunStatus::Paused);
         assert_eq!((run.done, run.failed, run.total), (120, 3, 400));
     }
 

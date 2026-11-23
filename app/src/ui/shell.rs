@@ -11,6 +11,10 @@
 //!   toolbar's empty areas move the window.
 //! - The page column has a 52 px toolbar (the screen's title, its actions at the end) over the
 //!   screen's content, both in a column at most 1280 px wide with 32 px padding.
+//! - Below 768 px (a phone, or a narrow browser window), as iOS: no sidebar; a 44 px bar with
+//!   Settings at its leading end and the screen's actions at its trailing end, the screen's 28 px
+//!   large title, and the four destinations in a 56 px capsule floating 12 px from the sides and
+//!   the bottom, the current one a capsule of `accent`.
 
 use nsh_base::theme;
 use nsh_core::element::ImageAsset;
@@ -31,14 +35,72 @@ const NAV: [(Screen, &str, ImageAsset); 4] = [
     (Screen::Preferences, "Preferences", icon::GIT_COMPARE_ARROWS),
 ];
 
-/// The whole window: the sidebar beside the screen that is open.
+/// The width below which the layout is a phone's (Tailwind's `md`).
+pub const PHONE_BELOW: f32 = 768.0;
+
+/// Whether the window is narrower than [`PHONE_BELOW`] (reactive).
+pub fn is_phone() -> bool {
+    window().width.0 > 0.0 && window().width.0 < PHONE_BELOW
+}
+
+/// The whole window: the sidebar beside the open screen, or on a phone the open screen over the
+/// tab bar. Made again when the width crosses [`PHONE_BELOW`].
 pub fn shell() -> impl IntoElement {
+    view().flex_1().bg(background).child(
+        when(is_phone, || {
+            view()
+                .flex_1()
+                .child(view().flex_1().child(dynamic(move || screens::view(screens::current()))))
+                .child(tab_bar())
+        })
+        .otherwise(|| {
+            view()
+                .flex_1()
+                .flex_row()
+                .child(sidebar())
+                .child(view().flex_1().min_w(px(0.0)).child(dynamic(move || screens::view(screens::current()))))
+        }),
+    )
+}
+
+/// Phones: the four destinations in a capsule floating over the content.
+fn tab_bar() -> impl IntoElement {
+    let tabs = NAV.map(|(screen, name, glyph)| {
+        let selected = move || screens::current().destination() == screen;
+        view()
+            .flex_1()
+            .min_w(px(0.0))
+            .items_center()
+            .justify_center()
+            .gap(px(2.0))
+            .rounded(px(24.0))
+            .role(AccessibilityRole::Button)
+            .label(name)
+            .style_when(selected, |s| s.bg(move || theme().accent))
+            .on_press(move || screens::open(screen))
+            .child(icon(glyph, 22.0, move || if selected() { ink() } else { muted_ink() }))
+            .child(
+                label(text(name))
+                    .text_size(px(12.0))
+                    .line_height(px(16.0))
+                    .number_of_lines(1)
+                    .text_color(move || if selected() { ink() } else { muted_ink() }),
+            )
+    });
     view()
-        .flex_1()
+        .absolute()
+        .left(px(12.0))
+        .right(px(12.0))
+        .bottom(px(12.0))
+        .h(px(56.0))
+        .p(px(4.0))
         .flex_row()
-        .bg(background)
-        .child(sidebar())
-        .child(view().flex_1().min_w(px(0.0)).child(dynamic(move || screens::view(screens::current()))))
+        .rounded(px(28.0))
+        .bg(token("material-tint"))
+        .border_1()
+        .border_color(token("material-edge"))
+        .shadow(material_shadow())
+        .children(tabs)
 }
 
 /// The sidebar column: the gutter around the panel, and on macOS the band over its top that moves
@@ -126,12 +188,16 @@ fn sidebar_row(screen: Screen, name: &'static str, glyph: ImageAsset) -> impl In
         .child(label(text(name)).number_of_lines(1))
 }
 
-/// A screen: the toolbar with its title and actions over its content, which scrolls.
+/// A screen: the toolbar with its title and actions over its content, which scrolls. On a phone,
+/// the 44 px bar (Settings, then the actions) over the large title and the content.
 pub fn page(
     screen_title: &'static str,
     actions: Option<AnyElement>,
     content: impl IntoElement,
-) -> impl IntoElement {
+) -> AnyElement {
+    if untracked(is_phone) {
+        return phone_page(screen_title, actions, content).into_element();
+    }
     view()
         .flex_1()
         .child(
@@ -157,6 +223,55 @@ pub fn page(
             scroll()
                 .flex_1()
                 .child(view().flex_row().justify_center().child(column().pt(px(16.0)).pb(px(32.0)).child(content))),
+        )
+        .into_element()
+}
+
+/// The phone form of [`page`].
+fn phone_page(screen_title: &'static str, actions: Option<AnyElement>, content: impl IntoElement) -> impl IntoElement {
+    let settings_selected = move || screens::current() == Screen::Settings;
+    view()
+        .flex_1()
+        .child(
+            view()
+                .h(px(44.0))
+                .flex_none()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .px(px(16.0))
+                .child(
+                    view()
+                        .w(px(32.0))
+                        .h(px(32.0))
+                        .rounded(px(16.0))
+                        .items_center()
+                        .justify_center()
+                        .role(AccessibilityRole::Button)
+                        .label("Settings")
+                        .bg(move || if settings_selected() { theme().accent } else { theme().secondary })
+                        .on_press(|| screens::open(Screen::Settings))
+                        .child(icon(icon::SETTINGS, 16.0, ink)),
+                )
+                .child(view().flex_row().items_center().gap(px(8.0)).child(actions)),
+        )
+        .child(
+            scroll().flex_1().child(
+                view()
+                    .px(px(16.0))
+                    .pt(px(4.0))
+                    // Clear of the tab bar: its 56 px, its 12 px offset and an 8 px gap.
+                    .pb(px(76.0))
+                    .gap(px(24.0))
+                    .child(
+                        title(text(screen_title))
+                            .font_family(crate::theme::fonts::INTER_DISPLAY.family)
+                            .text_size(px(28.0))
+                            .line_height(px(31.0))
+                            .letter_spacing(px(-0.84)),
+                    )
+                    .child(content),
+            ),
         )
 }
 

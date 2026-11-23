@@ -50,7 +50,7 @@ pub(crate) fn api() -> Result<api::Api, String> {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        Ok(api::Api::fetch(web::origin()))
+        Ok(api::Api::same_origin())
     }
 }
 

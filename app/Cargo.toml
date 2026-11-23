@@ -26,6 +26,9 @@ path = "src/main.rs"
 nsh-core = "=0.6.1"
 nsh-base = "=0.6.1"
 
+# The API's request and response types, shared with the server (no server dependencies).
+stellarator-api = { path = "../crates/api" }
+
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 log = "0.4"

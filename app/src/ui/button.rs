@@ -47,3 +47,18 @@ pub fn button(
         .child(glyph.map(|g| icon(g, 16.0, ink)))
         .child(label(text(text_label)).text_color(ink))
 }
+
+/// A round icon button in the raised tone (the phone bar's "+").
+pub fn icon_button(glyph: ImageAsset, accessibility: &'static str, on_press: impl Fn() + 'static) -> impl IntoElement {
+    base_button()
+        .accessibility_label(accessibility)
+        .on_press(on_press)
+        .w(px(CONTROL))
+        .h(px(CONTROL))
+        .items_center()
+        .justify_center()
+        .rounded(px(CONTROL / 2.0))
+        .bg(move || theme().secondary)
+        .active(|s| s.opacity(0.8))
+        .child(icon(glyph, 16.0, move || theme().secondary_foreground))
+}

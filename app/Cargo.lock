@@ -4653,6 +4653,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "stellarator-api"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "stellarator-app"
 version = "0.3.0"
 dependencies = [
@@ -4670,6 +4679,7 @@ dependencies = [
  "nsh-platform-windows",
  "serde",
  "serde_json",
+ "stellarator-api",
  "stellarator-core",
  "stellarator-server",
  "tokio",
@@ -4692,6 +4702,7 @@ dependencies = [
  "serde_path_to_error",
  "serde_urlencoded",
  "sqlx",
+ "stellarator-api",
  "thiserror",
  "tokio",
  "tracing",

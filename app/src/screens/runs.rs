@@ -10,15 +10,15 @@ use chrono::{DateTime, Utc};
 use nsh_core::prelude::*;
 
 use super::Screen;
-use crate::api::Run;
+use crate::api::types::RunOut as Run;
 use crate::format::{int, relative};
 use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::text::{body, label, meta};
 use crate::theme::{muted_ink, token};
-use crate::ui::button::{Variant, button};
+use crate::ui::button::{Variant, button, icon_button};
 use crate::ui::icon;
-use crate::ui::progress::progress_bar;
-use crate::ui::shell::page;
+use crate::ui::progress::{progress_bar, progress_bar_full};
+use crate::ui::shell::{is_phone, page};
 use crate::ui::status::run_status;
 use crate::ui::table::{Column, cell, header, row};
 
@@ -31,6 +31,9 @@ const SEQS: Column = Column::numeric("Seqs", 72.0);
 const STATUS: Column = Column::fixed("Status", 128.0);
 const CREATED: Column = Column::numeric("Created", 112.0);
 static COLUMNS: [Column; 5] = [NAME, PROGRESS, SEQS, STATUS, CREATED];
+
+/// The window width from which runs show as a table (Tailwind's `lg`).
+const TABLE_FROM: f32 = 1024.0;
 
 /// The width of the progress bar in its cell (`w-20`).
 const BAR_WIDTH: f32 = 80.0;
@@ -64,6 +67,7 @@ pub fn screen() -> impl IntoElement {
     // Ends with the screen (the task belongs to it).
     let _ = set_interval(REFRESH, refresh);
 
+    let wide = move || window().width.0 >= TABLE_FROM;
     let loading = move || load.with(|l| matches!(l, Load::Loading));
     let failed = move || load.with(|l| matches!(l, Load::Failed(_)));
     let empty = move || load.with(|l| matches!(l, Load::Loaded(runs) if runs.is_empty()));
@@ -93,18 +97,72 @@ pub fn screen() -> impl IntoElement {
                 )
             })
             .otherwise(move || {
-                view()
-                    .child(header(&COLUMNS))
-                    .child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || run_row(run.get(), now))))
+                // A table from 1024 px; one stacked row per run below that (as the web UI).
+                when(wide, move || {
+                    view()
+                        .child(header(&COLUMNS))
+                        .child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || run_row(run.get(), now))))
+                })
+                .otherwise(move || {
+                    view().child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || stacked_row(run.get(), now))))
+                })
             })
         })
     });
 
-    page(
-        "Runs",
-        Some(button(Variant::Primary, Some(icon::PLUS), "New run", || super::open(Screen::NewRun)).into_element()),
-        content,
-    )
+    // The toolbar's push button; on a phone a round "+" in the bar.
+    let new_run = if untracked(is_phone) {
+        icon_button(icon::PLUS, "New run", || super::open(Screen::NewRun)).into_element()
+    } else {
+        button(Variant::Primary, Some(icon::PLUS), "New run", || super::open(Screen::NewRun)).into_element()
+    };
+    page("Runs", Some(new_run), content)
+}
+
+/// Below 1024 px: the name and the status, then the facts and the date, then the progress.
+fn stacked_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
+    let created = run.created_at;
+    view()
+        .py(px(12.0))
+        .gap(px(2.0))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(12.0))
+                .child(label(text(run.name.clone())).number_of_lines(1).flex_1().min_w(px(0.0)))
+                .child(run_status(run.status)),
+        )
+        .child(
+            meta(text({
+                let facts = facts(&run).join(" · ");
+                move || format!("{facts} · {}", relative(created, now.get()))
+            }))
+                .number_of_lines(1),
+        )
+        .child(
+            view()
+                .mt(px(8.0))
+                .gap(px(6.0))
+                .child(progress_figures(&run))
+                .child(progress_bar_full(run.done, run.failed, run.total)),
+        )
+        .child(view().absolute().left(px(0.0)).right(px(0.0)).bottom(px(0.0)).h(px(1.0)).bg(move || nsh_base::theme().border))
+}
+
+/// What the row says besides the name: the model, the endpoint and the prompt set, minus what the
+/// name already says.
+fn facts(run: &Run) -> Vec<String> {
+    let lower = run.name.to_lowercase();
+    let mut out = Vec::new();
+    if !lower.contains(&run.model.to_lowercase()) {
+        out.push(run.model.clone());
+    }
+    out.push(run.endpoint_name.clone());
+    if !lower.contains(&run.prompt_set_name.to_lowercase()) {
+        out.push(run.prompt_set_name.clone());
+    }
+    out
 }
 
 /// One run's row.
@@ -123,15 +181,10 @@ fn run_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
 /// The name at 500, then in 12 px muted the model (mono), the endpoint and the prompt set, minus
 /// what the name already says: a default name ("<model> on <set>") leaves only the endpoint.
 fn name_cell(run: &Run) -> impl IntoElement {
-    let lower = run.name.to_lowercase();
-    let mut facts: Vec<(String, bool)> = Vec::new();
-    if !lower.contains(&run.model.to_lowercase()) {
-        facts.push((run.model.clone(), true));
-    }
-    facts.push((run.endpoint_name.clone(), false));
-    if !lower.contains(&run.prompt_set_name.to_lowercase()) {
-        facts.push((run.prompt_set_name.clone(), false));
-    }
+    let facts: Vec<(String, bool)> = facts(run).into_iter().map(|f| {
+        let mono = f == run.model;
+        (f, mono)
+    }).collect();
     let mut spans: Vec<AnyElement> = vec![meta(text("  ")).into_element()];
     for (i, (fact, mono)) in facts.into_iter().enumerate() {
         if i > 0 {
@@ -145,20 +198,23 @@ fn name_cell(run: &Run) -> impl IntoElement {
 
 /// The bar, then "1,284 of 5,000" and the failures in red when there are any.
 fn progress_cell(run: &Run) -> impl IntoElement {
-    let failed = (run.failed > 0)
-        .then(|| body(text(format!("   {} failed", int(run.failed)))).text_color(token("negative-ink")).into_element());
     view()
         .flex_row()
         .items_center()
         .gap(px(12.0))
         .child(progress_bar(run.done, run.failed, run.total, BAR_WIDTH))
-        .child(
-            body(text(int(run.done)))
-                .tabular_nums()
-                .number_of_lines(1)
-                .child(body(text(format!(" of {}", int(run.total)))).text_color(muted_ink))
-                .child(failed),
-        )
+        .child(progress_figures(run))
+}
+
+/// "1,284 of 5,000", the total muted, and "3 failed" in red when there are failures.
+fn progress_figures(run: &Run) -> impl IntoElement {
+    let failed = (run.failed > 0)
+        .then(|| body(text(format!("   {} failed", int(run.failed)))).text_color(token("negative-ink")).into_element());
+    body(text(int(run.done)))
+        .tabular_nums()
+        .number_of_lines(1)
+        .child(body(text(format!(" of {}", int(run.total)))).text_color(muted_ink))
+        .child(failed)
 }
 
 /// The current time, from nsh's clock (the same on native targets and the web).

@@ -31,6 +31,20 @@ pub fn progress_bar(done: i64, failed: i64, total: i64, width: f32) -> impl Into
         .child(view().h(px(6.0)).w(px(width * f)).bg(move || theme().destructive))
 }
 
+/// A bar as wide as its parent (stacked rows): the fills share the track by flex factors.
+pub fn progress_bar_full(done: i64, failed: i64, total: i64) -> impl IntoElement {
+    let (d, f) = fractions(done, failed, total);
+    view()
+        .h(px(6.0))
+        .flex_row()
+        .rounded(px(3.0))
+        .overflow_hidden()
+        .bg(move || theme().secondary)
+        .child(view().h(px(6.0)).basis(px(0.0)).flex_grow(d).bg(token("periwinkle")))
+        .child(view().h(px(6.0)).basis(px(0.0)).flex_grow(f).bg(move || theme().destructive))
+        .child(view().h(px(6.0)).basis(px(0.0)).flex_grow((1.0 - d - f).max(0.0)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::fractions;
