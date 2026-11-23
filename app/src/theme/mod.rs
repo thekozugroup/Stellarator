@@ -5,6 +5,7 @@
 //! `nsh_base::theme()`), and each token has a light and a dark value that follow the system's
 //! appearance without a render.
 
+pub mod appearance;
 // The full scale is here for the screens that follow; this first slice uses part of it.
 #[allow(dead_code, reason = "the design system's scale; later screens use the rest")]
 pub mod fonts;

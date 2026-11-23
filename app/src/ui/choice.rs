@@ -46,6 +46,18 @@ pub fn segmented_small<V: Clone + PartialEq + 'static>(
     segmented_with(options, Rc::new(get), Rc::new(set), accessibility, false, 12.0)
 }
 
+/// A segmented control whose value is read with `get` and changed with `set`, 13 px labels;
+/// `fill` stretches it across its column (the Theme control on a phone).
+pub fn segmented_with_get<V: Clone + PartialEq + 'static>(
+    options: Vec<(V, &'static str)>,
+    get: impl Fn() -> V + 'static,
+    set: impl Fn(V) + 'static,
+    accessibility: &'static str,
+    fill: bool,
+) -> impl IntoElement {
+    segmented_with(options, Rc::new(get), Rc::new(set), accessibility, fill, 13.0)
+}
+
 fn segmented_with<V: Clone + PartialEq + 'static>(
     options: Vec<(V, &'static str)>,
     get: Rc<dyn Fn() -> V>,
@@ -201,10 +213,20 @@ pub fn toggle(label: &'static str, on: Signal<bool>) -> impl IntoElement {
 /// A checkbox and its label: 16 px, 5 px corners, the `input` edge; checked, the ink fill with a
 /// check.
 pub fn checkbox(label: impl Into<SharedString>, checked: Signal<bool>) -> impl IntoElement {
+    checkbox_with(label, move || checked.get(), move |on| checked.set(on))
+}
+
+/// A checkbox whose state is read with `checked` and changed with `on_change`.
+pub fn checkbox_with(
+    label: impl Into<SharedString>,
+    checked: impl Fn() -> bool + Clone + 'static,
+    on_change: impl Fn(bool) + 'static,
+) -> impl IntoElement {
     let label = label.into();
+    let c1 = checked.clone();
     base_checkbox()
-        .checked(move || checked.get())
-        .on_change(move |next: &bool| checked.set(*next))
+        .checked(move || checked())
+        .on_change(move |next: &bool| on_change(*next))
         .flex_row()
         .items_center()
         .gap(px(8.0))
@@ -222,7 +244,7 @@ pub fn checkbox(label: impl Into<SharedString>, checked: Signal<bool>) -> impl I
                 .bg(move || theme().background)
                 .checked(|s| s.bg(move || theme().primary).border_color(move || theme().primary))
         })
-        .indicator(view().opacity(move || if checked.get() { 1.0_f32 } else { 0.0 }).child(icon(icon::CHECK, 14.0, move || theme().primary_foreground)))
+        .indicator(view().opacity(move || if c1() { 1.0_f32 } else { 0.0 }).child(icon(icon::CHECK, 14.0, move || theme().primary_foreground)))
         .child(body(text(label)))
 }
 

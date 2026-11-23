@@ -5,7 +5,7 @@ before the next one:
 
     python3 app/ci/seed.py <data folder>
 
-It adds two endpoints, three prompt sets and five runs in the states the Runs list shows
+It adds three endpoints, three prompt sets and five runs in the states the Runs list shows
 (completed, paused with failures, one with truncations), dated from minutes to two weeks ago. No
 samples: the list reads the counts stored on each run. Only the standard library.
 """
@@ -31,12 +31,21 @@ def main(folder: str) -> None:
 
     db = sqlite3.connect(f"{folder}/stellarator.db")
     with db:
+        # One reachable endpoint with its models, one whose key the server rejected, one never
+        # checked: the three states the Endpoints list shows.
         db.executemany(
-            "INSERT INTO endpoints (id, name, base_url, location, default_concurrency, headers, models,"
-            " created_at, updated_at) VALUES (?, ?, ?, 'local', 8, '{}', '[]', ?, ?)",
+            "INSERT INTO endpoints (id, name, base_url, api_key, location, default_concurrency, headers, models,"
+            " last_checked_at, last_ok, last_error, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?)",
             [
-                (1, "Local vLLM", "http://127.0.0.1:8000/v1", ago(days=15), ago(days=15)),
-                (2, "OpenRouter", "https://openrouter.ai/api/v1", ago(days=15), ago(days=15)),
+                (1, "Local vLLM", "http://127.0.0.1:8000/v1", None, "local", 8,
+                 json.dumps(["qwen3-32b", "mock-flaky", "mock-reasoning"]), ago(minutes=5), 1, None,
+                 ago(days=15), ago(days=15)),
+                (2, "OpenRouter", "https://openrouter.ai/api/v1", "sk-or-v1-0000000000000000a9f2", "cloud", 16, "[]",
+                 ago(hours=2), 0, "The server rejected the API key (401): User not found.",
+                 ago(days=15), ago(days=15)),
+                (3, "DGX Spark", "http://192.168.1.50:8000/v1", None, "local", 64, "[]", None, None, None,
+                 ago(days=1), ago(days=1)),
             ],
         )
         db.executemany(

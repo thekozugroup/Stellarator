@@ -53,6 +53,7 @@ pub fn copy_button(value: impl Into<String>, label: impl Into<SharedString>) -> 
         Button::icon(glyph, if copied.get() { SharedString::from("Copied") } else { label.clone() })
             .variant(Variant::Ghost)
             .size(Size::IconSm)
+            .muted()
             .on_press(move || {
                 let _ = set_clipboard(value.clone());
                 copied.set(true);

@@ -37,7 +37,7 @@ impl Column {
 
 /// A cell of `column` holding `content`: its width, padding and alignment.
 pub fn cell(column: Column, content: impl IntoElement) -> impl IntoElement {
-    let base = view().flex_row().items_center().px(px(CELL_PADDING)).min_w(px(0.0)).overflow_hidden();
+    let base = view().flex_row().items_center().px(px(CELL_PADDING)).py(px(4.0)).min_w(px(0.0)).overflow_hidden();
     let base = match column.width {
         Some(width) => base.w(px(width)).flex_none(),
         None => base.flex_1(),
@@ -57,14 +57,24 @@ pub fn header(columns: &'static [Column]) -> impl IntoElement {
         .children(columns.iter().map(|&c| cell(c, meta(text(c.title)).number_of_lines(1))))
 }
 
-/// A row of cells, with the hairline under it and the highlight under the pointer.
-pub fn row(cells: Vec<AnyElement>) -> impl IntoElement {
+/// A row of cells, at least 44 px, with the hairline under it (none under the last row, while
+/// `last` holds) and the highlight under the pointer. Add `.on_press` to open the row's item.
+pub fn row(cells: Vec<AnyElement>, last: impl Fn() -> bool + 'static) -> View {
     view()
         .flex_row()
         .items_center()
-        .h(px(TABLE_ROW))
+        .min_h(px(TABLE_ROW))
         .rounded(px(radius::MD))
         .hover(|s| s.bg(move || theme().accent))
         .children(cells)
-        .child(view().absolute().left(px(0.0)).right(px(0.0)).bottom(px(0.0)).h(px(1.0)).bg(move || theme().border))
+        .child(
+            view()
+                .absolute()
+                .left(px(0.0))
+                .right(px(0.0))
+                .bottom(px(0.0))
+                .h(px(1.0))
+                .bg(move || theme().border)
+                .opacity(move || if last() { 0.0_f32 } else { 1.0 }),
+        )
 }

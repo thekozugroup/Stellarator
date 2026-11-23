@@ -217,22 +217,37 @@ pub struct Alert {
     pub destructive: bool,
 }
 
-/// An alert dialog while `open` holds: the title, the description, Cancel and the action. While
-/// `busy` holds the action shows a spinner and neither button takes presses.
-pub fn alert(open: Signal<bool>, spec: Alert, busy: impl Fn() -> bool + 'static, on_action: impl Fn() + 'static) -> impl IntoElement {
+/// An alert dialog while `open` holds: the title, the description, Cancel and the action. `spec`
+/// is read as it opens. While `busy` holds the action shows a spinner and neither button takes
+/// presses (nor does Escape or the scrim close it); `error` shows in a red block above the buttons.
+pub fn alert(
+    open: Signal<bool>,
+    spec: impl Fn() -> Alert + 'static,
+    busy: impl Fn() -> bool + 'static,
+    error: impl Fn() -> Option<String> + 'static,
+    on_action: impl Fn() + 'static,
+) -> impl IntoElement {
     let busy = Rc::new(busy);
+    let error = Rc::new(error);
     let on_action = Rc::new(on_action);
     let spec = Rc::new(spec);
-    let cancel: Rc<dyn Fn()> = Rc::new(move || open.set(false));
-    let label = spec.title.clone();
-    modal(open, label, cancel, move || {
+    let b0 = busy.clone();
+    let cancel: Rc<dyn Fn()> = Rc::new(move || {
+        if !b0() {
+            open.set(false);
+        }
+    });
+    let cancel_button = cancel.clone();
+    modal(open, SharedString::from("Alert"), cancel, move || {
         let b1 = busy.clone();
         let b2 = busy.clone();
         let b3 = busy.clone();
         let act = on_action.clone();
-        let spec = spec.clone();
+        let error = error.clone();
+        let close = cancel_button.clone();
+        let spec = spec();
         let wide = window_width() >= 640.0;
-        let cancel = button("Cancel").variant(Variant::Secondary).disabled(move || b1()).on_press(move || open.set(false));
+        let cancel = button("Cancel").variant(Variant::Secondary).disabled(move || b1()).on_press(move || close());
         let action = button(spec.action.clone())
             .variant(if spec.destructive { Variant::Destructive } else { Variant::Primary })
             .busy(move || b2(), spec.busy_label.clone())
@@ -254,7 +269,9 @@ pub fn alert(open: Signal<bool>, spec: Alert, busy: impl Fn() -> bool + 'static,
             .p(px(DIALOG_PADDING))
             .gap(px(16.0))
             .role(AccessibilityRole::AlertDialog)
+            .label(spec.title.clone())
             .child(header)
+            .child(dynamic(move || error().map(|m| super::blocks::error_block(m, None))))
             .child(dialog_footer(vec![cancel, action]))
             .into_element()
     })
@@ -318,6 +335,8 @@ pub struct Toast {
     pub id: u64,
     pub kind: ToastKind,
     pub message: SharedString,
+    /// When it goes.
+    until: nsh_core::time::Instant,
 }
 
 /// The toasts shown, oldest first.
@@ -332,17 +351,15 @@ const TOAST_FOR: Duration = Duration::from_secs(4);
 
 fn show(kind: ToastKind, message: impl Into<SharedString>) {
     let toasts = global::<Toasts>();
-    let mut id = 0;
     toasts.update(|t| {
         t.next += 1;
-        id = t.next;
-        t.shown.push(Toast { id, kind, message: message.into() });
+        let id = t.next;
+        t.shown.push(Toast { id, kind, message: message.into(), until: nsh_core::time::now() + TOAST_FOR });
         // At most three at once, as sonner shows.
         if t.shown.len() > 3 {
             t.shown.remove(0);
         }
     });
-    let _ = set_timeout(TOAST_FOR, move || toasts.update(|t| t.shown.retain(|x| x.id != id)));
 }
 
 /// "Deleted gpt-4o." with a green check.
@@ -373,6 +390,14 @@ fn toast_glyph(kind: ToastKind) -> (ImageAsset, fn() -> AdaptiveColor) {
 pub fn toaster() -> impl IntoElement {
     let toasts = global::<Toasts>();
     let list = move || toasts.with(|t| t.shown.clone());
+    // The toaster lives as long as the window, so its clock removes toasts whatever screen showed
+    // them.
+    let _ = set_interval(Duration::from_millis(250), move || {
+        let now = nsh_core::time::now();
+        if toasts.with_untracked(|t| t.shown.iter().any(|x| x.until <= now)) {
+            toasts.update(|t| t.shown.retain(|x| x.until > now));
+        }
+    });
     overlay().child(dynamic(move || {
         let phone = is_phone();
         let stack = view()

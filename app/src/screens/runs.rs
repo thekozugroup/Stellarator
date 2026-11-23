@@ -74,6 +74,10 @@ pub fn screen() -> impl IntoElement {
     let loading = move || load.with(|l| matches!(l, Load::Loading));
     let failed = move || load.with(|l| matches!(l, Load::Failed(_)));
     let empty = move || load.with(|l| matches!(l, Load::Loaded(runs) if runs.is_empty()));
+    let count = move || load.with(|l| match l {
+        Load::Loaded(runs) => runs.len(),
+        _ => 0,
+    });
     let runs = move || load.with(|l| match l {
         Load::Loaded(runs) => runs.clone(),
         _ => Vec::new(),
@@ -100,7 +104,10 @@ pub fn screen() -> impl IntoElement {
                 when(wide, move || {
                     view()
                         .child(header(&COLUMNS))
-                        .child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || run_row(run.get(), now))))
+                        .child(each(runs, |r: &Run| r.id, move |run, index| {
+                            let last = move || index.get() + 1 == count();
+                            dynamic(move || run_row(run.get(), now, last))
+                        }))
                 })
                 .otherwise(move || {
                     view().child(each(runs, |r: &Run| r.id, move |run, _| dynamic(move || stacked_row(run.get(), now))))
@@ -179,7 +186,7 @@ fn facts(run: &Run) -> Vec<String> {
 }
 
 /// One run's row.
-fn run_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
+fn run_row(run: Run, now: Signal<DateTime<Utc>>, last: impl Fn() -> bool + 'static) -> impl IntoElement {
     let created = run.created_at;
     row(vec![
         cell(NAME, name_cell(&run)).into_element(),
@@ -188,7 +195,7 @@ fn run_row(run: Run, now: Signal<DateTime<Utc>>) -> impl IntoElement {
         cell(STATUS, run_status(run.status)).into_element(),
         cell(CREATED, body(text(move || relative(created, now.get()))).text_color(muted_ink).tabular_nums().number_of_lines(1))
             .into_element(),
-    ])
+    ], last)
 }
 
 /// The name at 500, then in 12 px muted the model (mono), the endpoint and the prompt set, minus

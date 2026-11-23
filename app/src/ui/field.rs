@@ -270,13 +270,20 @@ pub fn error_text(message: impl Into<SharedString>) -> impl IntoElement {
     body(text(message.into())).text_color(token("negative-ink")).role(AccessibilityRole::Alert)
 }
 
+/// A hint that may come and go (`None` hides it).
+type HintFn = Rc<dyn Fn() -> Option<SharedString>>;
+
 /// The hint, or the error in its place while `error` has one.
-fn note(hint_text: Option<SharedString>, error: Option<Signal<Option<String>>>) -> impl IntoElement {
+fn note(hint_text: Option<HintFn>, error: Option<Signal<Option<String>>>, end: bool) -> impl IntoElement {
     dynamic(move || -> Option<AnyElement> {
-        match error.and_then(|e| e.get()) {
-            Some(message) if !message.is_empty() => Some(error_text(message).into_element()),
-            _ => hint_text.clone().map(|h| hint(h).into_element()),
-        }
+        let el = match error.and_then(|e| e.get()) {
+            Some(message) if !message.is_empty() => error_text(message).into_element(),
+            _ => {
+                let h = hint_text.as_ref().and_then(|h| h())?;
+                if end { meta(text(h)).text_right().into_element() } else { hint(h).into_element() }
+            }
+        };
+        Some(el)
     })
 }
 
@@ -284,7 +291,7 @@ fn note(hint_text: Option<SharedString>, error: Option<Signal<Option<String>>>) 
 pub struct Field {
     label: SharedString,
     control: AnyElement,
-    hint: Option<SharedString>,
+    hint: Option<HintFn>,
     error: Option<Signal<Option<String>>>,
     info: Option<SharedString>,
     optional: bool,
@@ -296,7 +303,14 @@ pub fn field(text_label: impl Into<SharedString>, control: impl IntoElement) -> 
 
 impl Field {
     pub fn hint(mut self, text: impl Into<SharedString>) -> Self {
-        self.hint = Some(text.into());
+        let text = text.into();
+        self.hint = Some(Rc::new(move || Some(text.clone())));
+        self
+    }
+
+    /// A hint shown while `hint` gives one.
+    pub fn hint_when(mut self, hint: impl Fn() -> Option<SharedString> + 'static) -> Self {
+        self.hint = Some(Rc::new(hint));
         self
     }
 
@@ -326,7 +340,7 @@ impl IntoElement for Field {
             .gap(px(4.0))
             .child(field_label(self.label.clone(), self.optional))
             .child(self.info.map(|i| info_tip(self.label.clone(), i)));
-        view().gap(px(6.0)).child(label_row).child(self.control).child(note(self.hint, self.error)).into_element()
+        view().gap(px(6.0)).child(label_row).child(self.control).child(note(self.hint, self.error, false)).into_element()
     }
 }
 
@@ -400,9 +414,9 @@ impl IntoElement for FormGroup {
 pub struct FormRow {
     label: SharedString,
     control: AnyElement,
-    optional: bool,
+    optional: Option<Rc<dyn Fn() -> bool>>,
     info: Option<SharedString>,
-    hint: Option<SharedString>,
+    hint: Option<HintFn>,
     error: Option<Signal<Option<String>>>,
     end: bool,
     stacked: bool,
@@ -412,7 +426,7 @@ pub fn form_row(text_label: impl Into<SharedString>, control: impl IntoElement) 
     FormRow {
         label: text_label.into(),
         control: control.into_element(),
-        optional: false,
+        optional: None,
         info: None,
         hint: None,
         error: None,
@@ -422,8 +436,15 @@ pub fn form_row(text_label: impl Into<SharedString>, control: impl IntoElement) 
 }
 
 impl FormRow {
+    /// "(optional)" after the label.
     pub fn optional(mut self) -> Self {
-        self.optional = true;
+        self.optional = Some(Rc::new(|| true));
+        self
+    }
+
+    /// "(optional)" after the label while `optional` holds (the API key, unless a preset needs one).
+    pub fn optional_when(mut self, optional: impl Fn() -> bool + 'static) -> Self {
+        self.optional = Some(Rc::new(optional));
         self
     }
 
@@ -433,7 +454,14 @@ impl FormRow {
     }
 
     pub fn hint(mut self, text: impl Into<SharedString>) -> Self {
-        self.hint = Some(text.into());
+        let text = text.into();
+        self.hint = Some(Rc::new(move || Some(text.clone())));
+        self
+    }
+
+    /// A hint shown while `hint` gives one (the Docker note under a localhost URL).
+    pub fn hint_when(mut self, hint: impl Fn() -> Option<SharedString> + 'static) -> Self {
+        self.hint = Some(Rc::new(hint));
         self
     }
 
@@ -464,12 +492,13 @@ impl IntoElement for FormRow {
             .gap(px(4.0))
             .min_h(px(if side_by_side { CONTROL } else { 0.0 }))
             .child(
-                body(text(self.label.clone()))
-                    .number_of_lines(2)
-                    .child(self.optional.then(|| text(" (optional)").text_color(muted_ink))),
+                body(text(self.label.clone())).number_of_lines(2).child(self.optional.map(|optional| {
+                    text(move || if optional() { " (optional)" } else { "" }).text_color(muted_ink)
+                })),
             )
             .child(self.info.map(|i| info_tip(self.label.clone(), i)));
-        let mut control_col = view().gap(px(6.0)).min_w(px(0.0)).child(self.control).child(note(self.hint, self.error));
+        let end = self.end && side_by_side;
+        let mut control_col = view().gap(px(6.0)).min_w(px(0.0)).child(self.control).child(note(self.hint, self.error, end));
         if self.end && side_by_side {
             control_col = control_col.items_end();
         }

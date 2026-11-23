@@ -36,6 +36,9 @@ pub const LOADER: ImageAsset = asset!("icons/loader-circle.svg");
 pub const CIRCLE_CHECK: ImageAsset = asset!("icons/circle-check.svg");
 pub const CIRCLE_ALERT: ImageAsset = asset!("icons/circle-exclamation-point.svg");
 
+/// The app's icon (frontend/public/icon-192.png), for About.
+pub const APP_ICON: ImageAsset = asset!("icon-192.png");
+
 /// The Stellarator mark, 20 px.
 pub const MARK: ImageAsset = asset!("mark.svg");
 

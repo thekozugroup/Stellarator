@@ -12,6 +12,7 @@
 pub mod api;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod backend;
+mod data;
 // The formatting helpers, the router, the shortcuts and the component library serve every screen;
 // the ones still to port use the rest.
 #[allow(dead_code, reason = "shared by the screens still to port")]
@@ -81,6 +82,7 @@ pub fn App() -> impl IntoElement {
     }
     platform::setup_window();
     shortcuts::install();
+    theme::appearance::apply_saved();
     ui::shell::shell()
 }
 

@@ -84,6 +84,23 @@ pub fn pill(tone: Tone, word: impl Into<SharedString>) -> View {
         .child(body(text(word.into())).number_of_lines(1).text_color(move || if tone == Tone::Plain { muted_ink() } else { ink() }))
 }
 
+/// The dot and the word at 12 px, for a "·" separated line of meta (phone rows).
+pub fn pill_small(tone: Tone, word: impl Into<SharedString>) -> View {
+    view()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .flex_none()
+        .child((tone != Tone::Plain).then(|| dot(tone)))
+        .child(
+            text(word.into())
+                .text_size(px(12.0))
+                .line_height(px(16.0))
+                .number_of_lines(1)
+                .text_color(move || if tone == Tone::Plain { muted_ink() } else { ink() }),
+        )
+}
+
 /// A 28 px capsule in the state's tint: the dot (or `glyph`) and the word in the state's ink, at 500
 /// (detail headers).
 pub fn status_badge(tone: Tone, glyph: Option<ImageAsset>, word: impl Into<SharedString>) -> View {

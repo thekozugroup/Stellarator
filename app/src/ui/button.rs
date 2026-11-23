@@ -97,6 +97,7 @@ pub struct Button {
     on_card: bool,
     full_width: bool,
     round: bool,
+    muted: bool,
     tooltip: Option<SharedString>,
 }
 
@@ -115,6 +116,7 @@ pub fn button(label: impl Into<SharedString>) -> Button {
         on_card: false,
         full_width: false,
         round: false,
+        muted: false,
         tooltip: None,
     }
 }
@@ -185,6 +187,12 @@ impl Button {
         self
     }
 
+    /// Muted ink for the icon and label (the copy button, quiet row actions).
+    pub fn muted(mut self) -> Self {
+        self.muted = true;
+        self
+    }
+
     /// Fully rounded corners (a dialog's close button, the phone bar's buttons).
     pub fn round(mut self) -> Self {
         self.round = true;
@@ -230,7 +238,7 @@ impl IntoElement for Button {
     fn into_element(self) -> AnyElement {
         let (height, pad, corner, text_size, icon_size) = self.size.metrics();
         let (rest, hover) = fills(self.variant, self.on_card);
-        let ink = ink(self.variant);
+        let ink = if self.muted { || theme().muted_foreground } else { ink(self.variant) };
         let disabled = self.disabled.clone();
         let busy = self.busy.clone();
         let inactive = move || disabled.as_ref().is_some_and(|d| d()) || busy.as_ref().is_some_and(|(b, _)| b());
@@ -308,4 +316,33 @@ impl IntoElement for Button {
             None => b.into_element(),
         }
     }
+}
+
+/// An inline link: 13 px underlined ink, `trailing` after it in muted ink (the external-link
+/// glyph). For a link out of the app use [`external_link`].
+pub fn text_link(label: impl Into<SharedString>, trailing: Option<ImageAsset>, on_press: impl Fn() + 'static) -> impl IntoElement {
+    let label = label.into();
+    view()
+        .flex_row()
+        .items_center()
+        .gap(px(4.0))
+        .self_start()
+        .min_h(px(24.0))
+        .rounded(px(radius::XS))
+        .role(AccessibilityRole::Link)
+        .label(label.clone())
+        .focusable(true)
+        .focus_visible(|s| s.ring(px(2.0)).ring_color(token("ring")))
+        .cursor(Cursor::Pointer)
+        .on_press(on_press)
+        .child(crate::theme::text::body(text(label)).underline())
+        .child(trailing.map(|g| icon(g, 14.0, move || theme().muted_foreground)))
+}
+
+/// A link that opens `url` in the browser, with the external-link glyph.
+pub fn external_link(label: impl Into<SharedString>, url: impl Into<String>) -> impl IntoElement {
+    let url = url.into();
+    text_link(label, Some(icon::EXTERNAL_LINK), move || {
+        let _ = open_url(url.clone());
+    })
 }
