@@ -283,11 +283,12 @@ jobs:
       - uses: actions/checkout@v5
 
       # `nsh package` also builds the app's crate for this machine (to describe its UI), which
-      # links GTK 4 on Linux.
-      - name: Build dependencies (GTK 4)
+      # links GTK 4 on Linux; the WebAssembly runtime needs clang and llvm-ar (docs/web).
+      - name: Build dependencies (GTK 4, clang, llvm-ar)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev clang
+          sudo apt-get install -y libgtk-4-dev clang llvm
+          llvm-ar --version | head -n 1
 
       - uses: dtolnay/rust-toolchain@stable
         with:
