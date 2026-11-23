@@ -1,7 +1,7 @@
 # The nsh app (app/): the native Stellarator app on nsh (Native Shell), built, packaged, launched
-# and screenshotted on macOS 26, Windows and Linux. Phase 0 of the migration: the go/no-go facts
-# for each platform (does it build and run, the window's shape, fonts, dark mode, memory) come
-# from these runs. Nothing is released.
+# and screenshotted on macOS 26, Windows and Linux: the window's shape, fonts, dark mode, memory,
+# every component on one screen (Linux), and the app's unit tests. The installers and releases are
+# release-nsh.yml's.
 #
 # The web job builds the same app for the browser (`nsh package --target web`): the screens reach
 # the API at the page's own origin.
@@ -57,11 +57,6 @@ jobs:
           curl -fsSL https://nsh.dev/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/nsh" --version
-
-      # The server crate embeds frontend/dist in release builds; the native app does not serve
-      # the web UI, so an empty page is enough.
-      - name: Placeholder web UI for the server crate
-        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
 
       # As .github/workflows/desktop.yml: compile the Icon Composer document with actool; when it
       # works, nsh.json's macos.infoPlist names the icon and Assets.car goes into the app below.
@@ -128,7 +123,6 @@ jobs:
           swiftc -O app/ci/window-id.swift -o "$RUNNER_TEMP/window-id"
           swiftc -O app/ci/mouse-drag.swift -o "$RUNNER_TEMP/mouse-drag"
           swiftc -O app/ci/icon-of.swift -o "$RUNNER_TEMP/icon-of"
-
 
       - name: Run (light, empty data folder, then seeded, then without the toolbar)
         run: |
@@ -210,10 +204,6 @@ jobs:
           "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           & "$env:LOCALAPPDATA\nsh\bin\nsh.exe" --version
 
-      - name: Placeholder web UI for the server crate
-        shell: bash
-        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
-
       - name: Package (nsh package --target windows)
         shell: bash
         working-directory: app
@@ -270,9 +260,6 @@ jobs:
           curl -fsSL https://nsh.dev/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/nsh" --version
-
-      - name: Placeholder web UI for the server crate
-        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
 
       - name: Package (nsh package --target linux)
         working-directory: app
@@ -342,9 +329,6 @@ jobs:
           curl -fsSL https://nsh.dev/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/nsh" --version
-
-      - name: Placeholder web UI for the server crate
-        run: mkdir -p frontend/dist && echo '<!doctype html><title>Stellarator</title>' > frontend/dist/index.html
 
       - name: Package (nsh package --target web)
         working-directory: app

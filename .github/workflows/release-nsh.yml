@@ -528,12 +528,17 @@ jobs:
             test -f /usr/share/applications/com.thekozugroup.stellarator.desktop
             test -f /usr/share/metainfo/com.thekozugroup.stellarator.metainfo.xml
             export STELLARATOR_DATA_DIR=/tmp/data GSK_RENDERER=cairo RUST_LOG=info
-            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "stellarator > deb.log 2>&1 & sleep 15; import -window root shots/deb-ubuntu-24.04.png; pkill -f /usr/lib/stellarator/Stellarator || true"
+            # Stopped by its process id: a pattern would also match the shells around it.
+            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "stellarator > deb.log 2>&1 & app=\$!; sleep 15; import -window root shots/deb-ubuntu-24.04.png; kill \$app || true"
             tail -5 deb.log
             grep -q first_frame deb.log || { echo "the installed app did not draw its window"; exit 1; }
+            # The window opens where it was left (nsh.json restoreBounds): move and size it, quit,
+            # start again and read its place.
+            apt-get install -y -qq xdotool > /dev/null
+            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "stellarator > deb2.log 2>&1 & app=\$!; sleep 10; w=\$(xdotool search --pid \$app | tail -1); xdotool windowmove \$w 120 80 windowsize \$w 1000 700; sleep 4; xdotool getwindowgeometry \$w; kill \$app; sleep 3; stellarator > deb3.log 2>&1 & app=\$!; sleep 10; w=\$(xdotool search --pid \$app | tail -1); echo reopened:; xdotool getwindowgeometry \$w; kill \$app || true" || true
             chmod +x out/*.AppImage
             export STELLARATOR_DATA_DIR=/tmp/data2 APPIMAGE_EXTRACT_AND_RUN=1
-            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "./out/Stellarator_*_amd64.AppImage > appimage.log 2>&1 & sleep 15; import -window root shots/appimage-ubuntu-24.04.png; pkill -f Stellarator || true"
+            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "./out/Stellarator_*_amd64.AppImage > appimage.log 2>&1 & app=\$!; sleep 15; import -window root shots/appimage-ubuntu-24.04.png; kill \$app || true"
             tail -5 appimage.log
             grep -q first_frame appimage.log || echo "::warning::the AppImage did not draw its window"
           '

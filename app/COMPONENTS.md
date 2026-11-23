@@ -20,6 +20,9 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | `src/data.rs` | `Load<T>` and `call`: loading API data into a screen |
 | `src/format.rs` | Numbers, dates, durations (frontend/src/lib/format.ts) |
 | `src/shortcuts.rs` | Keyboard shortcuts |
+| `src/desktop.rs` | Around the window: one instance, showing the window at launch, the macOS menu bar, the start-failure dialog |
+| `src/updater.rs` | In-app updates (on in builds with the update keys; docs/desktop.md) |
+| `packaging/` | The `.deb`, AppImage and MSI recipes (`.github/workflows/release-nsh.yml` runs them) |
 | `src/theme/` | Tokens, type scale (`theme::text`), radii, window shape, the appearance choice |
 
 ## Components

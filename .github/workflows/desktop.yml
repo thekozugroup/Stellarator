@@ -1,4 +1,6 @@
-# Desktop app installers (Tauri 2): macOS (Apple Silicon first), Windows and Linux.
+# Desktop app installers (Tauri 2): macOS (Apple Silicon first), Windows and Linux. The nsh app's
+# installers (release-nsh.yml) are to replace these; until the switch this workflow still makes
+# the releases (docs/desktop.md, "The nsh app").
 #
 # Every run uploads the installers as workflow artifacts. A GitHub release tagged
 # v<version in Cargo.toml> is made by:
