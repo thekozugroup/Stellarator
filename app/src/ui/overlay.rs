@@ -68,6 +68,7 @@ pub struct Dialog {
     width: DialogWidth,
     close_button: bool,
     on_close: Option<Rc<dyn Fn()>>,
+    busy: Option<Rc<dyn Fn() -> bool>>,
     content: Rc<dyn Fn() -> AnyElement>,
     gap: f32,
 }
@@ -80,6 +81,7 @@ pub fn dialog(open: Signal<bool>, label: impl Into<SharedString>, content: impl 
         width: DialogWidth::Sm,
         close_button: true,
         on_close: None,
+        busy: None,
         content: Rc::new(content),
         gap: 16.0,
     }
@@ -104,6 +106,15 @@ impl Dialog {
         self
     }
 
+    /// While `busy` holds (a request the dialog started is on its way) the user cannot close it:
+    /// Escape, the X and a press on the scrim do nothing, as in an [`alert`]. Disable the dialog's
+    /// own Cancel with the same flag. Keep the flag outside the dialog's content (beside its
+    /// `open`), so the request's answer still finds it.
+    pub fn busy(mut self, busy: impl Fn() -> bool + 'static) -> Self {
+        self.busy = Some(Rc::new(busy));
+        self
+    }
+
     /// The space between the header, the body and the footer (16 px; 0 when the content spaces
     /// itself).
     pub fn gap(mut self, gap: f32) -> Self {
@@ -123,6 +134,10 @@ fn modal(open: Signal<bool>, label: SharedString, cancel: Rc<dyn Fn()>, panel: i
         base_dialog()
             .animation(ModalAnimation::Fade)
             .label(label.clone())
+            // Escape does not close it natively (nsh's default): it reports `on_cancel`, and
+            // `cancel` decides, so a busy dialog or alert stays open (and `open` stays true only
+            // while it shows).
+            .close_on_escape(false)
             .on_cancel(move || c1())
             .child(
                 view()
@@ -141,7 +156,12 @@ impl IntoElement for Dialog {
     fn into_element(self) -> AnyElement {
         let open = self.open;
         let on_close = self.on_close.clone();
+        let busy = self.busy.clone();
+        let x_busy = self.busy.clone();
         let cancel: Rc<dyn Fn()> = Rc::new(move || {
+            if busy.as_ref().is_some_and(|b| untracked(|| b())) {
+                return;
+            }
             if let Some(f) = &on_close {
                 f();
             }
@@ -154,6 +174,7 @@ impl IntoElement for Dialog {
         let close = cancel.clone();
         modal(self.open, self.label.clone(), cancel, move || {
             let close = close.clone();
+            let x_busy = x_busy.clone();
             material_float(material_thick(view()))
                 .w_full()
                 .max_w(px(width))
@@ -165,7 +186,12 @@ impl IntoElement for Dialog {
                 .child(content())
                 .child(close_button.then(|| {
                     view().absolute().top(px(12.0)).right(px(12.0)).child(
-                        Button::icon(icon::X, "Close").variant(Variant::Ghost).size(Size::IconSm).round().on_press(move || close()),
+                        Button::icon(icon::X, "Close")
+                            .variant(Variant::Ghost)
+                            .size(Size::IconSm)
+                            .round()
+                            .disabled(move || x_busy.as_ref().is_some_and(|b| b()))
+                            .on_press(move || close()),
                     )
                 }))
                 .into_element()

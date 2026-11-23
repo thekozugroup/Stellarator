@@ -46,10 +46,13 @@ struct HeaderRow {
 }
 
 /// The dialog's content for `target`. `presets` are the chips (Add only); `close` closes the
-/// dialog; `saved` runs with the saved endpoint.
+/// dialog; `saved` runs with the saved endpoint. `saving` belongs to the screen, beside the
+/// dialog's `open`: the dialog cannot be closed while it holds, and the save's answer finds it
+/// whatever happened to the content.
 pub fn endpoint_form(
     target: Target,
     presets: Vec<EndpointPreset>,
+    saving: Signal<bool>,
     close: Rc<dyn Fn()>,
     saved: Rc<dyn Fn(Endpoint)>,
 ) -> impl IntoElement {
@@ -101,7 +104,9 @@ pub fn endpoint_form(
     let test = signal(None::<EndpointTestOut>);
     let test_error = signal(None::<String>);
     let testing = signal(false);
-    let saving = signal(false);
+    // Bumped when the URL, the key or the headers change: a test that started before reports
+    // nothing (its answer is about the old values).
+    let test_round = signal(0_u64);
 
     let name_ref = element_ref();
     let url_ref = element_ref();
@@ -109,6 +114,7 @@ pub fn endpoint_form(
     let seqs_ref = element_ref();
 
     let stale_test = move || {
+        test_round.update(|n| *n += 1);
         test.set(None);
         test_error.set(None);
     };
@@ -161,36 +167,38 @@ pub fn endpoint_form(
             return;
         }
         testing.set(true);
+        let round = test_round.get_untracked();
         let body = EndpointTestIn {
             base_url: base_url.get_untracked().trim().to_owned(),
             api_key: Some(api_key.get_untracked()).filter(|k| !k.is_empty()),
             headers: header_object(),
             endpoint_id: endpoint_id.filter(|_| !remove_key.get_untracked()),
         };
+        // The dialog may have closed meanwhile (Cancel stays free while it tests): the content's
+        // signals are written with `try_set`.
         call(
             move |api| async move { api.test_endpoint(&body).await },
             move |result| {
-                testing.set(false);
-                match result {
-                    Ok(r) => {
-                        test.set(Some(r));
-                        test_error.set(None);
-                    }
-                    Err(e) => {
-                        test.set(None);
-                        test_error.set(Some(e.message));
-                    }
+                testing.try_set(false);
+                if test_round.try_get() != Some(round) {
+                    return;
                 }
+                let (shown, error) = match result {
+                    Ok(r) => (Some(r), None),
+                    Err(e) => (None, Some(e.message)),
+                };
+                test.try_set(shown);
+                test_error.try_set(error);
             },
         );
     };
 
     let show_errors = move |fields: &BTreeMap<String, String>| {
         let get = |f: &str| fields.get(f).cloned().filter(|m| !m.is_empty());
-        err_name.set(get("name"));
-        err_url.set(get("base_url"));
-        err_key.set(get("api_key"));
-        err_seqs.set(get("default_concurrency"));
+        err_name.try_set(get("name"));
+        err_url.try_set(get("base_url"));
+        err_key.try_set(get("api_key"));
+        err_seqs.try_set(get("default_concurrency"));
         let first = [("name", name_ref), ("base_url", url_ref), ("api_key", key_ref), ("default_concurrency", seqs_ref)]
             .into_iter()
             .find(|(f, _)| get(f).is_some());
@@ -262,7 +270,9 @@ pub fn endpoint_form(
                         let mapped = e.fields.iter().map(|(k, v)| (k.split('.').next().unwrap_or(k).to_owned(), v.clone())).collect();
                         show_errors(&mapped);
                     }
-                    Err(e) => form_error.set(Some(e.message)),
+                    Err(e) => {
+                        form_error.try_set(Some(e.message));
+                    }
                 }
             },
         );
@@ -390,11 +400,15 @@ pub fn endpoint_form(
     let group = form_group(vec![name_row.into_element(), url_row.into_element(), key_row.into_element(), seqs_row.into_element()])
         .in_dialog();
 
-    // The headers: two mono fields and a remove button per row, then Add header.
+    // The headers: two mono fields and a remove button per row, then Add header. The rows are made
+    // again only when one comes or goes (they read the ids alone): typing in a row changes
+    // `headers` but keeps its fields, and the focus, where they are.
+    let header_ids = computed(move || headers.with(|rows| rows.iter().map(|h| h.id).collect::<Vec<u64>>()));
     let header_rows = move || {
-        let mut rows: Vec<AnyElement> = headers
+        let mut rows: Vec<AnyElement> = header_ids
             .get()
             .into_iter()
+            .filter_map(|id| headers.with_untracked(|rows| rows.iter().find(|h| h.id == id).cloned()))
             .enumerate()
             .map(|(i, h)| header_row(i, h, headers, stale_test, on_enter.clone()).into_element())
             .collect();

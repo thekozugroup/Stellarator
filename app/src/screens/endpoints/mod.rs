@@ -89,6 +89,9 @@ pub fn screen() -> impl IntoElement {
     // The form dialog, the details sheet and the delete alert.
     let form_open = signal(false);
     let form_target = signal(Target::default());
+    // A save on its way: the form dialog stays open (Escape, the X and the scrim do nothing) until
+    // its answer comes, so the answer always finds the form and a second save cannot start.
+    let form_saving = signal(false);
     let open_form = move |target: Target| {
         form_target.set(target);
         form_open.set(true);
@@ -205,10 +208,11 @@ pub fn screen() -> impl IntoElement {
     let form = dialog(form_open, "Endpoint", move || {
         let close: Rc<dyn Fn()> = Rc::new(move || form_open.set(false));
         let saved: Rc<dyn Fn(Endpoint)> = Rc::new(move |_| reload());
-        endpoint_form(form_target.get_untracked(), presets.get_untracked(), close, saved).into_element()
+        endpoint_form(form_target.get_untracked(), presets.get_untracked(), form_saving, close, saved).into_element()
     })
     .width(DialogWidth::Xl)
-    .gap(0.0);
+    .gap(0.0)
+    .busy(move || form_saving.get());
 
     let details_actions = actions.clone();
     let sheet = side_sheet(sheet_open, "Endpoint details", move || {
