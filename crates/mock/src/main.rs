@@ -1,17 +1,19 @@
 //! `stellarator-mock`: a fake OpenAI-compatible server for trying Stellarator without a GPU.
 //!
-//!     stellarator-mock --port 9100 --tps 60
+//!     stellarator-mock --port 9100 --tps 60 [--api-key sk-mock]
 //!
 //! Then add an endpoint with base URL http://localhost:9100/v1. See the library docs for the models.
+//! With `--api-key`, requests without `Authorization: Bearer <key>` get 401 (a rejected key).
 
 use std::net::{IpAddr, SocketAddr};
 
-const USAGE: &str = "Usage: stellarator-mock [--host 0.0.0.0] [--port 9100] [--tps 60]";
+const USAGE: &str = "Usage: stellarator-mock [--host 0.0.0.0] [--port 9100] [--tps 60] [--api-key KEY]";
 
 fn main() {
     let mut host: IpAddr = IpAddr::from([0, 0, 0, 0]);
     let mut port: u16 = 9100;
     let mut tps: f64 = 60.0;
+    let mut api_key: Option<String> = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let (name, inline) = match arg.split_once('=') {
@@ -27,6 +29,10 @@ fn main() {
             ("--host", Some(v)) => v.parse().map(|v| host = v).is_ok(),
             ("--port", Some(v)) => v.parse().map(|v| port = v).is_ok(),
             ("--tps", Some(v)) => v.parse::<f64>().ok().filter(|t| *t > 0.0).map(|v| tps = v).is_some(),
+            ("--api-key", Some(v)) => {
+                api_key = Some(v);
+                true
+            }
             _ => false,
         };
         if !ok {
@@ -42,9 +48,11 @@ fn main() {
         }
     };
     runtime.block_on(async move {
-        match stellarator_mock::serve(SocketAddr::new(host, port), tps).await {
+        let keyed = api_key.is_some();
+        match stellarator_mock::serve_with_key(SocketAddr::new(host, port), tps, api_key).await {
             Ok((addr, join)) => {
-                eprintln!("Mock OpenAI-compatible server on http://{addr}/v1 ({tps} tokens/s per sequence)");
+                let key = if keyed { ", requests need the API key" } else { "" };
+                eprintln!("Mock OpenAI-compatible server on http://{addr}/v1 ({tps} tokens/s per sequence{key})");
                 tokio::select! {
                     _ = join => {}
                     _ = tokio::signal::ctrl_c() => {}

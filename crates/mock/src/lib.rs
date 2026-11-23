@@ -14,6 +14,11 @@
 //! | `mock-truncating` | stops with finish_reason "length" |
 //!
 //! Speed: `tps` tokens per second per sequence. Failures and delays are random.
+//!
+//! A key: [`router_with_key`] and [`serve_with_key`] (`stellarator-mock --api-key KEY`) answer
+//! every request whose `Authorization` header is not `Bearer KEY` with 401 and an OpenAI-style
+//! error, as a server that rejects a missing or wrong key. Stellarator reports it as "The server
+//! rejected the API key (401)", which is how its key-rejected states are tried.
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -21,8 +26,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -62,12 +68,36 @@ pub fn router(tps: f64) -> Router {
         .with_state(Arc::new(MockState { tps }))
 }
 
+/// The routes of [`router`] behind a key: a request without `Authorization: Bearer <api_key>` gets
+/// 401. `None` (or an empty key) is [`router`] itself.
+pub fn router_with_key(tps: f64, api_key: Option<String>) -> Router {
+    match api_key.filter(|k| !k.is_empty()) {
+        Some(key) => router(tps).layer(middleware::from_fn_with_state(Arc::new(key), require_key)),
+        None => router(tps),
+    }
+}
+
+/// 401 unless the request carries the key, as OpenAI answers a missing or wrong one.
+async fn require_key(State(key): State<Arc<String>>, request: Request, next: Next) -> Response {
+    let sent = request.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok());
+    if sent.and_then(|v| v.strip_prefix("Bearer ")) == Some(key.as_str()) {
+        next.run(request).await
+    } else {
+        error(StatusCode::UNAUTHORIZED, "Incorrect API key provided.")
+    }
+}
+
 /// Bind `addr` (port 0 picks a free port) and serve in the background. Returns the bound address
 /// and the server task; abort the task to stop it.
 pub async fn serve(addr: SocketAddr, tps: f64) -> std::io::Result<(SocketAddr, JoinHandle<()>)> {
+    serve_with_key(addr, tps, None).await
+}
+
+/// [`serve`] behind a key ([`router_with_key`]).
+pub async fn serve_with_key(addr: SocketAddr, tps: f64, api_key: Option<String>) -> std::io::Result<(SocketAddr, JoinHandle<()>)> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let bound = listener.local_addr()?;
-    let app = router(tps);
+    let app = router_with_key(tps, api_key);
     let join = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
@@ -287,6 +317,33 @@ async fn chat(State(state): State<Arc<MockState>>, raw: Bytes) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower::ServiceExt;
+
+    async fn status(app: Router, auth: Option<&str>) -> StatusCode {
+        let mut request = axum::http::Request::builder().uri("/v1/models");
+        if let Some(a) = auth {
+            request = request.header(header::AUTHORIZATION, a);
+        }
+        app.oneshot(request.body(Body::empty()).unwrap()).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn a_key_turns_away_requests_without_it() {
+        let keyed = || router_with_key(60.0, Some("sk-mock".into()));
+        assert_eq!(status(keyed(), None).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(status(keyed(), Some("Bearer sk-wrong")).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(status(keyed(), Some("Bearer sk-mock")).await, StatusCode::OK);
+        // Without a key (or an empty one) every request is served.
+        assert_eq!(status(router_with_key(60.0, None), None).await, StatusCode::OK);
+        assert_eq!(status(router_with_key(60.0, Some(String::new())), None).await, StatusCode::OK);
+        let chat = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"model":"mock-plain","messages":[{"role":"user","content":"hi"}]}"#))
+            .unwrap();
+        assert_eq!(keyed().oneshot(chat).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
 
     #[test]
     fn compose_matches_python_shape() {
