@@ -54,24 +54,37 @@ impl<T> From<Result<T, ApiError>> for Load<T> {
     }
 }
 
-/// Runs `request` against the API in a task of the current owner (the screen: it stops with the
-/// screen), then `done` with its result. Where the API cannot start (the in-process server failed),
-/// `done` gets that error.
+/// The owner of the open screen, provided as a context by `screens::view`.
+#[derive(Clone, Copy)]
+struct ScreenOwner(Owner);
+
+/// Makes the calling scope (a screen being made) the owner of the API calls made below it. A call
+/// made from a menu item or a dialog then outlives the popup that started it: closing the menu
+/// does not cancel the request, leaving the screen does.
+pub fn own_calls() {
+    provide_context(ScreenOwner(Owner::current()));
+}
+
+/// Runs `request` against the API in a task of the open screen (see [`own_calls`]; the current
+/// owner outside a screen), then `done` with its result. Where the API cannot start (the
+/// in-process server failed), `done` gets that error.
 pub fn call<T, F, Fut>(request: F, done: impl FnOnce(Result<T, ApiError>) + 'static)
 where
     T: 'static,
     F: FnOnce(Api) -> Fut + 'static,
     Fut: Future<Output = Result<T, ApiError>> + 'static,
 {
-    let _ = spawn(async move {
-        let result = match crate::api() {
-            Ok(api) => request(api).await,
-            Err(message) => Err(ApiError { status: None, message, fields: Default::default() }),
-        };
-        done(result);
+    let owner = use_context::<ScreenOwner>().map(|s| s.0).filter(Owner::is_live).unwrap_or_else(Owner::current);
+    owner.run(move || {
+        let _ = spawn(async move {
+            let result = match crate::api() {
+                Ok(api) => request(api).await,
+                Err(message) => Err(ApiError { status: None, message, fields: Default::default() }),
+            };
+            done(result);
+        });
     });
 }
-
 
 /// The current time, from nsh's clock (the same on native targets and the web).
 pub fn now_utc() -> chrono::DateTime<chrono::Utc> {

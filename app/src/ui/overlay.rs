@@ -398,7 +398,8 @@ pub fn toaster() -> impl IntoElement {
             toasts.update(|t| t.shown.retain(|x| x.until > now));
         }
     });
-    overlay().child(dynamic(move || {
+    // The overlay covers the window and lets presses through to what is under it.
+    overlay().absolute().inset(px(0.0)).pointer_events(PointerEvents::BoxNone).child(dynamic(move || {
         let phone = is_phone();
         let stack = view()
             .absolute()

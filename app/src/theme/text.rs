@@ -35,9 +35,9 @@ pub fn title<T: Styled>(t: T) -> T {
         .text_color(ink)
 }
 
-/// Data (`font-mono`): Roboto Mono, 12 px on 16 px.
+/// Data (`font-mono`): Roboto Mono, 12 px on 16 px, ink.
 pub fn mono<T: Styled>(t: T) -> T {
-    t.font_family(ROBOTO_MONO.family).text_size(px(12.0)).line_height(px(16.0)).letter_spacing(px(0.0))
+    t.font_family(ROBOTO_MONO.family).text_size(px(12.0)).line_height(px(16.0)).letter_spacing(px(0.0)).text_color(ink)
 }
 
 /// The display title of a screen: Inter Display, 32 px at 600, line height 1.1, -0.03em.

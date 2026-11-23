@@ -125,8 +125,9 @@ pub fn endpoint_form(
         seqs.set(p.as_ref().map(|p| p.default_concurrency).unwrap_or(DEFAULT_SEQS).to_string());
         api_key.set(String::new());
         let rows = rows_of(&p.as_ref().map(|p| p.headers.clone()).unwrap_or_default());
-        headers_open.set(!rows.is_empty());
+        let any = !rows.is_empty();
         headers.set(rows);
+        headers_open.set(any);
         for e in [err_name, err_url, err_key, err_seqs, form_error] {
             e.set(None);
         }
@@ -332,7 +333,7 @@ pub fn endpoint_form(
                     meta(text("The saved key is removed when you save.")).into_element()
                 } else {
                     meta(text("Saved key "))
-                        .child(mono(text(key_hint.clone())))
+                        .child(mono(text(key_hint.clone())).text_color(muted_ink))
                         .child(text(". Leave blank to keep it."))
                         .into_element()
                 }

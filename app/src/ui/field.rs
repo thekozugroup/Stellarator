@@ -532,6 +532,7 @@ pub fn form_disclosure(
     rows: impl Fn() -> Vec<AnyElement> + 'static,
     in_dialog: bool,
 ) -> impl IntoElement {
+    let rows = Rc::new(rows);
     let title = title.into();
     let header = view()
         .min_h(px(36.0))
@@ -560,7 +561,9 @@ pub fn form_disclosure(
         .bg(group_fill(in_dialog))
         .child(header)
         .child(when(move || open.get(), move || {
-            view().child(inset_hairline()).children(separated(rows()))
+            // Made again when what the rows read changes (a header added or removed).
+            let rows = rows.clone();
+            view().child(inset_hairline()).child(dynamic(move || view().children(separated(rows()))))
         }))
 }
 

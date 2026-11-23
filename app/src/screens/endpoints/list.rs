@@ -137,7 +137,7 @@ fn row_actions(endpoint: &Endpoint, actions: Actions, with_edit: bool) -> impl I
         .justify_end()
         .gap(px(4.0))
         .child(edit)
-        .child(menu_button(format!("More actions for {}", endpoint.name), entries))
+        .child(menu_button(format!("More actions for {}", endpoint.name), entries, Some(176.0)))
 }
 
 /// The name (500, two lines at most) over the base URL.

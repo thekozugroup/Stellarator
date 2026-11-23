@@ -24,9 +24,9 @@ use crate::theme::{radius, token};
 /// The classes of a list item: 32 px, 8 px corners, the highlight `accent`.
 const ITEM_CLASS: &str = "min-h-8 rounded-sm px-2.5 py-1.5 text-[13px] text-popover-foreground focus:bg-accent selected:font-medium disabled:opacity-50";
 
-/// The popup of a list or menu: the thick material, 14 px corners, 6 px padding.
+/// The popup of a list or menu: the thick material, 14 px corners, 6 px padding, at least 128 px.
 fn popup(s: StyleRefinement) -> StyleRefinement {
-    material_float(material_thick(s.rounded(px(radius::LG)).p(px(6.0)).min_w(px(144.0))))
+    material_float(material_thick(s.rounded(px(radius::LG)).p(px(6.0)).min_w(px(128.0))))
 }
 
 /// An option of a pop-up button: its value and its title.
@@ -133,20 +133,32 @@ fn entry(e: &MenuEntry) -> AnyElement {
     }
 }
 
-/// A menu opened by `trigger`, aligned with its end.
-pub fn menu_with(trigger: impl IntoElement, entries: Vec<MenuEntry>) -> impl IntoElement {
+/// A menu opened by `trigger`, aligned with its end; `width` sets its width (the web UI's `w-44`
+/// is 176), `None` sizes it to its items (128 px at least). The trigger must take presses itself
+/// (a button without a tooltip, or a view): the menu puts its press handler on it.
+pub fn menu_with(trigger: impl IntoElement, entries: Vec<MenuEntry>, width: Option<f32>) -> impl IntoElement {
     let entries = Rc::new(entries);
     menu()
         .offset(px(4.0))
         .align(Align::End)
-        .popup_style(popup)
+        .popup_style(move |s| {
+            let s = popup(s);
+            match width {
+                Some(w) => s.w(px(w)),
+                None => s,
+            }
+        })
         .trigger(trigger)
         .child(dynamic(move || entries.iter().map(entry).collect::<Vec<_>>()))
 }
 
-/// The "…" button of a row or toolbar and its menu.
-pub fn menu_button(accessibility: impl Into<SharedString>, entries: Vec<MenuEntry>) -> impl IntoElement {
-    menu_with(Button::icon(icon::ELLIPSIS, accessibility).variant(Variant::Ghost).size(Size::IconSm), entries)
+/// The "…" button of a row or toolbar and its menu (`width` as [`menu_with`]).
+pub fn menu_button(accessibility: impl Into<SharedString>, entries: Vec<MenuEntry>, width: Option<f32>) -> impl IntoElement {
+    menu_with(
+        Button::icon(icon::ELLIPSIS, accessibility).variant(Variant::Ghost).size(Size::IconSm).without_tooltip(),
+        entries,
+        width,
+    )
 }
 
 /// A field that filters `options` as the user types and sets `value` to the one picked.

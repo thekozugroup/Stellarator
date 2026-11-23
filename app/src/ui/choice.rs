@@ -117,7 +117,7 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
         }
         seg.into_element()
     });
-    let mut track = view()
+    let track = view()
         .h(px(32.0))
         .flex_row()
         .items_center()
@@ -127,10 +127,12 @@ fn segmented_with<V: Clone + PartialEq + 'static>(
         .role(AccessibilityRole::Radiogroup)
         .label(accessibility)
         .children(segments.collect::<Vec<_>>());
-    if !fill {
-        track = track.self_start();
+    if fill {
+        track.into_element()
+    } else {
+        // In a row the track keeps its own width; the row lines up with its column's alignment.
+        view().flex_row().child(track).into_element()
     }
-    track
 }
 
 /// Line tabs over one list: (value, label, count).

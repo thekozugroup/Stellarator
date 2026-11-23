@@ -16,6 +16,8 @@ use crate::nav::Route;
 
 /// The view of `route`.
 pub fn view(route: Route) -> AnyElement {
+    // API calls made anywhere in the screen (its menus and dialogs too) belong to the screen.
+    crate::data::own_calls();
     match route {
         Route::Runs => runs::screen().into_element(),
         Route::Endpoints => endpoints::screen().into_element(),

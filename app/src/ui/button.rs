@@ -205,6 +205,12 @@ impl Button {
         self
     }
 
+    /// No tooltip (a menu's trigger: the menu needs the button itself as its root).
+    pub fn without_tooltip(mut self) -> Self {
+        self.tooltip = None;
+        self
+    }
+
     /// A tooltip after the hover delay (icon buttons have their name as one).
     pub fn tooltip(mut self, text: impl Into<SharedString>) -> Self {
         self.tooltip = Some(text.into());
