@@ -51,19 +51,19 @@ It was removed in 0.4.0; it is in the repository at tag `v0.3.1`.
 | Segmented control | `segmented(options, signal, label, fill)`, `segmented_with_get(options, get, set, label, fill)`, `segmented_small(..)` (12 px), `segmented_mono(options, get, set, label)` (mono 12 px labels), `segmented_padded(options, get, set, label, fill, pad)` (another label padding) | `ui/toggle-group.tsx` with `spacing={0}` |
 | Line tabs | `line_tabs(vec![(value, "Samples", Some(count_fn))], signal)` | `ui/tabs.tsx` variant line |
 | Toggle | `toggle(label, signal)` | `ui/toggle.tsx` |
-| Checkbox | `checkbox(label, signal)`, `checkbox_with(label, get, set)` | `ui/checkbox.tsx` |
+| Checkbox | `checkbox(label, signal)`, `checkbox_with(label, get, set)`; a label of any element (a name over its description), the box on its first line: `checkbox_content(get, set, content, accessibility)` | `ui/checkbox.tsx` |
 | Radio | `radio_group(options, signal)` | `ui/radio-group.tsx` |
-| Switch | `switch(label, signal)` | (none) |
+| Switch | `switch(label, signal)`; read with `get`, dimmed and inert while `disabled` holds: `switch_with(label, get, set, disabled, accessibility)` | (none) |
 | Tooltip | `view().tooltip(tooltip_bubble("…"))` | `ui/tooltip.tsx` |
 | Key | `kbd(shortcuts::label("mod+["))` | `ui/kbd.tsx` |
 | Copy button | `copy_button(value, "Copy base URL")` | `shared/copy-button.tsx` |
 | Info tip | `info_tip(label, explanation)` | `shared/info-tip.tsx` |
 | Status | `pill(Tone::Positive, "Reachable")`, `pill_small(..)`, `status_badge(tone, glyph, word)`, `run_status_pill(s)`, `run_status_badge(s)`, `sample_status_pill(s, finish_reason)` | `shared/status-pill.tsx`, `RunStatusBadge`, `SampleStatusPill` |
-| Chips | `chip(label).mono().leading(plasma(..)).on_press(f).selected(f)`; `chip_row(vec)` | `shared/chip.tsx` |
+| Chips | `chip(label).mono().leading(plasma(..)).on_press(f).selected(f)`; a popover's trigger (the popover takes the press): `chip(label).popover_trigger()`; `chip_row(vec)` | `shared/chip.tsx` |
 | Tiles | `tiles(vec![tile("Models", f).unit(..).span().child(bar).background(dialog_muted)])` | `shared/tiles.tsx` |
 | Pixel tile | `plasma(seed, cells, size, radius, deep)`; `plasma_cells` gives the colors the React UI gave the same seed | `shared/plasma.tsx` |
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
-| Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)`, `Column::share("Name", 1.1)` (a share of the free space) | `ui/table.tsx` |
+| Table | `header(&columns)` (a slice: build it per shape, as the samples table adds Tools), `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)`, `Column::share("Name", 1.1)` (a share of the free space) | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
 | Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0).busy(f)` (`Xs` 320, `Sm` 384, `Md` 448, `Xl` 576, `FourXl` 896 px; while `busy` holds, Escape, the X and the scrim do nothing); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
 | Alert | `alert(open, \|\| Alert { .. }, busy_fn, error_fn, on_action)` | `ui/alert-dialog.tsx` |
@@ -71,13 +71,16 @@ It was removed in 0.4.0; it is in the repository at tag `v0.3.1`.
 | Toasts | `toast_success(msg)`, `toast_error(msg)`, `toast_info(msg)`, `toast_error_with(msg, second_line)` (the shell holds the toaster) | `ui/sonner.tsx` |
 | Action bar | `page(..).bottom_bar(\|\| action_bar(vec![..]).into_element())`; in a state's tint: `action_bar_tinted(vec![..], "review-bar-tint")` | `shared/action-bar.ts` |
 | Model text | `model_text(\|\| text, None)`, `text_mode_toggle()`; sized or muted: `model_text_with(\|\| text, None, ModelTextStyle::small().muted_when(f))` (13 px on 18 px, a card's `text-sm`) | `shared/model-text.tsx`, `shared/markdown.tsx` |
+| Tool trace | `trace_rounds(&trace)` (a sample's trace in requests, each call with its result), `split_final(rounds)`, `all_calls(&rounds)`; `tool_call_card(block, open)` (the sample viewer's card: name, server, latency, arguments and result); `compact_calls(calls, muted_fn)` (a preference card's folded "3 tool calls"); `data_tag("TRUNCATED", "coral-tint", "coral-ink")`; `code_spans(words, size)` (mono between backticks) (`ui/trace.rs`; DESIGN.md, "Tool traces") | (new) |
 | Materials | `material_bar(view())`, `material_bar_tinted(view(), token)`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
 | Type | `theme::text::{body, label, meta, title, mono, display}` | Tailwind text classes |
 
 Screens share one more piece outside `ui/`: the export dialogs' layout, `screens::export`
 (`components/export/export-dialog-shell.tsx`). `export_dialog(open, ExportSpec { .. }, || options)`
 draws the preview, the Hugging Face push and Download; the options are built with
-`choice_group`, `option_group` + `check_option` and `file_type_group`. Its module comment shows how
+`choice_group` (`choice_group_gated(legend, choices, off, get, set)` dims the choices `off` gives a
+reason for, as a run with tools does Alpaca), `option_group` + `check_option`, `file_type_group` and
+`options_note(words)` (a muted sentence above them). Its module comment shows how
 to use it; `screens/export/run.rs` (a run's export) is the worked example.
 
 Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px).
@@ -91,7 +94,8 @@ Cards there have 10 px corners (26 - 16); form groups `in_dialog()` take them.
 | --- | --- |
 | `screens::endpoints::open_edit(id, EditFocus::Key)` | Switches to Endpoints and opens that endpoint's edit dialog with the key (`EditFocus::Url`: the URL; `EditFocus::None`: the name) focused. Closing the dialog, saved or not, goes back to the destination the call came from |
 | `screens::endpoints::status::endpoint_trouble(Some(&ep))` | `Some(Trouble::KeyRejected)` or `Some(Trouble::Unreachable)` when the last check failed; `.word()` and `.field()` (the `EditFocus` that fixes it) |
-| `screens::new_run::open(Prefill { endpoint, prompt_set, from })` | Shows New run starting from an endpoint, a prompt set, or a run to copy ("Run again…": `from`) |
+| `screens::new_run::open(Prefill { endpoint, prompt_set, from })` | Shows New run starting from an endpoint, a prompt set, or a run to copy ("Run again…": `from`; its tools are checked against the servers there are now) |
+| `screens::tools::open()` | Switches to Tools (the MCP servers), as New run's "Add MCP servers in Tools" does |
 
 ## Adding a screen
 

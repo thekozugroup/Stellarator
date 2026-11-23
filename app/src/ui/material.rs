@@ -88,6 +88,12 @@ pub fn dialog_muted() -> AdaptiveColor {
     token("on-dialog-muted")()
 }
 
+/// A well inside a card in a dialog or sheet (a tool call's JSON): the surface (`--muted`) in light,
+/// where the card there is the ground, and the ground in dark, where the card is raised.
+pub fn dialog_well() -> AdaptiveColor {
+    AdaptiveColor { light: nsh_base::theme().muted.light, dark: nsh_base::theme().background.dark }
+}
+
 /// The page ground, for a control on a `muted` card (`on-card-control`).
 pub fn on_card_control() -> AdaptiveColor {
     token("on-card-control")()

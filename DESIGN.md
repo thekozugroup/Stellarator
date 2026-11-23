@@ -196,7 +196,7 @@ raised segment of a segmented control (one 1 px shadow).
 - Spacing scale (Tailwind units): 1, 2, 3, 4, 6, 8, 12, 16 (4 to 64 px).
 - Shell from 768 px up: the sidebar panel floats 8 px inside the window (a 240 px column: 8 px
   gutter, 224 px panel, 8 px gutter), `--sidebar` fill, `material-float`, `--panel-radius`
-  corners, 8 px padding. At its top: the mark (20 px, ink) and the name, in a 32 px row; then Runs, Prompt sets, Endpoints, Preferences;
+  corners, 8 px padding. At its top: the mark (20 px, ink) and the name, in a 32 px row; then Runs, Prompt sets, Endpoints, Tools, Preferences;
   Settings at the bottom.
 - Sidebar rows: 16 px icon, 8 px gap, label, 8 px side padding, 10 px corners, 32 px tall.
   Labels ink at 500; icons muted until their row is selected. The selected row is `--accent`.
@@ -206,7 +206,7 @@ raised segment of a segmented control (one 1 px shadow).
   below it. That band and the page toolbar's empty areas move the window (`window_drag`; a
   double click zooms).
 - Toolbar: 52 px, sticky, in the page column so its contents line up with the content.
-  - Top-level screens (Runs, Prompt sets, Endpoints, Preferences, Settings): the title (the
+  - Top-level screens (Runs, Prompt sets, Endpoints, Tools, Preferences, Settings): the title (the
     page's `h1`, 15 px) then the actions at the end.
   - Detail screens (a run, a prompt set, a preference set, import, new run): a breadcrumb,
     parents in muted ink as links, `/` separators, the current page in ink
@@ -218,11 +218,12 @@ raised segment of a segmented control (one 1 px shadow).
   row of chips (status pill first, then the objects it uses: model, endpoint, prompt set, each a
   link), then the facts as tiles. 24 px between the title block and the content.
 - Facts as tiles: a row of `--muted` tiles, 16 px corners, 16 px padding, each a figure (28 px)
-  over its label (12 px muted). At most four, sharing the row equally (two tiles take half each).
+  over its label (12 px muted). At most four, sharing the row equally (two tiles take half each);
+  a run with tools adds a fifth, its tool calls, before the time (six columns from 1024 px).
   The first tile may span two columns and hold a progress bar. Never repeat a count shown elsewhere on the screen.
 - Phones (below 768 px): a 44 px bar under the status-bar inset holds the back button ("‹ Runs")
-  or, on the four top-level screens, the Settings gear. The screen starts with the 28 px large
-  title. Once it scrolls under the bar, a 17 px title fades in centered in the bar. The four
+  or, on the five top-level screens, the Settings gear. The screen starts with the 28 px large
+  title. Once it scrolls under the bar, a 17 px title fades in centered in the bar. The five
   destinations sit in a tab bar: a 56 px capsule floating 12 px from the sides and at least 12 px
   above the bottom, `material-bar` with `material-float`; the current tab is a capsule of `--accent`
   with ink text. `--bottom-chrome` keeps the page end clear of it.
@@ -255,7 +256,8 @@ The components in `app/src/ui`, drawn with the tokens above; `app/COMPONENTS.md`
   word in the state's ink; Completed is a neutral badge with a check instead of the dot, so a
   finished run never reads as a live one. In lists and tables, the dot and the word only. Normal states
   (Completed, Done, Pending) are plain muted words with no dot. Running and In flight green;
-  Paused, Pausing and Truncated coral; Failed red; Thinking periwinkle; Answering green.
+  Paused, Pausing and Truncated coral (cut at max tokens or at a run's last round of tool calls);
+  Failed red; Thinking periwinkle; Answering green.
 - **Tables** (data lists from 1024 px): a header band of `--muted` with 10 px corners and 12 px
   muted labels; 44 px rows divided by straight hairlines; the row under the pointer gets an
   `--accent` layer behind its cells with 10 px corners at its ends; the first column ink at 500; numbers right-aligned and tabular; IDs and models mono.
@@ -288,6 +290,55 @@ The components in `app/src/ui`, drawn with the tokens above; `app/COMPONENTS.md`
 - **Plasma tile** (`app/src/ui/plasma.rs`): a square of pixel-field cells from a seed (an endpoint's
   or prompt set's id), 8 px corners at 28 px and 5 px at 20 px. Decorative (`aria-hidden`), always
   next to the name it stands for.
+
+## Tool traces
+
+A sample of a run with tools is a trace: a list of requests, each the model's turn (its thinking,
+its text, its tool calls) and the results the tools sent back; the last request without calls
+holds the answer. The sample viewer shows it in full, a preference card folded
+(`app/src/ui/trace.rs`).
+
+- **Order in the sample viewer**: the Prompt card; for each request that called tools, a 12 px
+  muted line ("Request 1 of 3 · 2.1 s · 212 tokens"), its thinking (a Thinking card, folded
+  unless shorter than 1,500 characters), what the model wrote (an Assistant card of model text),
+  and a tool call card per call; then the last request's line, its Thinking trace and the
+  Response card; Details last. 8 px between cards.
+- **Tool call card**: a card (16 px corners, the sheet's `--muted`, 8 px padding, no border). Its
+  32 px header: a chevron, the tool's name in Roboto Mono 13 px at 500, the server in 13 px muted
+  ink, an ERROR tag when the result is an error, the call's latency in muted mono at the end, and
+  the copy button (the arguments). Open by default; folded when the request made more than four
+  calls, so a long trace stays short to scroll.
+- **Arguments**: a ground well (8 px corners, 12 px by 10 px padding) of Roboto Mono 12 px on
+  19.5 px lines. Rendered shows the JSON pretty-printed (two spaces, keys in the model's order);
+  Raw shows it exactly as the model wrote it. Arguments that are not JSON show as written, with
+  "Not valid JSON: shown as the model wrote it." in 12 px coral ink under the well.
+- **Result**: a 28 px row ("Result", 13 px at 600; its tags; its copy button), then a ground well
+  of mono text as for the arguments; JSON results are pretty-printed in Rendered. An error result
+  says "Error result" in the negative ink and its well takes `--negative-tint` with
+  `--negative-ink` text. A result cut at the run's limit carries the TRUNCATED tag. A result over
+  20 lines or 2,000 characters shows its first 20 lines (2,000 characters, ending "…") and a small
+  ghost button "Show all 143 lines".
+- **Not run**: a call the sample never ran (it used its last round) says "Not run: the sample
+  used its last round of tool calls." in 12 px coral ink in place of the result, and the Response
+  card says "No answer: the sample used all its rounds of tool calls." in coral.
+- **Data tags**: TRUNCATED (coral) and ERROR (red) are `label-mono` at 11 px in a 20 px capsule of
+  the state's tint with its ink, as the review's CHOSEN tag is.
+- **Preference card**: one 36 px ground well between the thinking trace and the response:
+  a chevron, "3 tool calls · lookup, search" in 13 px muted (each name once, at most three, then
+  "+N"), and an ERROR tag (ERRORS for several) when a result is an error. Folded by default; Choose
+  and Reject are unchanged. Open, a row per call divided by hairlines: the call as
+  `name(arg: value, …)` in 12 px mono (two lines at most), the server and latency in 12 px muted
+  at its end; under it the result's first four lines in 12 px mono, muted (negative ink for an
+  error). At most 512 px tall; it scrolls inside. A rejected card's calls turn muted.
+- **The run**: the chip "5 tools" after the prompt set chip opens a popover (`material-thick`,
+  14 px corners, 320 px wide, at most 420 px tall): each server's name at 500 with its transport
+  and tool count, then its tools in mono, a renamed one (`docs__search`) followed by its own name
+  in muted. The Tool calls tile shows the total and "1.8 per sample" after it. The samples table
+  has a Tools column (72 px, numbers right-aligned); phone rows say "3 tool calls" on their first
+  line.
+- **In flight**: while a sample's tools run its state word is `tool` in ink, and the line under
+  the row says "calling lookup… · round 2" in mono ink; a later request that thinks or answers
+  says "round 2" there in muted mono.
 
 ## Data visualization
 

@@ -21,7 +21,7 @@ use nsh_core::prelude::*;
 
 use super::button::{Size, Variant, button};
 use super::icon::{self, icon};
-use super::material::dialog_muted;
+use super::material::{dialog_muted, dialog_well};
 use super::model_text::{TextMode, text_mode};
 use super::tooltip::copy_button;
 use crate::api::types::{ToolCall, TraceMessage, TraceTool};
@@ -250,7 +250,7 @@ pub fn data_tag(words: &'static str, tint: &'static str, ink: &'static str) -> i
 fn mono_well(content: String, error: bool) -> View {
     view()
         .rounded(px(radius::SM))
-        .bg(move || if error { token("negative-tint")() } else { theme().background })
+        .bg(move || if error { token("negative-tint")() } else { dialog_well() })
         .px(px(12.0))
         .py(px(10.0))
         .child(

@@ -18,7 +18,7 @@ use crate::theme::{muted_ink, radius, token};
 use crate::ui::button::{Variant, button};
 use crate::ui::field::text_field;
 use crate::ui::icon::{self, icon};
-use crate::ui::material::dialog_muted;
+use crate::ui::material::{dialog_muted, dialog_well};
 use crate::ui::overlay::sheet_close;
 use crate::ui::status::status_badge;
 use crate::ui::tooltip::copy_button;
@@ -251,7 +251,7 @@ pub fn json_well(json: String) -> impl IntoElement {
     scroll()
         .max_h(px(320.0))
         .rounded(px(radius::SM))
-        .bg(move || theme().background)
+        .bg(dialog_well)
         .child(mono(text(json)).line_height(px(19.5)).selectable(true).px(px(12.0)).py(px(10.0)))
 }
 

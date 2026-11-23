@@ -10,7 +10,7 @@ use crate::ui::action_bar::{action_bar, action_bar_tinted};
 use crate::ui::blocks::{bar, empty_block, empty_text, error_block};
 use crate::ui::button::{Button, Size, Variant, button, external_link};
 use crate::ui::chip::{chip, chip_row};
-use crate::ui::choice::{checkbox, line_tabs, radio_group, segmented, switch, toggle};
+use crate::ui::choice::{checkbox, checkbox_content, line_tabs, radio_group, segmented, switch, switch_with, toggle};
 use crate::ui::field::{field, form_disclosure, form_group, form_row, text_area, text_field};
 use crate::ui::icon;
 use crate::ui::info_tip::info_tip;
@@ -28,6 +28,24 @@ use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive
 use crate::ui::status::{Tone, pill, run_status_badge, status_badge};
 use crate::ui::tiles::{tile, tiles};
 use crate::ui::tooltip::{copy_button, kbd};
+use crate::ui::trace::{CallBlock, compact_calls, data_tag, tool_call_card};
+use crate::api::types::{ToolCall, TraceTool};
+
+/// A call and its result, for the tool trace's pieces.
+fn example_call(id: &str, name: &str, arguments: &str, content: &str, error: bool, truncated: bool) -> CallBlock {
+    CallBlock {
+        call: ToolCall { id: id.into(), name: name.into(), arguments: arguments.into() },
+        result: Some(TraceTool {
+            tool_call_id: id.into(),
+            name: name.into(),
+            server: "docs".into(),
+            content: content.into(),
+            is_error: error,
+            truncated,
+            latency_ms: 214,
+        }),
+    }
+}
 
 const SAMPLE: &str = "## Answer\n\nThe sum is $$\\frac{n(n+1)}{2}$$ for the first *n* integers, so:\n\n\\[ \\sum_{k=1}^{100} k = 5050 \\]\n\n- `code` in text\n- a [link](https://example.com)\n\n```python\nprint(sum(range(101)))\n```\n\n> A quote.";
 
@@ -208,6 +226,19 @@ pub fn screen() -> impl IntoElement {
         .child(line_tabs(vec![(0_u8, "Samples", None), (1, "Failures", None), (2, "Settings", None)], tab))
         .child(segmented(vec![(0_u8, "Light"), (1, "Dark"), (2, "System")], seg, "Theme", false))
         .child(view().flex_row().gap(px(16.0)).items_center().child(toggle("Bold", on)).child(switch("Stream", on)).child(checkbox("Remove the saved key", checked)))
+        .child(
+            view()
+                .flex_row()
+                .gap(px(16.0))
+                .items_start()
+                .child(switch_with("Can't be picked", || false, |_| {}, || true, "Disabled switch"))
+                .child(checkbox_content(
+                    move || checked.get(),
+                    move |v| checked.set(v),
+                    view().gap(px(2.0)).child(body(text("lookup"))).child(meta(text("Searches the docs."))),
+                    "lookup",
+                )),
+        )
         .child(radio_group(vec![(0_u8, "Local"), (1, "Cloud")], radio));
 
     let states = view()
@@ -340,6 +371,24 @@ pub fn screen() -> impl IntoElement {
                         .child(action_bar_tinted(
                             vec![body(text("A chosen over B.")).into_element(), Button::icon(icon::KEYBOARD, "Keyboard shortcuts").muted().into_element()],
                             "review-bar-tint",
+                        )),
+                ))
+                // The tool trace's pieces (DESIGN.md, "Tool traces").
+                .child(panel(
+                    Some("Tool trace".into()),
+                    None,
+                    Some(text_mode_toggle().into_element()),
+                    view()
+                        .gap(px(8.0))
+                        .child(view().flex_row().gap(px(8.0)).child(data_tag("TRUNCATED", "coral-tint", "coral-ink")).child(data_tag("ERROR", "negative-tint", "negative-ink")))
+                        .child(tool_call_card(example_call("c1", "lookup", "{\"query\":\"rate limits\",\"limit\":3}", "{\"hits\":[{\"title\":\"Rate limits\",\"score\":0.92}]}", false, true), true))
+                        .child(tool_call_card(example_call("c2", "fetch_page", "{\"url\": \"https://docs.example.com/missing\"}", "404: no page at that address.", true, false), true))
+                        .child(compact_calls(
+                            vec![
+                                example_call("c1", "lookup", "{\"query\":\"rate limits\"}", "3 hits", false, false),
+                                example_call("c2", "fetch_page", "{\"url\":\"https://docs.example.com/missing\"}", "404: no page at that address.", true, false),
+                            ],
+                            std::rc::Rc::new(|| false),
                         )),
                 ))
                 .child(panel_tight(Some("Tight card".into()), Some("Body padding of 8 px".into()), None, model_text_with(|| SAMPLE.to_owned(), None, ModelTextStyle::small())))

@@ -77,7 +77,7 @@ pub fn server_status(server: &Server) -> impl IntoElement {
         .items_start()
         .min_w(px(0.0))
         .child(pill(state.tone, state.word))
-        .child(state.reason.map(|r| meta(text(r)).number_of_lines(2)))
+        .child(state.reason.map(|r| meta(text(r)).number_of_lines(2).max_w(px(200.0))))
 }
 
 /// When it was last checked ("5 minutes ago"), or the dash.

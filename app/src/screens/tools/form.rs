@@ -143,6 +143,8 @@ struct FormState {
     env_open: Signal<bool>,
     headers_open: Signal<bool>,
     next_id: Signal<u64>,
+    /// A row just added, or just set to be replaced: its field takes the focus once.
+    focus_row: Signal<Option<u64>>,
     /// Each field's error, in `FormField` order.
     errors: [Signal<Option<String>>; 6],
     form_error: Signal<Option<String>>,
@@ -167,6 +169,7 @@ impl FormState {
             env: signal(env),
             headers: signal(headers),
             next_id: signal(2000),
+            focus_row: signal(None),
             errors: std::array::from_fn(|_| signal(None)),
             form_error: signal(None),
             name_ref: element_ref(),
@@ -651,15 +654,18 @@ fn secrets_section(fs: FormState, rows: Signal<Vec<SecretRow>>, open: Signal<boo
             .collect();
         out.push(
             form_item(
-                button(format!("Add {one}"))
-                    .variant(Variant::Ghost)
-                    .size(Size::Sm)
-                    .leading(icon::PLUS)
-                    .on_press(move || {
-                        let id = fs.next_id.get_untracked() + 1;
-                        fs.next_id.set(id);
-                        rows.update(|r| r.push(SecretRow { id, name: String::new(), value: String::new(), saved: None, replacing: false }));
-                    }),
+                view().flex_row().child(
+                    button(format!("Add {one}"))
+                        .variant(Variant::Ghost)
+                        .size(Size::Sm)
+                        .leading(icon::PLUS)
+                        .on_press(move || {
+                            let id = fs.next_id.get_untracked() + 1;
+                            fs.next_id.set(id);
+                            fs.focus_row.set(Some(id));
+                            rows.update(|r| r.push(SecretRow { id, name: String::new(), value: String::new(), saved: None, replacing: false }));
+                        }),
+                ),
             )
             .ml(px(-6.0))
             .into_element(),
@@ -721,11 +727,19 @@ fn secret_row(fs: FormState, rows: Signal<Vec<SecretRow>>, row: SecretRow, n: us
             rows.update(|r| r.retain(|x| x.id != id));
             fs.clear(field);
         });
+    // A row just added focuses its name; one just set to be replaced, its new value.
+    let name_ref = element_ref();
+    if fs.focus_row.get_untracked() == Some(id) {
+        fs.focus_row.set(None);
+        let target = if row.saved.is_some() { value_ref } else { name_ref };
+        let _ = request_animation_frame(move |_| target.focus());
+    }
     let name_cell: AnyElement = match row.saved {
         Some(_) => mono(text(row.name.clone())).number_of_lines(1).into_element(),
         None => {
             let name = signal(row.name.clone());
             text_field(name)
+                .element(&name_ref)
                 .mono()
                 .placeholder(kind.placeholder())
                 .accessibility_label(format!("{} {n} name", if kind == Secrets::Env { "Variable" } else { "Header" }))
@@ -751,12 +765,11 @@ fn secret_row(fs: FormState, rows: Signal<Vec<SecretRow>>, row: SecretRow, n: us
             )
             .child(view().flex_1())
             .child(button("Replace").variant(Variant::Ghost).size(Size::Sm).on_press(move || {
+                fs.focus_row.set(Some(id));
                 rows.update(|r| r.iter_mut().filter(|x| x.id == id).for_each(|x| x.replacing = true));
             }))
             .into_element(),
         (Some(_), true) => {
-            // The new value's field takes the focus as it appears.
-            let _ = request_animation_frame(move |_| value_ref.focus());
             view()
                 .flex_row()
                 .items_center()

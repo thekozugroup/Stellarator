@@ -323,31 +323,107 @@ pub enum Pasted {
     Servers(Vec<String>),
 }
 
-/// A server object: it has a command or a URL.
+/// `text` without `//` and `/* */` comments and trailing commas outside strings (JSONC, as VS
+/// Code writes it), as the import reads it (crates/mcp/src/import.rs).
+pub fn strip_jsonc(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    let mut in_string = false;
+    // The index after the spaces and comments from `j`.
+    let skip = |mut j: usize| loop {
+        while j < chars.len() && chars[j].is_whitespace() {
+            j += 1;
+        }
+        match (chars.get(j), chars.get(j + 1)) {
+            (Some('/'), Some('/')) => {
+                while j < chars.len() && chars[j] != '\n' {
+                    j += 1;
+                }
+            }
+            (Some('/'), Some('*')) => {
+                j += 2;
+                while j < chars.len() && !(chars[j] == '*' && chars.get(j + 1) == Some(&'/')) {
+                    j += 1;
+                }
+                j += 2;
+            }
+            _ => return j,
+        }
+    };
+    while i < chars.len() {
+        let c = chars[i];
+        if in_string {
+            out.push(c);
+            if c == '\\' && i + 1 < chars.len() {
+                out.push(chars[i + 1]);
+                i += 2;
+                continue;
+            }
+            in_string = c != '"';
+            i += 1;
+            continue;
+        }
+        match (c, chars.get(i + 1)) {
+            ('"', _) => {
+                in_string = true;
+                out.push(c);
+                i += 1;
+            }
+            ('/', Some('/' | '*')) => i = skip(i),
+            (',', _) => {
+                if !matches!(chars.get(skip(i + 1)), Some('}' | ']')) {
+                    out.push(c);
+                }
+                i += 1;
+            }
+            _ => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// A server object: it has a command, a URL or a transport.
 fn is_server(v: &serde_json::Value) -> bool {
-    v.as_object().is_some_and(|o| o.contains_key("command") || o.contains_key("url") || o.contains_key("serverUrl"))
+    v.as_object().is_some_and(|o| ["command", "url", "serverUrl", "type", "transport"].iter().any(|k| o.contains_key(*k)))
 }
 
 /// The servers in `text`, read as the import reads it: `{"mcpServers": {...}}` (Claude Desktop,
-/// Cursor, Windsurf), `{"servers": {...}}` (VS Code), `{"name": {...}}`, or one server object.
+/// Cursor, Windsurf), `{"servers": {...}}` (VS Code, also as `{"mcp": {"servers": ...}}`), the
+/// inner map alone (even without its braces), one server object, or a list of them. Comments and
+/// trailing commas are allowed.
 pub fn pasted_servers(text: &str) -> Pasted {
     if text.trim().is_empty() {
         return Pasted::Empty;
     }
-    let value: serde_json::Value = match serde_json::from_str(text) {
+    let cleaned = strip_jsonc(text);
+    let trimmed = cleaned.trim().trim_end_matches(',');
+    let value: serde_json::Value = match serde_json::from_str(trimmed) {
         Ok(v) => v,
-        Err(e) => return Pasted::Invalid(e.to_string()),
+        Err(e) => match trimmed.starts_with('"').then(|| serde_json::from_str(&format!("{{{trimmed}}}")).ok()).flatten() {
+            Some(v) => v,
+            None => return Pasted::Invalid(e.to_string()),
+        },
     };
+    let name_of = |v: &serde_json::Value| v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_owned();
+    if let Some(list) = value.as_array() {
+        return Pasted::Servers(list.iter().map(name_of).collect());
+    }
     let Some(object) = value.as_object() else { return Pasted::Unknown };
+    let inner = object
+        .get("mcpServers")
+        .or_else(|| object.get("servers"))
+        .or_else(|| object.get("mcp").and_then(|m| m.get("servers").or_else(|| m.get("mcpServers"))));
+    if let Some(map) = inner.and_then(|v| v.as_object()) {
+        return Pasted::Servers(map.keys().cloned().collect());
+    }
     if is_server(&value) {
-        return Pasted::Servers(vec![String::new()]);
+        return Pasted::Servers(vec![name_of(&value)]);
     }
-    for key in ["mcpServers", "servers"] {
-        if let Some(map) = object.get(key).and_then(|v| v.as_object()) {
-            return Pasted::Servers(map.keys().cloned().collect());
-        }
-    }
-    if !object.is_empty() && object.values().all(is_server) {
+    if !object.is_empty() && object.values().all(|v| v.is_object()) {
         return Pasted::Servers(object.keys().cloned().collect());
     }
     Pasted::Unknown
@@ -573,7 +649,12 @@ mod tests {
         assert_eq!(pasted_servers(vscode), Pasted::Servers(vec!["fetch".into()]));
         assert_eq!(pasted_servers(r#"{"command": "npx", "args": []}"#), Pasted::Servers(vec![String::new()]));
         assert_eq!(pasted_servers(r#"{"a": {"url": "http://x"}}"#), Pasted::Servers(vec!["a".into()]));
-        assert_eq!(pasted_servers("[1]"), Pasted::Unknown);
+        assert_eq!(pasted_servers("42"), Pasted::Unknown);
+        // JSONC (VS Code's settings), and a fragment cut from a larger file.
+        let jsonc = "{\n  // tools\n  \"mcp\": {\"servers\": {\"fetch\": {\"command\": \"uvx\", /* why */ \"args\": [\"a,b\",],},},},\n}";
+        assert_eq!(pasted_servers(jsonc), Pasted::Servers(vec!["fetch".into()]));
+        assert_eq!(pasted_servers("\"gh\": {\"command\": \"npx\"},"), Pasted::Servers(vec!["gh".into()]));
+        assert_eq!(strip_jsonc("{\"u\": \"http://x//y\", }"), "{\"u\": \"http://x//y\" }");
         assert_eq!(pasted_line(&Pasted::Servers(vec!["a".into(), "b".into()])), Some(("2 servers found: a, b.".into(), false)));
     }
 
