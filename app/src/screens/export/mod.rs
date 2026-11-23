@@ -50,7 +50,7 @@ use serde_json::Value;
 
 use crate::api::types::{ExportPreviewOut, FileType, HubPushIn, ReasoningPlacement};
 use crate::api::{ApiError, Settings};
-use crate::data::call;
+use crate::data::{SignalExt, call};
 use crate::format::{count, int};
 use crate::nav::{self, Destination};
 use crate::theme::fonts::{INTER_DISPLAY, ROBOTO_MONO};
@@ -104,6 +104,9 @@ pub fn export_dialog(open: Signal<bool>, spec: ExportSpec, options: impl Fn() ->
     let preview = signal(Preview::default());
     // The newest request; an answer to an older one is dropped.
     let latest = signal(0_u64);
+    // A push on its way: the dialog cannot be closed (Cancel, Escape, the X, the scrim) until its
+    // answer comes, so the answer finds the push form and a second push cannot start.
+    let pushing = signal(false);
 
     let fetch: Rc<dyn Fn(Value)> = {
         let base = spec.base.clone();
@@ -112,13 +115,15 @@ pub fn export_dialog(open: Signal<bool>, spec: ExportSpec, options: impl Fn() ->
             latest.set(id);
             preview.update(|p| p.stale = true);
             let base = base.clone();
+            // The dialog's host may go before the answer comes (the screen around it made again):
+            // its signals are written with `try_set`.
             call(
                 move |api| async move { api.export_preview(&base, &body).await },
                 move |result| {
-                    if latest.get_untracked() != id {
+                    if latest.try_get() != Some(id) {
                         return;
                     }
-                    preview.update(|p| {
+                    preview.try_update(|p| {
                         p.stale = false;
                         match result {
                             Ok(data) => {
@@ -164,9 +169,10 @@ pub fn export_dialog(open: Signal<bool>, spec: ExportSpec, options: impl Fn() ->
     }
 
     let options = Rc::new(options);
-    dialog(open, spec.title, move || shell(open, spec.clone(), preview, fetch.clone(), options()).into_element())
+    dialog(open, spec.title, move || shell(open, spec.clone(), preview, pushing, fetch.clone(), options()).into_element())
         .width(DialogWidth::FourXl)
         .gap(0.0)
+        .busy(move || pushing.get())
 }
 
 /// The dialog's content.
@@ -174,6 +180,7 @@ fn shell(
     open: Signal<bool>,
     spec: Rc<ExportSpec>,
     preview: Signal<Preview>,
+    pushing: Signal<bool>,
     fetch: Rc<dyn Fn(Value)>,
     options: Vec<AnyElement>,
 ) -> impl IntoElement {
@@ -217,7 +224,7 @@ fn shell(
             .px(px(16.0))
             .pb(px(4.0))
             .child(columns)
-            .child(view().mt(px(32.0)).child(hub_push(open, spec.clone(), nothing))),
+            .child(view().mt(px(32.0)).child(hub_push(open, spec.clone(), nothing, pushing))),
     );
 
     // Below 1024 px the count sits above the buttons, since the right-hand column is gone.
@@ -252,7 +259,7 @@ fn shell(
                 }
                 None => b = b.disabled(|| true),
             }
-            footer_buttons(open, b)
+            footer_buttons(open, pushing, b)
         })
     };
 
@@ -273,12 +280,10 @@ fn sticky_offset(scrolled: f32, options_h: f32, preview_h: f32) -> f32 {
 }
 
 /// Cancel and the download button, as the dialog's footer (its top padding taken back: the web
-/// UI's `pt-0`).
-fn footer_buttons(open: Signal<bool>, download: crate::ui::button::Button) -> AnyElement {
-    view()
-        .mt(px(-4.0))
-        .child(dialog_footer(vec![button("Cancel").variant(Variant::Secondary).on_press(move || open.set(false)), download]))
-        .into_element()
+/// UI's `pt-0`). Cancel waits for a push on its way.
+fn footer_buttons(open: Signal<bool>, pushing: Signal<bool>, download: crate::ui::button::Button) -> AnyElement {
+    let cancel = button("Cancel").variant(Variant::Secondary).disabled(move || pushing.get()).on_press(move || open.set(false));
+    view().mt(px(-4.0)).child(dialog_footer(vec![cancel, download])).into_element()
 }
 
 /// Saves the export at `path`: in the Downloads folder on the desktops (then shows it in the file
@@ -665,11 +670,17 @@ fn short_hub_url(url: &str) -> &str {
 }
 
 /// The Hugging Face push: the repository, the split, private or not, and Push dataset; or why it
-/// cannot push (no token: a link to Settings). `nothing` holds while there is nothing to push.
-fn hub_push(open: Signal<bool>, spec: Rc<ExportSpec>, nothing: impl Fn() -> bool + Clone + 'static) -> impl IntoElement {
+/// cannot push (no token: a link to Settings). `nothing` holds while there is nothing to push;
+/// `pushing` is the dialog's (see [`export_dialog`]).
+///
+/// Its signals are the dialog content's, which goes when the dialog closes: the answers write them
+/// with `try_set` (the token check may come after a quick close).
+fn hub_push(open: Signal<bool>, spec: Rc<ExportSpec>, nothing: impl Fn() -> bool + Clone + 'static, pushing: Signal<bool>) -> impl IntoElement {
     let settings = signal(None::<Result<Settings, String>>);
     let load_settings = move || {
-        call(|api| async move { api.settings().await }, move |r: Result<Settings, ApiError>| settings.set(Some(r.map_err(|e| e.message))));
+        call(|api| async move { api.settings().await }, move |r: Result<Settings, ApiError>| {
+            settings.try_set(Some(r.map_err(|e| e.message)));
+        });
     };
     load_settings();
 
@@ -680,7 +691,6 @@ fn hub_push(open: Signal<bool>, spec: Rc<ExportSpec>, nothing: impl Fn() -> bool
     let split_error = signal(None::<String>);
     let push_error = signal(None::<String>);
     let pushed = signal(None::<crate::api::types::HubPushOut>);
-    let pushing = signal(false);
     let repo_ref = element_ref();
     let split_ref = element_ref();
     let repo_example = spec.repo_example;
@@ -713,17 +723,19 @@ fn hub_push(open: Signal<bool>, spec: Rc<ExportSpec>, nothing: impl Fn() -> bool
         call(
             move |api| async move { api.export_hub(&base, &options, &target).await },
             move |result| {
-                pushing.set(false);
+                pushing.try_set(false);
                 match result {
-                    Ok(out) => pushed.set(Some(out)),
+                    Ok(out) => {
+                        pushed.try_set(Some(out));
+                    }
                     Err(e) => {
                         let field_repo = e.fields.get("target.repo_id").or_else(|| e.fields.get("repo_id")).cloned();
                         let field_split = e.fields.get("target.split").cloned();
                         if e.fields.is_empty() {
-                            push_error.set(Some(e.message));
+                            push_error.try_set(Some(e.message));
                         }
-                        repo_error.set(field_repo.clone());
-                        split_error.set(field_split.clone());
+                        repo_error.try_set(field_repo.clone());
+                        split_error.try_set(field_split.clone());
                         if field_repo.is_some() {
                             repo_ref.focus();
                         } else if field_split.is_some() {
