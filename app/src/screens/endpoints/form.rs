@@ -290,13 +290,19 @@ pub fn endpoint_form(
         view().flex_row().flex_wrap().gap(px(6.0)).role(AccessibilityRole::Group).label("Preset").children(chips)
     });
 
-    // The rows of the form.
+    // The rows of the form. Return in any field saves, as the web UI's form submits on Enter.
+    let enter: Rc<dyn Fn()> = Rc::new(submit.clone());
+    let on_enter = move || {
+        let f = enter.clone();
+        move || f()
+    };
     let name_row = form_row(
         "Name",
         text_field(name)
             .placeholder("DGX Spark")
             .invalid(move || err_name.with(Option::is_some))
             .on_change(move |_| err_name.set(None))
+            .on_submit(on_enter())
             .element(&name_ref),
     )
     .error(err_name);
@@ -310,6 +316,7 @@ pub fn endpoint_form(
                 err_url.set(None);
                 stale_test();
             })
+            .on_submit(on_enter())
             .element(&url_ref),
     )
     .error(err_url)
@@ -332,6 +339,7 @@ pub fn endpoint_form(
             err_key.set(None);
             stale_test();
         })
+        .on_submit(on_enter())
         .element(&key_ref)
         .trailing(eye);
     let key_field = if has_saved_key { key_field } else { key_field.placeholder("sk-012345…") };
@@ -372,6 +380,7 @@ pub fn endpoint_form(
             .width(96.0)
             .invalid(move || err_seqs.with(Option::is_some))
             .on_change(move |_| err_seqs.set(None))
+            .on_submit(on_enter())
             .element(&seqs_ref),
     )
     .hint("Prefilled on new runs.")
@@ -387,7 +396,7 @@ pub fn endpoint_form(
             .get()
             .into_iter()
             .enumerate()
-            .map(|(i, h)| header_row(i, h, headers, stale_test).into_element())
+            .map(|(i, h)| header_row(i, h, headers, stale_test, on_enter.clone()).into_element())
             .collect();
         rows.push(
             form_item(
@@ -467,7 +476,13 @@ pub fn endpoint_form(
 }
 
 /// One header: its name and value in mono, and the remove button.
-fn header_row(index: usize, row: HeaderRow, headers: Signal<Vec<HeaderRow>>, stale_test: impl Fn() + Copy + 'static) -> impl IntoElement {
+fn header_row<E: Fn() + 'static>(
+    index: usize,
+    row: HeaderRow,
+    headers: Signal<Vec<HeaderRow>>,
+    stale_test: impl Fn() + Copy + 'static,
+    on_enter: impl Fn() -> E,
+) -> impl IntoElement {
     let id = row.id;
     let key = signal(row.key);
     let value = signal(row.value);
@@ -487,7 +502,8 @@ fn header_row(index: usize, row: HeaderRow, headers: Signal<Vec<HeaderRow>>, sta
                             let t = t.to_owned();
                             headers.update(|rows| rows.iter_mut().filter(|r| r.id == id).for_each(|r| r.key = t.clone()));
                             stale_test();
-                        }),
+                        })
+                        .on_submit(on_enter()),
                 ),
             )
             .child(
@@ -500,7 +516,8 @@ fn header_row(index: usize, row: HeaderRow, headers: Signal<Vec<HeaderRow>>, sta
                             let t = t.to_owned();
                             headers.update(|rows| rows.iter_mut().filter(|r| r.id == id).for_each(|r| r.value = t.clone()));
                             stale_test();
-                        }),
+                        })
+                        .on_submit(on_enter()),
                 ),
             )
             .child(
