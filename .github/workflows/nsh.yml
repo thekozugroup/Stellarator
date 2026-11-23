@@ -158,6 +158,11 @@ jobs:
         run: |
           app/ci/macos-drag.sh "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" "$RUNNER_TEMP/mouse-drag"
 
+      - name: Menu bar, one copy per data folder, the window's place
+        timeout-minutes: 6
+        run: |
+          app/ci/macos-desktop.sh "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" "$RUNNER_TEMP/mouse-drag"
+
       # Last, and bounded: in an earlier run this step did not return within 18 minutes.
       - name: The icon macOS shows for the app
         timeout-minutes: 3
