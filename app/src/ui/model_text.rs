@@ -146,7 +146,8 @@ fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
         // hairline under each row, no column lines or box, the head in the text's own size and ink.
         // The grid draws its top and left edges itself: the table clips them, its scroll view
         // moved up and left by their width.
-        .part(TextViewPart::Table, |s| s.text_size(px(14.0)).self_start().max_w(relative(1.0)).overflow_hidden())
+        // The rows on the text's line height, as the cells inherit the root's in the web UI.
+        .part(TextViewPart::Table, move |s| s.text_size(px(14.0)).line_height(px(line)).self_start().max_w(relative(1.0)).overflow_hidden())
         .part(TextViewPart::TableScroll, |s| s.mt(px(-1.0)).ml(px(-1.0)))
         // Bound, as the head's own fill is: a bound style wins over a fixed one.
         .part(TextViewPart::TableHead, |s| s.bg(|| -> AdaptiveColor { transparent_black().into() }))
