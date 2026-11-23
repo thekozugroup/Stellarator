@@ -19,12 +19,12 @@ use crate::ui::overlay::{
     Alert, DialogWidth, alert, dialog, dialog_description, dialog_footer, dialog_header, side_sheet, side_sheet_width, toast_error_with,
     toast_info,
 };
-use crate::ui::page::{page, panel};
+use crate::ui::page::{page, panel, panel_tight};
 use crate::ui::pickers::{RichSelect, TypedCombobox};
 use crate::ui::stepper::{number_stepper, seqs_choices};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
-use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, menu_with_open, option, select_button, select_field};
+use crate::ui::select::{MenuEntry, combobox_field, menu_button, menu_destructive, menu_entry, menu_with_open, option, select_button, select_field, select_row};
 use crate::ui::status::{Tone, pill, run_status_badge, status_badge};
 use crate::ui::tiles::{tile, tiles};
 use crate::ui::tooltip::{copy_button, kbd};
@@ -192,7 +192,16 @@ pub fn screen() -> impl IntoElement {
         .hint("A combobox that also takes what is typed.")
         .into_element(),
         form_row("Notes", text_area(notes).placeholder("Anything to remember")).stacked().into_element(),
-    ]);
+        form_row(
+            "Config",
+            select_row(vec![option("main", "main"), option("socratic", "socratic")], move || Some(SharedString::from("main")), |_| {}, "Config")
+                .fill()
+                .mono(),
+        )
+        .into_element(),
+        form_row("Pasted", text_area(signal(String::from("Mono at the regular size"))).mono_body().height(120.0)).stacked().into_element(),
+    ])
+    .dynamic_rows(|| vec![form_row("Comes and goes", body(text("A row after the fixed ones"))).into_element()]);
 
     let choices = view()
         .gap(px(12.0))
@@ -333,6 +342,7 @@ pub fn screen() -> impl IntoElement {
                             "review-bar-tint",
                         )),
                 ))
+                .child(panel_tight(Some("Tight card".into()), Some("Body padding of 8 px".into()), None, model_text_with(|| SAMPLE.to_owned(), None, ModelTextStyle::small())))
                 .child(view().h(px(1.0)).rounded(px(radius::XS))),
         )
 }

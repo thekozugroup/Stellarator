@@ -119,7 +119,7 @@ fn reading_parts_with(style: &ModelTextStyle) -> TextViewParts {
     TextViewParts::new()
         .part(TextViewPart::Root, move |s| {
             let color = color.clone();
-            s.text_size(px(size)).line_height(px(line)).text_color(move || color()).max_w(px(640.0)).gap(px(size * 0.75))
+            s.text_size(px(size)).line_height(px(line)).text_color(move || color()).max_w(px(if size < 14.0 { 664.0 } else { 640.0 })).gap(px(size * 0.75))
         })
         .part(TextViewPart::Paragraph, tinted(c.clone()))
         .part(TextViewPart::Heading, tinted(c.clone()))
@@ -165,7 +165,7 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
                 .text_size(px(style.size))
                 .line_height(px(style.size * 1.6))
                 .text_color(style.color())
-                .max_w(px(640.0))
+                .max_w(px(if style.size < 14.0 { 664.0 } else { 640.0 }))
                 .selectable(true)
                 .into_element(),
             TextMode::Rendered => {
@@ -180,7 +180,7 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
                 };
                 text_view()
                     .classes(classes)
-                    .markdown(move || Some(SharedString::from(normalize_math(&source()))))
+                    .markdown(move || Some(SharedString::from(hard_breaks(&normalize_math(&source())))))
                     .selectable(true)
                     .render_image(|image: &nsh_base::text_view::Image| {
                         let alt = if image.alt.is_empty() { "Image".to_owned() } else { image.alt.to_string() };
@@ -195,6 +195,30 @@ pub fn model_text_with(source: impl Fn() -> String + 'static, forced: Option<Tex
 /// The root's classes at `size` on `line` points, in muted ink or ink.
 fn root_classes(size: f32, line: f32, muted: bool) -> String {
     format!("text-[{size}px] leading-[{line}px] {}", if muted { "text-muted-foreground" } else { "text-foreground" })
+}
+
+/// A single line break in the text stays a line break when rendered (the web UI shows model text
+/// with its lines): a trailing double space makes Markdown's soft break a hard one. Fenced code is
+/// left alone.
+pub fn hard_breaks(text: &str) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut fenced = false;
+    for (i, line) in lines.iter().enumerate() {
+        let fence = line.trim_start().starts_with("```") || line.trim_start().starts_with("~~~");
+        if fence {
+            fenced = !fenced;
+        }
+        out.push_str(line);
+        let next_filled = lines.get(i + 1).is_some_and(|n| !n.trim().is_empty());
+        if !fenced && !fence && next_filled && !line.trim().is_empty() && !line.ends_with("  ") {
+            out.push_str("  ");
+        }
+        if i + 1 < lines.len() {
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Models write math as `\( … \)`, `\[ … \]`, `$$ … $$` and sometimes `$ … $`. As the web UI
@@ -321,12 +345,19 @@ fn display_lines(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_math;
+    use super::{hard_breaks, normalize_math};
 
     #[test]
     fn the_root_classes_carry_the_size_and_color() {
         assert_eq!(super::root_classes(13.0, 20.8, true), "text-[13px] leading-[20.8px] text-muted-foreground");
         assert_eq!(super::root_classes(14.0, 22.4, false), "text-[14px] leading-[22.4px] text-foreground");
+    }
+
+    #[test]
+    fn single_line_breaks_stay_breaks_outside_code() {
+        assert_eq!(hard_breaks("a\nb\n\nc"), "a  \nb\n\nc");
+        assert_eq!(hard_breaks("one line"), "one line");
+        assert_eq!(hard_breaks("```\nx\ny\n```\nz"), "```\nx\ny\n```\nz");
     }
 
     #[test]

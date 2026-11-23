@@ -43,22 +43,22 @@ pub fn select_button(
     placeholder: &'static str,
     accessibility: &'static str,
 ) -> impl IntoElement {
-    select_field(options, move || value.get(), move |next| value.set(next), accessibility)
+    select_row(options, move || value.get(), move |next| value.set(next), accessibility)
         .title(title)
         .placeholder(placeholder)
 }
 
 /// A pop-up button whose value is read with `get` and changed with `set` (a form row's select).
-/// By default it is as wide as its title ([`select_button`]); [`SelectField::fill`] makes it as
-/// wide as its column (the web UI's `w-full` select), [`SelectField::mono`] sets its title in
+/// By default it is as wide as its title ([`select_button`]); [`SelectRow::fill`] makes it as
+/// wide as its column (the web UI's `w-full` select), [`SelectRow::mono`] sets its title in
 /// Roboto Mono.
-pub fn select_field(
+pub fn select_row(
     options: Vec<SelectItem>,
     get: impl Fn() -> Option<SharedString> + 'static,
     set: impl Fn(Option<SharedString>) + 'static,
     accessibility: &'static str,
-) -> SelectField {
-    SelectField {
+) -> SelectRow {
+    SelectRow {
         options,
         get: Rc::new(get),
         set: Rc::new(set),
@@ -70,8 +70,8 @@ pub fn select_field(
     }
 }
 
-/// A pop-up button built with [`select_field`].
-pub struct SelectField {
+/// A pop-up button built with [`select_row`].
+pub struct SelectRow {
     options: Vec<SelectItem>,
     get: Rc<dyn Fn() -> Option<SharedString>>,
     set: Rc<dyn Fn(Option<SharedString>)>,
@@ -82,7 +82,7 @@ pub struct SelectField {
     mono: bool,
 }
 
-impl SelectField {
+impl SelectRow {
     /// What the button says for a value (the option's title by default).
     pub fn title(mut self, title: impl Fn(&str) -> String + 'static) -> Self {
         self.title = Some(Rc::new(title));
@@ -108,7 +108,7 @@ impl SelectField {
     }
 }
 
-impl IntoElement for SelectField {
+impl IntoElement for SelectRow {
     fn into_element(self) -> AnyElement {
         let titles: Vec<(SharedString, SharedString)> = self.options.iter().map(|o| (o.value.clone(), o.title.clone())).collect();
         let title: Rc<dyn Fn(&str) -> String> = self.title.clone().unwrap_or_else(|| {

@@ -26,16 +26,16 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 
 | Component | Rust | Replaces (frontend/src/components) |
 | --- | --- | --- |
-| Page frame | `page("Runs")`, `page_with(\|\| Some(name))` then `.actions(f)`, `.bar_actions(f)`, `.meta(f)`, `.bottom_bar(f)`, `.wide()`, `.child(el)` | `shared/page.tsx` `Page` |
-| Card | `panel(title, description, actions, content)` | `shared/page.tsx` `Panel` |
+| Page frame | `page("Runs")`, `page_with(\|\| Some(name))` then `.actions(f)`, `.bar_actions(f)`, `.meta(f)`, `.bottom_bar(f)`, `.wide()`, `.bottom_bar_below_lg()` (the bar floats below 1024 px only), `.child(el)` | `shared/page.tsx` `Page` |
+| Card | `panel(title, description, actions, content)`; `panel_tight(..)` (body padding 8 px, 4 px on top) | `shared/page.tsx` `Panel` |
 | Button | `button("Save").variant(Variant::Secondary).size(Size::Sm).leading(icon::PLUS).busy(f, "Saving…").disabled(f).on_press(f)`; `.on_card()`, `.round()`, `.muted()`, `.full_width()` | `ui/button.tsx` |
 | Icon button | `Button::icon(icon::ELLIPSIS, "More actions")` (ghost, tooltip = its name) | `ui/button.tsx` size `icon*` |
 | Link | `text_link(label, trailing, f)`, `external_link(label, url)` | `<a>` in forms |
 | Icon | `icon(icon::PLAY, 16.0, color_fn)`; add glyphs with `tools/lucide-svg.mjs` | lucide-react |
-| Text field | `text_field(signal).placeholder(..).placeholder_with(f).mono().numeric().tabular().centered().masked(f).search().width(96.0).invalid(f).trailing(el).element(&ref).on_change(f).on_blur(f).on_submit(f)`; `text_area(signal).height(80.0)` (`numeric` is right-aligned, `tabular` left-aligned figures) | `ui/input.tsx`, `ui/textarea.tsx`, `ui/input-group.tsx` |
+| Text field | `text_field(signal).placeholder(..).placeholder_with(f).mono().numeric().tabular().centered().masked(f).search().width(96.0).invalid(f).trailing(el).element(&ref).on_change(f).on_blur(f).on_submit(f)`; `text_area(signal).height(80.0)`, `.mono_body()` (Roboto Mono at the regular 13/16 px, for text the user writes) (`numeric` is right-aligned, `tabular` left-aligned figures) | `ui/input.tsx`, `ui/textarea.tsx`, `ui/input-group.tsx` |
 | Field | `field(label, control).hint(..).hint_when(f).error(signal).info(text).optional()` | `shared/field.tsx` |
-| Grouped form | `form_group(rows).title(..).footnote(el).in_dialog()`; `form_row(label, control).hint(..).hint_element(f).error(signal).optional_when(f).align_end().stacked().info(..)` (`hint_element` makes the hint a sentence with a link; the error takes its place); `form_item(el)`; `form_disclosure(title, summary_fn, open, rows_fn, in_dialog)` | `shared/form-group.tsx` |
-| Pop-up button | `select_button(vec![option("vllm", "vLLM")], value, title_fn, placeholder, label)`; full width with its own fill: `select_field(options, value, title_fn, placeholder, label, fill)` (`on-dialog-control` in a dialog's group) | `ui/select.tsx` |
+| Grouped form | `form_group(rows).title(..).footnote(el).in_dialog()`; `form_row(label, control).hint(..).hint_element(f).error(signal).optional_when(f).align_end().stacked().info(..)` (`hint_element` makes the hint a sentence with a link; the error takes its place); `form_item(el)`; `form_disclosure(title, summary_fn, open, rows_fn, in_dialog)`; `form_group(rows).dynamic_rows(f)` (rows after the fixed ones that come and go, with hairlines only for the rows given) | `shared/form-group.tsx` |
+| Pop-up button | `select_button(vec![option("vllm", "vLLM")], value, title_fn, placeholder, label)`; full width with its own fill: `select_field(options, value, title_fn, placeholder, label, fill)` (`on-dialog-control` in a dialog's group); `select_row(options, get, set, label).fill().mono().title(f)` (read with `get`, as wide as its column with `.fill()`, on the secondary fill) | `ui/select.tsx` |
 | Menu | `menu_button(label, vec![menu_entry(Some(icon::PENCIL), "Edit…", f), MenuEntry::Separator, menu_destructive(..)], Some(176.0))`; `menu_with(trigger, entries, width)`; `menu_with_open(trigger, entries, width, open)` keeps `open` true while it shows (keys that must stand down) | `ui/dropdown-menu.tsx` |
 | Combobox | `combobox_field(options, value, placeholder, label)` | `ui/command.tsx` (as a combobox) |
 | Rich pop-up button | `RichSelect { items, value, on_change, shown, render_item, placeholder, accessibility, invalid, element }` (`ui/pickers.rs`): the screen draws the trigger and the rows (a tile, a name, a muted detail); full width, on a card | `ui/select.tsx` with custom items |
@@ -57,7 +57,7 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Tiles | `tiles(vec![tile("Models", f).unit(..).span().child(bar).background(dialog_muted)])` | `shared/tiles.tsx` |
 | Pixel tile | `plasma(seed, cells, size, radius, deep)`; `plasma_cells` gives the same colors as the web | `shared/plasma.tsx` |
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
-| Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)` | `ui/table.tsx` |
+| Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)`, `Column::share("Name", 1.1)` (a share of the free space) | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
 | Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)` (`Xs` 320, `Sm` 384, `Md` 448, `Xl` 576, `FourXl` 896 px); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
 | Alert | `alert(open, \|\| Alert { .. }, busy_fn, error_fn, on_action)` | `ui/alert-dialog.tsx` |
@@ -177,6 +177,10 @@ with Playwright at 1440×900 and 390×844, `colorScheme` light and dark. CI does
 | On Linux, Escape in a focused text field only leaves the field | A second Escape (or the X, or the scrim) closes the dialog |
 | No stacked toast deck | Toasts are a list at the bottom right (three at most, 4 s each) |
 | `TextView` highlights code with its own palette | Code blocks keep nsh's colors, not index.css's three hues |
+| `mask-image` is not drawn on Windows (nsh's note) | A clamped prompt's fade shows there as a plain cut |
+| No call to scroll a page to an element | Paging in a prompt set keeps the scroll position (the web UI scrolls to the list's top) |
+| A select's items are plain titles | A column select says "question · text" in one face (the web UI sets the name in mono) |
+| A task started from a handler after a signal that rebuilds the pressed control is owned by the control, which is gone | Start the request with `data::call` first, then set the signals (Import's button) |
 | Crossing 768 px rebuilds the shell | The open screen is made again (an open dialog closes); its scroll position is kept |
 | A screen's key bindings still fire while a dialog or menu of the same window is open | The screen checks its own dialogs' signals (and `menu_with_open`) before acting, as the preference review does |
 | `TextView`'s part styles are read once | `model_text_with` makes the text view again when its color changes (a response marked rejected) |

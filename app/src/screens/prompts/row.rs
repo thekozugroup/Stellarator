@@ -11,7 +11,11 @@ use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::text::{body, meta};
 use crate::theme::{ink, muted_ink, radius};
 use crate::ui::blocks::bar;
-use crate::ui::model_text::model_text_sm as model_text;
+use crate::ui::model_text::{ModelTextStyle, model_text_with};
+
+fn model_text(source: impl Fn() -> String + 'static, forced: Option<crate::ui::model_text::TextMode>) -> impl IntoElement {
+    model_text_with(source, forced, ModelTextStyle::small())
+}
 use nsh_base::theme;
 
 /// The clamped text is `max-h-24`: 96 px.

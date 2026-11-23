@@ -21,7 +21,7 @@ use crate::ui::choice::{checkbox_with, segmented, segmented_with_get};
 use crate::ui::field::{form_group, form_item, form_row, text_area, text_field};
 use crate::ui::icon::{self, icon as glyph};
 use crate::ui::info_tip::info_tip;
-use crate::ui::select::{option, select_field};
+use crate::ui::select::{option, select_row};
 
 const ALL: &str = "__all__";
 const NONE: &str = "__none__";
@@ -104,7 +104,7 @@ pub fn hugging_face_fields(st: State, load: impl Fn() + Copy + 'static, error: S
             rows.push(
                 form_row(
                     "Config",
-                    select_field(
+                    select_row(
                         options,
                         move || st.effective_config().map(SharedString::from),
                         move |next| {
@@ -128,7 +128,7 @@ pub fn hugging_face_fields(st: State, load: impl Fn() + Copy + 'static, error: S
         rows.push(
             form_row(
                 "Split",
-                select_field(
+                select_row(
                     options,
                     move || {
                         if st.all_splits.get() { Some(SharedString::from(ALL)) } else { st.effective_split().map(SharedString::from) }
@@ -217,7 +217,7 @@ pub fn file_fields(st: State, pick: impl Fn() + Copy + 'static, dropped: impl Fn
         form_group(vec![
             form_row(
                 "Format",
-                select_field(
+                select_row(
                     options,
                     move || Some(SharedString::from(format_name(st.format.get()))),
                     move |next| {
@@ -303,7 +303,7 @@ pub fn mapping_group(st: State) -> impl IntoElement {
             Some(
                 form_row(
                     "Prompt column",
-                    select_field(
+                    select_row(
                         options,
                         move || {
                             let chosen = st.prompt_field.get();
@@ -327,7 +327,7 @@ pub fn mapping_group(st: State) -> impl IntoElement {
             Some(
                 form_row(
                     "System prompt column",
-                    select_field(
+                    select_row(
                         options,
                         move || {
                             let chosen = st.system_field.get();
@@ -368,7 +368,7 @@ pub fn mapping_group(st: State) -> impl IntoElement {
         form_group(vec![
             form_row(
                 "Split into prompts",
-                select_field(
+                select_row(
                     options,
                     move || Some(SharedString::from(split_name(st.split_mode.get()))),
                     move |next| {

@@ -49,7 +49,6 @@ pub struct TextField {
     accessibility: Option<SharedString>,
     element: Option<ElementRef>,
     background: Option<fn() -> AdaptiveColor>,
-    height: Option<f32>,
     mono_body: bool,
 }
 
@@ -77,7 +76,6 @@ pub fn text_field(value: Signal<String>) -> TextField {
         accessibility: None,
         element: None,
         background: None,
-        height: None,
         mono_body: false,
     }
 }
@@ -198,12 +196,6 @@ impl TextField {
     /// The field's element, to focus it (`element.focus()`).
     pub fn element(mut self, element: &ElementRef) -> Self {
         self.element = Some(*element);
-        self
-    }
-
-    /// A height in points (a multiline field's default is 96).
-    pub fn height(mut self, h: f32) -> Self {
-        self.height = Some(h);
         self
     }
 

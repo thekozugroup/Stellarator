@@ -28,7 +28,7 @@ use crate::ui::chip::{chip, chip_row};
 use crate::ui::field::text_field;
 use crate::ui::icon;
 use crate::ui::model_text::text_mode_toggle;
-use crate::ui::page::{column_padding, page_with, window_width};
+use crate::ui::page::{column_padding, is_phone, page_with, window_width};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
 use crate::ui::select::{menu_destructive, menu_entry, menu_with};
@@ -170,7 +170,11 @@ pub fn screen(id: i64) -> impl IntoElement {
     };
     let meta = move || -> AnyElement {
         match set.with(|l| l.loaded().cloned()) {
-            Some(s) => chip_row_of(&s, now).into_element(),
+            // On a phone the row wraps within the column: the page gives its meta no width of its own.
+            Some(s) => view()
+                .max_w(move || px(if is_phone() { (window_width() - 2.0 * column_padding()).max(0.0) } else { 100_000.0 }))
+                .child(chip_row_of(&s, now))
+                .into_element(),
             None => bar(288.0, 20.0).into_element(),
         }
     };
