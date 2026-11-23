@@ -27,6 +27,7 @@ async fn out(ctx: &Ctx) -> SettingsOut {
             Mode::Desktop => "desktop",
             Mode::Native => "native",
         },
+        stdio_mcp_allowed: ctx.config.allow_stdio_mcp,
     }
 }
 

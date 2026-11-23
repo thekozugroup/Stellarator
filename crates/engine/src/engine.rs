@@ -1114,6 +1114,8 @@ impl RunTask {
                     tail: p.tail.clone(),
                     elapsed_ms: s.started.elapsed().as_millis() as i64,
                     attempt: p.attempt,
+                    round: 1,
+                    tools: Vec::new(),
                 }
             })
             .collect();

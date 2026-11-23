@@ -136,6 +136,74 @@ def check(value: Any, spec: Any, path: str = "$") -> None:
 
 MESSAGE = Obj({"role": OneOf("system", "user", "assistant"), "content": str})
 
+MCP_TRANSPORT = OneOf("stdio", "http")
+
+RUN_TOOLS = Obj(
+    {
+        "servers": ListOf(Obj({"server_id": int, "tools": Opt(ListOf(str))})),
+        "max_rounds": int,
+        "tool_timeout_s": float,
+        "max_result_chars": int,
+        "tool_choice": OneOf("auto", "required"),
+    }
+)
+
+TOOL_DEFINITION = Obj(
+    {"type": OneOf("function"), "function": Obj({"name": str, "parameters": dict}, optional={"description": str})}
+)
+
+TOOL_SNAPSHOT = Obj(
+    {
+        "servers": ListOf(
+            Obj(
+                {
+                    "server_id": int,
+                    "name": str,
+                    "transport": MCP_TRANSPORT,
+                    "tools": ListOf(Obj({"name": str, "server_tool": str})),
+                }
+            )
+        ),
+        "definitions": ListOf(TOOL_DEFINITION),
+    }
+)
+
+TOOL_CALL = Obj({"id": str, "name": str, "arguments": str})
+
+TRACE_ASSISTANT = Obj(
+    {
+        "role": OneOf("assistant"),
+        "reasoning": Opt(str),
+        "content": str,
+        "tool_calls": ListOf(TOOL_CALL),
+        "finish_reason": Opt(str),
+        "prompt_tokens": Opt(int),
+        "completion_tokens": Opt(int),
+        "reasoning_tokens": Opt(int),
+        "latency_ms": int,
+    }
+)
+
+TRACE_TOOL = Obj(
+    {
+        "role": OneOf("tool"),
+        "tool_call_id": str,
+        "name": str,
+        "server": str,
+        "content": str,
+        "is_error": bool,
+        "truncated": bool,
+        "latency_ms": int,
+    }
+)
+
+
+def check_trace(value, path: str = "$") -> None:
+    assert isinstance(value, list), f"{path}: expected a list, got {value!r}"
+    for i, m in enumerate(value):
+        assert isinstance(m, dict) and m.get("role") in ("assistant", "tool"), f"{path}[{i}]: {m!r}"
+        check(m, TRACE_ASSISTANT if m["role"] == "assistant" else TRACE_TOOL, f"{path}[{i}]")
+
 
 def page(item: Any) -> Obj:
     return Obj({"items": ListOf(item), "total": int, "offset": int, "limit": int})
@@ -241,6 +309,7 @@ RUN_PARAMS = Obj(
         "max_attempts": int,
         "request_timeout_s": float,
         "pause_after_failures": int,
+        "tools": Opt(RUN_TOOLS),
     }
 )
 
@@ -269,6 +338,8 @@ RUN = Obj(
         "created_at": DT,
         "started_at": Opt(DT),
         "finished_at": Opt(DT),
+        "tools": Opt(TOOL_SNAPSHOT),
+        "tool_calls": int,
     }
 )
 
@@ -278,11 +349,13 @@ LIVE_SEQUENCE = Obj(
         "prompt_idx": int,
         "sample_idx": int,
         "prompt_preview": str,
-        "phase": OneOf("waiting", "thinking", "answering"),
+        "phase": OneOf("waiting", "thinking", "answering", "tool"),
         "tokens": int,
         "tail": str,
         "elapsed_ms": int,
         "attempt": int,
+        "round": int,
+        "tools": ListOf(str),
     }
 )
 
@@ -332,6 +405,8 @@ SAMPLE = Obj(
         "error": Opt(str),
         "completed_at": Opt(DT),
         "messages": ListOf(MESSAGE),
+        "trace": Opt(list),
+        "tool_calls": int,
     }
 )
 
@@ -348,6 +423,7 @@ SAMPLE_SUMMARY = Obj(
         "completion_tokens": Opt(int),
         "latency_ms": Opt(int),
         "error": Opt(str),
+        "tool_calls": int,
     }
 )
 
@@ -385,6 +461,8 @@ CANDIDATE = Obj(
         "finish_reason": Opt(str),
         "completion_tokens": Opt(int),
         "reasoning_tokens": Opt(int),
+        "tool_calls": int,
+        "trace": Opt(list),
     }
 )
 
@@ -410,5 +488,38 @@ SETTINGS = Obj(
         "data_dir": str,
         "version": str,
     },
-    optional={"mode": OneOf("docker", "desktop", "native")},
+    optional={"mode": OneOf("docker", "desktop", "native"), "stdio_mcp_allowed": bool},
+)
+
+SECRET_HINT = Obj({"name": str, "hint": Opt(str)})
+
+MCP_TOOL = Obj({"name": str, "description": Opt(str), "input_schema": dict})
+
+MCP_SERVER = Obj(
+    {
+        "id": int,
+        "name": str,
+        "transport": MCP_TRANSPORT,
+        "command": Opt(str),
+        "args": ListOf(str),
+        "env": ListOf(SECRET_HINT),
+        "url": Opt(str),
+        "headers": ListOf(SECRET_HINT),
+        "enabled": bool,
+        "status": OneOf("unchecked", "ok", "error"),
+        "error": Opt(str),
+        "checked_at": Opt(DT),
+        "server_info": Opt(str),
+        "tools": ListOf(MCP_TOOL),
+        "blocked": Opt(str),
+        "run_count": int,
+        "created_at": DT,
+        "updated_at": DT,
+    }
+)
+
+MCP_IMPORT_NOTE = Obj({"entry": str, "message": str})
+
+MCP_IMPORT = Obj(
+    {"created": ListOf(MCP_SERVER), "errors": ListOf(MCP_IMPORT_NOTE), "notes": ListOf(MCP_IMPORT_NOTE)}
 )

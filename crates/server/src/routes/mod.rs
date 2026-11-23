@@ -1,5 +1,5 @@
-//! This crate's own routes: health, endpoints, endpoint presets, prompt sets, preferences and
-//! settings. Runs, imports and exports come from their crates (see `Parts::extra`).
+//! This crate's own routes: health, endpoints, endpoint presets, MCP servers, prompt sets,
+//! preferences and settings. Runs, imports and exports come from their crates (see `Parts::extra`).
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -13,6 +13,7 @@ use stellarator_core::ApiError;
 use crate::AppState;
 
 mod endpoints;
+mod mcp_servers;
 mod preferences;
 mod presets;
 mod prompt_sets;
@@ -22,6 +23,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .merge(endpoints::router())
+        .merge(mcp_servers::router())
         .merge(presets::router())
         .merge(prompt_sets::router())
         .merge(preferences::router())

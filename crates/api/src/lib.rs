@@ -451,6 +451,93 @@ pub struct RunParams {
     /// Pause the run after this many samples fail in a row (0 = never).
     #[serde(default = "d_pause_after")]
     pub pause_after_failures: i64,
+    /// MCP tools for the model to call. None (the default): no tools.
+    #[serde(default)]
+    pub tools: Option<RunTools>,
+}
+
+fn d_max_rounds() -> i64 {
+    8
+}
+fn d_tool_timeout() -> f64 {
+    60.0
+}
+fn d_max_result_chars() -> i64 {
+    20_000
+}
+
+/// Whether the model must call a tool.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolChoice {
+    /// The model decides (`"tool_choice": "auto"`).
+    #[default]
+    Auto,
+    /// The first request of each sample must call a tool (`"required"`); later requests of the
+    /// sample use `auto`, so the model can answer once it has the results.
+    Required,
+}
+
+/// One MCP server picked for a run.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RunToolServer {
+    pub server_id: i64,
+    /// The tool names to offer, as the server names them. None: every tool of the server.
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+}
+
+/// The tools section of a run's parameters (`params.tools`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RunTools {
+    pub servers: Vec<RunToolServer>,
+    /// How many rounds of tool calls one sample may make (1 to 32). A round runs every call of one
+    /// answer, then sends the results back; the model gets at most `max_rounds + 1` requests. An
+    /// answer that still calls tools after the last round ends the sample as truncated, with finish
+    /// reason `tool_rounds`.
+    #[serde(default = "d_max_rounds")]
+    pub max_rounds: i64,
+    /// Seconds one tool call may take (1 to 3600). A call that takes longer returns an error result
+    /// to the model.
+    #[serde(default = "d_tool_timeout")]
+    pub tool_timeout_s: f64,
+    /// Longer tool results are cut to this many characters, with a marker (1000 to 1,000,000).
+    #[serde(default = "d_max_result_chars")]
+    pub max_result_chars: i64,
+    #[serde(default)]
+    pub tool_choice: ToolChoice,
+}
+
+impl Default for RunTools {
+    fn default() -> Self {
+        serde_json::from_value(serde_json::json!({"servers": []})).expect("defaults")
+    }
+}
+
+/// One tool as a run sends it: its name in the request and its name on the MCP server (they differ
+/// when two selected servers have a tool of the same name: both become `<server>__<tool>`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolSnapshotTool {
+    pub name: String,
+    pub server_tool: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolSnapshotServer {
+    pub server_id: i64,
+    /// The server's name when the run was created.
+    pub name: String,
+    pub transport: McpTransport,
+    pub tools: Vec<ToolSnapshotTool>,
+}
+
+/// The tools a run sends, fixed when the run is created (`RunOut.tools`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolSnapshot {
+    pub servers: Vec<ToolSnapshotServer>,
+    /// Exactly the request's `tools` array: OpenAI function definitions,
+    /// `{"type": "function", "function": {"name", "description", "parameters"}}`.
+    pub definitions: Vec<Value>,
 }
 
 impl Default for RunParams {
@@ -534,6 +621,13 @@ pub struct RunOut {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// The tool definitions the run sends and the servers they come from; null for runs without
+    /// tools.
+    #[serde(default)]
+    pub tools: Option<ToolSnapshot>,
+    /// Tool calls run so far, over all finished samples.
+    #[serde(default)]
+    pub tool_calls: i64,
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -543,6 +637,8 @@ pub enum Phase {
     Waiting,
     Thinking,
     Answering,
+    /// Tools are running (`LiveSequence.tools` names them).
+    Tool,
 }
 
 /// A request in flight, for the run screen.
@@ -560,6 +656,16 @@ pub struct LiveSequence {
     pub tail: String,
     pub elapsed_ms: i64,
     pub attempt: i64,
+    /// The request of the sample in flight: 1, then one more after each round of tool calls.
+    #[serde(default = "d_one")]
+    pub round: i64,
+    /// While `phase` is `tool`: the tools running (as the model named them), else empty.
+    #[serde(default)]
+    pub tools: Vec<String>,
+}
+
+fn d_one() -> i64 {
+    1
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize, PartialEq)]
@@ -637,6 +743,65 @@ pub struct SampleOut {
     pub completed_at: Option<DateTime<Utc>>,
     /// The prompt as sent (after system_prompt and user_template).
     pub messages: Vec<Message>,
+    /// Runs with tools: every message after the prompt, in order (assistant turns with their tool
+    /// calls, tool results, the final answer). `reasoning` and `response` above are the last
+    /// assistant turn's. Null for runs without tools and for samples not finished.
+    #[serde(default)]
+    pub trace: Option<Vec<TraceMessage>>,
+    /// Tool calls run for this sample.
+    #[serde(default)]
+    pub tool_calls: i64,
+}
+
+/// A tool call the model made: `arguments` is the JSON text exactly as the model wrote it (it may
+/// not parse).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// One assistant turn of a trace.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TraceAssistant {
+    pub reasoning: Option<String>,
+    pub content: String,
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
+    pub finish_reason: Option<String>,
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<i64>,
+    pub reasoning_tokens: Option<i64>,
+    pub latency_ms: i64,
+}
+
+/// One tool result of a trace, as sent back to the model.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TraceTool {
+    pub tool_call_id: String,
+    /// The tool's name as the model called it.
+    pub name: String,
+    /// The MCP server that ran it ("" when no server has a tool of that name).
+    pub server: String,
+    /// The text sent to the model: the tool's text parts joined, a placeholder for each image or
+    /// other part, or the error.
+    pub content: String,
+    /// The tool reported an error, the arguments were not valid JSON, the tool is unknown, or the
+    /// call timed out. The error text is still sent to the model.
+    pub is_error: bool,
+    /// The result was longer than the run's `max_result_chars` and was cut.
+    pub truncated: bool,
+    pub latency_ms: i64,
+}
+
+/// A message of a sample's trace, tagged by `role`: `{"role": "assistant", ...TraceAssistant}` or
+/// `{"role": "tool", ...TraceTool}`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum TraceMessage {
+    Assistant(TraceAssistant),
+    Tool(TraceTool),
 }
 
 /// A row in a run's sample table (text shortened).
@@ -653,6 +818,179 @@ pub struct SampleSummary {
     pub completion_tokens: Option<i64>,
     pub latency_ms: Option<i64>,
     pub error: Option<String>,
+    /// Tool calls run for this sample.
+    #[serde(default)]
+    pub tool_calls: i64,
+}
+
+// ------------------------------------------------------------------------------------ MCP servers
+
+/// How Stellarator talks to an MCP server: a child process on stdin/stdout, or streamable HTTP.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum McpTransport {
+    #[default]
+    Stdio,
+    Http,
+}
+
+impl McpTransport {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Stdio => "stdio",
+            Self::Http => "http",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        if s == "http" {
+            Self::Http
+        } else {
+            Self::Stdio
+        }
+    }
+}
+
+/// `POST /api/mcp-servers`. Stdio servers need `command`; HTTP servers need `url`.
+#[derive(Deserialize, Debug, Clone, Serialize, PartialEq)]
+pub struct McpServerIn {
+    /// Letters, digits, `_` and `-`; 1 to 64 characters; unique (ignoring case).
+    pub name: String,
+    pub transport: McpTransport,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variables for the process (stdio). Secret: never returned.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    /// HTTP headers sent with every request (http), e.g. Authorization. Secret: never returned.
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    #[serde(default = "d_true")]
+    pub enabled: bool,
+}
+
+/// `PATCH /api/mcp-servers/{id}`. Absent fields stay as they are.
+///
+/// `env` and `headers`, when given, are the complete new set of names: a name with a string value
+/// gets that value, a name with `null` keeps its saved value (422 if it has none), and a saved name
+/// left out is removed.
+#[derive(Deserialize, Debug, Clone, Default, Serialize, PartialEq)]
+pub struct McpServerPatch {
+    pub name: Option<String>,
+    pub transport: Option<McpTransport>,
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub env: Option<BTreeMap<String, Option<String>>>,
+    pub url: Option<String>,
+    pub headers: Option<BTreeMap<String, Option<String>>>,
+    pub enabled: Option<bool>,
+}
+
+/// A secret's name and the end of its value, e.g. `{"name": "GITHUB_TOKEN", "hint": "…a9f2"}`
+/// (`"…"` for values of 8 characters or fewer, null for an empty value).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SecretHint {
+    pub name: String,
+    pub hint: Option<String>,
+}
+
+/// The outcome of the last check (`POST /api/mcp-servers/{id}/check`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum McpStatus {
+    /// Never checked, or changed since the last check.
+    #[default]
+    Unchecked,
+    Ok,
+    Error,
+}
+
+impl McpStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unchecked => "unchecked",
+            Self::Ok => "ok",
+            Self::Error => "error",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "ok" => Self::Ok,
+            "error" => Self::Error,
+            _ => Self::Unchecked,
+        }
+    }
+}
+
+/// A tool as the MCP server lists it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct McpTool {
+    pub name: String,
+    pub description: Option<String>,
+    /// JSON Schema of the arguments.
+    pub input_schema: Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct McpServerOut {
+    pub id: i64,
+    pub name: String,
+    pub transport: McpTransport,
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    /// Names and hints only; values are never returned.
+    pub env: Vec<SecretHint>,
+    pub url: Option<String>,
+    /// Names and hints only; values are never returned.
+    pub headers: Vec<SecretHint>,
+    pub enabled: bool,
+    pub status: McpStatus,
+    /// Why the last check failed.
+    pub error: Option<String>,
+    pub checked_at: Option<DateTime<Utc>>,
+    /// The name and version the server reported at the last check, e.g. "github-mcp 1.2.0".
+    pub server_info: Option<String>,
+    /// The tools found by the last successful check.
+    pub tools: Vec<McpTool>,
+    /// Null when this server can be used here; otherwise why not (a stdio server in server mode
+    /// without STELLARATOR_ALLOW_STDIO_MCP=1).
+    pub blocked: Option<String>,
+    /// Runs that use this server.
+    pub run_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// `POST /api/mcp-servers/import`: pasted JSON in any common shape: `{"mcpServers": {...}}`
+/// (Claude Desktop, Cursor, Windsurf), `{"servers": {...}}` (VS Code), `{"name": {...}}`, or one
+/// server object.
+#[derive(Deserialize, Debug, Clone, Serialize, PartialEq)]
+pub struct McpImportIn {
+    pub text: String,
+    /// Check each created server before answering (connect and list its tools).
+    #[serde(default)]
+    pub check: bool,
+}
+
+/// A pasted entry and what happened to it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct McpImportNote {
+    /// The entry's name in the pasted JSON ("" for a single unnamed object).
+    pub entry: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct McpImportOut {
+    pub created: Vec<McpServerOut>,
+    /// Entries not imported, with the reason.
+    pub errors: Vec<McpImportNote>,
+    /// Entries imported with a change: renamed because the name was taken, or a legacy SSE URL
+    /// saved as streamable HTTP.
+    pub notes: Vec<McpImportNote>,
 }
 
 // ------------------------------------------------------------------------------------ exports
@@ -844,6 +1182,12 @@ pub struct Candidate {
     pub finish_reason: Option<String>,
     pub completion_tokens: Option<i64>,
     pub reasoning_tokens: Option<i64>,
+    /// Tool calls run for this sample.
+    #[serde(default)]
+    pub tool_calls: i64,
+    /// The sample's trace (runs with tools), as in `SampleOut.trace`.
+    #[serde(default)]
+    pub trace: Option<Vec<TraceMessage>>,
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize, PartialEq)]
@@ -893,6 +1237,9 @@ pub struct SettingsOut {
     pub version: String,
     /// v2: "docker" | "desktop" | "native"
     pub mode: &'static str,
+    /// Stdio MCP servers can be added and run: always in the desktop app; in server mode only with
+    /// STELLARATOR_ALLOW_STDIO_MCP=1.
+    pub stdio_mcp_allowed: bool,
 }
 
 #[derive(Deserialize, Debug, Clone, Default, Serialize, PartialEq)]

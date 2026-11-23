@@ -303,6 +303,8 @@ async fn build_items(ctx: &Ctx, runs: &[RunRow], rows: Vec<ItemRow>) -> Result<V
                         finish_reason: s.finish_reason,
                         completion_tokens: s.completion_tokens,
                         reasoning_tokens: s.reasoning_tokens,
+                        tool_calls: 0,
+                        trace: None,
                     })
                 })
                 .collect();

@@ -24,7 +24,7 @@ fn phase_color(phase: Phase) -> fn() -> AdaptiveColor {
     match phase {
         Phase::Thinking => || token("periwinkle-ink")(),
         Phase::Answering => || token("positive-ink")(),
-        Phase::Waiting => muted_ink,
+        Phase::Waiting | Phase::Tool => muted_ink,
     }
 }
 
@@ -33,6 +33,7 @@ fn phase_word(phase: Phase) -> &'static str {
         Phase::Thinking => "thinking",
         Phase::Answering => "answering",
         Phase::Waiting => "waiting",
+        Phase::Tool => "calling tool",
     }
 }
 

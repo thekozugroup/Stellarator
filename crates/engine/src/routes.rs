@@ -121,6 +121,8 @@ fn run_out(engine: &Engine, r: RunRow) -> RunOut {
         created_at: time::utc(r.created_at),
         started_at: time::utc_opt(r.started_at),
         finished_at: time::utc_opt(r.finished_at),
+        tools: None,
+        tool_calls: 0,
     }
 }
 
@@ -468,6 +470,7 @@ async fn list_samples(
             completion_tokens: row.try_get("completion_tokens")?,
             latency_ms: row.try_get("latency_ms")?,
             error: row.try_get("error")?,
+            tool_calls: 0,
         });
     }
     Ok(Json(Page { items, total, offset, limit }))
@@ -531,6 +534,8 @@ async fn get_sample(State(engine): State<Arc<Engine>>, Id(sample_id): Id) -> Res
         error: s.error,
         completed_at: time::utc_opt(s.completed_at),
         messages: prepare_messages(&messages, &params),
+        trace: None,
+        tool_calls: 0,
     }))
 }
 

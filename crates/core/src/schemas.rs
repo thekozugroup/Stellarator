@@ -163,6 +163,130 @@ pub fn check_run_params(params: &mut RunParams, prefix: &str, e: &mut FieldError
     {
         params.system_prompt = None;
     }
+    if let Some(tools) = &mut params.tools {
+        check_run_tools(tools, &f("tools."), e);
+    }
+}
+
+/// A run's tools section, under `prefix` ("params.tools."). Whether the servers and tools exist is
+/// checked when the run is created (it needs the database).
+pub fn check_run_tools(tools: &mut RunTools, prefix: &str, e: &mut FieldErrors) {
+    let f = |name: &str| format!("{prefix}{name}");
+    if tools.servers.is_empty() {
+        e.add(&f("servers"), "Pick at least one MCP server, or turn tools off.");
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (i, s) in tools.servers.iter_mut().enumerate() {
+        if !seen.insert(s.server_id) {
+            e.add(&f(&format!("servers.{i}.server_id")), "This server is picked twice.");
+        }
+        if let Some(names) = &mut s.tools {
+            names.retain(|n| !n.trim().is_empty());
+            let mut uniq = std::collections::HashSet::new();
+            names.retain(|n| uniq.insert(n.clone()));
+            if names.is_empty() {
+                e.add(
+                    &f(&format!("servers.{i}.tools")),
+                    "Pick at least one tool of this server, or leave the list out to offer all of them.",
+                );
+            }
+        }
+    }
+    check_range_i(e, &f("max_rounds"), tools.max_rounds, 1, 32);
+    if !(1.0..=3600.0).contains(&tools.tool_timeout_s) {
+        e.add(&f("tool_timeout_s"), "Use a number of seconds from 1 to 3600.");
+    }
+    check_range_i(e, &f("max_result_chars"), tools.max_result_chars, 1000, 1_000_000);
+}
+
+/// MCP server names: letters, digits, `_` and `-`, 1 to 64 characters. They prefix tool names when
+/// two servers have a tool of the same name, and tool names allow only these characters.
+pub fn check_mcp_name(errors: &mut FieldErrors, field: &str, name: &str) {
+    if name.is_empty() {
+        errors.add(field, "Required.");
+    } else if name.chars().count() > 64 {
+        errors.add(field, "At most 64 characters.");
+    } else if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        errors.add(field, "Use only letters, digits, _ and -.");
+    }
+}
+
+/// Environment variable names: no `=` or NUL, not empty.
+pub fn check_env_names<'a>(errors: &mut FieldErrors, field: &str, names: impl Iterator<Item = &'a String>) {
+    for n in names {
+        if n.is_empty() || n.contains('=') || n.contains('\0') {
+            errors.add(field, format!("\"{n}\" is not a valid environment variable name."));
+        }
+    }
+}
+
+/// HTTP header names: the token characters of RFC 9110.
+pub fn check_header_names<'a>(errors: &mut FieldErrors, field: &str, names: impl Iterator<Item = &'a String>) {
+    for n in names {
+        let ok = !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        if !ok {
+            errors.add(field, format!("\"{n}\" is not a valid HTTP header name."));
+        }
+    }
+}
+
+fn check_mcp_url(errors: &mut FieldErrors, field: &str, url: &mut String) {
+    let v = url.trim().to_string();
+    if !(v.starts_with("http://") || v.starts_with("https://")) {
+        errors.add(field, "The URL must start with http:// or https://");
+    }
+    *url = v;
+}
+
+impl Validate for McpServerIn {
+    fn validate(&mut self, e: &mut FieldErrors) {
+        check_mcp_name(e, "name", &self.name);
+        self.command = self.command.take().map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+        self.url = self.url.take().map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+        match self.transport {
+            McpTransport::Stdio => {
+                if self.command.is_none() {
+                    e.add("command", "Enter the command that starts the server, for example npx.");
+                }
+            }
+            McpTransport::Http => match &mut self.url {
+                None => e.add("url", "Enter the server's URL, for example https://example.com/mcp."),
+                Some(u) => check_mcp_url(e, "url", u),
+            },
+        }
+        check_env_names(e, "env", self.env.keys());
+        check_header_names(e, "headers", self.headers.keys());
+    }
+}
+
+impl Validate for McpServerPatch {
+    fn validate(&mut self, e: &mut FieldErrors) {
+        if let Some(n) = &self.name {
+            check_mcp_name(e, "name", n);
+        }
+        if let Some(c) = &mut self.command {
+            *c = c.trim().to_string();
+        }
+        if let Some(u) = &mut self.url {
+            if !u.trim().is_empty() {
+                check_mcp_url(e, "url", u);
+            }
+        }
+        if let Some(env) = &self.env {
+            check_env_names(e, "env", env.keys());
+        }
+        if let Some(h) = &self.headers {
+            check_header_names(e, "headers", h.keys());
+        }
+    }
+}
+
+impl Validate for McpImportIn {
+    fn validate(&mut self, e: &mut FieldErrors) {
+        if self.text.trim().is_empty() {
+            e.add("text", "Paste the JSON of one or more MCP servers.");
+        }
+    }
 }
 
 impl Validate for RunCreate {

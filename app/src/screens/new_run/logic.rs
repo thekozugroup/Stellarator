@@ -295,6 +295,7 @@ pub fn to_body(form: &Form) -> Result<RunCreate, String> {
             max_attempts: id(Field::MaxAttempts),
             request_timeout_s: js_number(form.get(Field::Timeout)),
             pause_after_failures: id(Field::PauseAfter),
+            tools: None,
         },
     })
 }

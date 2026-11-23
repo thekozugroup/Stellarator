@@ -23,7 +23,16 @@ pub struct Config {
     /// Desktop only: requests must carry the cookie set from this token (see the server crate).
     pub launch_token: Option<String>,
     pub version: &'static str,
+    /// Stdio MCP servers (commands Stellarator starts) may be added and run. Always in the desktop
+    /// app; in server mode (Docker, `stellarator-server`), which has no sign-in and listens on the
+    /// network, only when the operator sets STELLARATOR_ALLOW_STDIO_MCP=1.
+    pub allow_stdio_mcp: bool,
 }
+
+/// Why a stdio MCP server cannot be used in server mode.
+pub const STDIO_MCP_BLOCKED: &str = "Stdio MCP servers run commands on this machine, so they are off in server mode, which has no \
+     sign-in. The operator can allow them by starting Stellarator with STELLARATOR_ALLOW_STDIO_MCP=1. \
+     HTTP servers work without it.";
 
 impl Config {
     /// Read the environment. `STELLARATOR_DATA_DIR` defaults to `./data`.
@@ -52,6 +61,8 @@ impl Config {
             hf_hub: std::env::var("STELLARATOR_HF_HUB").unwrap_or_else(|_| "https://huggingface.co".into()),
             launch_token: None,
             version: env!("CARGO_PKG_VERSION"),
+            allow_stdio_mcp: mode == Mode::Desktop
+                || std::env::var("STELLARATOR_ALLOW_STDIO_MCP").is_ok_and(|v| v.trim() == "1"),
         }
     }
 
