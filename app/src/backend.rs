@@ -16,7 +16,6 @@
 //!   case nothing did.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -38,7 +37,8 @@ pub struct Backend {
     api: Api,
     lifecycle: Vec<Arc<dyn Lifecycle>>,
     data_dir: PathBuf,
-    stopped: AtomicBool,
+    /// The stop ([`stop`]): begun once, awaited by every caller.
+    stopping: OnceWork,
 }
 
 impl Backend {
@@ -93,7 +93,7 @@ fn open() -> anyhow::Result<Backend> {
     }
     let router = stellarator_server::app(&parts);
     let api = Api::in_process(router, runtime.handle().clone());
-    Ok(Backend { runtime, api, lifecycle: parts.lifecycle, data_dir, stopped: AtomicBool::new(false) })
+    Ok(Backend { runtime, api, lifecycle: parts.lifecycle, data_dir, stopping: OnceWork::default() })
 }
 
 /// `STELLARATOR_DATA_DIR`, or the folder the Tauri app uses (`app_local_data_dir()` for the same
@@ -112,25 +112,58 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 }
 
 /// Stops the server the way quitting does: in-flight requests finish and runs are paused, waiting
-/// at most [`STOP_TIMEOUT`]. Only the first call stops it; later ones return at once. Await it
+/// at most [`STOP_TIMEOUT`]. The first call starts the stop; every call, the first and the later
+/// ones (a second Quit, the window's close, `src/main.rs`), returns once it has ended. Await it
 /// from any executor: the work runs on the server's runtime.
 pub async fn stop() {
     let Some(backend) = get() else { return };
-    if backend.stopped.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let hooks = backend.lifecycle.clone();
-    let task = backend.runtime.spawn(stop_hooks(hooks));
-    let _ = task.await;
+    backend.begin_stop().await;
 }
 
 /// [`stop`] for a thread outside any async runtime (src/main.rs, after the window closed).
 pub fn stop_blocking() {
     let Some(backend) = get() else { return };
-    if backend.stopped.swap(true, Ordering::SeqCst) {
-        return;
+    let ended = backend.begin_stop();
+    backend.runtime.block_on(ended);
+}
+
+impl Backend {
+    /// The stop: started on the server's runtime by the first caller; ends when it has ended.
+    fn begin_stop(&self) -> impl std::future::Future<Output = ()> + 'static {
+        let hooks = self.lifecycle.clone();
+        self.stopping.begin(self.runtime.handle(), move || stop_hooks(hooks))
     }
-    backend.runtime.block_on(stop_hooks(backend.lifecycle.clone()));
+}
+
+/// Work that runs once, on a runtime of its own, whoever asks for it first; every caller, the
+/// first and the later ones, can wait for its end. It runs on its own task, so it ends whether or
+/// not anyone is waiting (a second Quit, the window closing, `src/main.rs` after the window).
+#[derive(Default)]
+struct OnceWork(OnceLock<tokio::sync::watch::Receiver<bool>>);
+
+impl OnceWork {
+    /// Starts `work` on `runtime` the first time; the future each caller gets ends once it has
+    /// ended (or its task went without saying so, as on a panic). Await it from any executor.
+    fn begin<F>(&self, runtime: &tokio::runtime::Handle, work: impl FnOnce() -> F) -> impl std::future::Future<Output = ()> + 'static
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let mut ended = self
+            .0
+            .get_or_init(|| {
+                let (done, receiver) = tokio::sync::watch::channel(false);
+                let work = work();
+                runtime.spawn(async move {
+                    work.await;
+                    let _ = done.send(true);
+                });
+                receiver
+            })
+            .clone();
+        async move {
+            let _ = ended.wait_for(|done| *done).await;
+        }
+    }
 }
 
 async fn stop_hooks(hooks: Vec<Arc<dyn Lifecycle>>) {
@@ -146,5 +179,38 @@ async fn stop_hooks(hooks: Vec<Arc<dyn Lifecycle>>) {
             "the Stellarator server did not stop within {} s; quitting anyway",
             STOP_TIMEOUT.as_secs()
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[test]
+    fn a_second_stop_waits_for_the_first_and_runs_nothing_more() {
+        let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        let once = OnceWork::default();
+        let runs = Arc::new(AtomicUsize::new(0));
+        let ended = Arc::new(AtomicBool::new(false));
+        let work = |runs: Arc<AtomicUsize>, ended: Arc<AtomicBool>| {
+            move || async move {
+                runs.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                ended.store(true, Ordering::SeqCst);
+            }
+        };
+        // Quit pressed, then pressed again (or the window closed) while the first stop runs.
+        let first = once.begin(runtime.handle(), work(runs.clone(), ended.clone()));
+        let second = once.begin(runtime.handle(), work(runs.clone(), ended.clone()));
+        // The second caller (from another thread, as src/main.rs is) returns only once it ended.
+        runtime.block_on(second);
+        assert!(ended.load(Ordering::SeqCst), "the second caller waited for the stop");
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "the stop ran once");
+        runtime.block_on(first);
+        // A caller after the end returns at once.
+        runtime.block_on(once.begin(runtime.handle(), work(runs.clone(), ended.clone())));
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
     }
 }

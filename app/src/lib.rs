@@ -110,8 +110,15 @@ fn main_window_attributes() -> WindowAttributes {
     attributes
 }
 
-/// Stops the server (in-flight requests finish, runs are paused), then quits.
+/// Stops the server (in-flight requests finish, runs are paused), then quits. A second Quit or
+/// close while the server stops is ignored: the first one quits once the stop has ended.
 fn quit_cleanly() {
+    thread_local! {
+        static QUITTING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if QUITTING.with(|q| q.replace(true)) {
+        return;
+    }
     spawn(async {
         #[cfg(not(target_arch = "wasm32"))]
         backend::stop().await;
