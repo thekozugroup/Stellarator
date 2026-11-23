@@ -1,7 +1,7 @@
 //! Chooses the web UI the server embeds (src/assets.rs):
 //!
-//! - `STELLARATOR_WEB_UI=nsh` (the default): the nsh app's web build, `app/.nsh/out/Stellarator`
-//!   (`nsh package --target web` in app/).
+//! - `STELLARATOR_WEB_UI=nsh` (the default): the nsh app's web build, `app/.nsh/web/Stellarator`
+//!   (`nsh package --target web --out .nsh/web` in app/).
 //! - `STELLARATOR_WEB_UI=react`: the React UI, `frontend/dist` (`npm run build` in frontend/). The
 //!   Tauri desktop app (desktop/) loads it in its webview; it stays until the switch to nsh is done.
 //!

@@ -389,6 +389,121 @@ is the same as before: no overlay, no updater in the app, no `latest.json`. To t
 local build, pass the same overlay: `npx @tauri-apps/cli@2 build --config updater.json` with the
 private key and password in `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
+## The nsh app (from 0.4.0)
+
+From 0.4.0 the desktop app is the nsh app (`app/`): the whole UI in Rust on nsh, drawn with each
+platform's own UI (AppKit, Win32, GTK 4), and the Stellarator server inside the same process with
+no TCP port (the UI calls its router directly). It keeps the Tauri app's data folder, so the runs
+are the same. The sections above describe the Tauri app until the switch; what differs is here.
+
+### Install and first open
+
+| Computer | File | Needs |
+| --- | --- | --- |
+| Mac with Apple Silicon | `Stellarator_<version>_aarch64.dmg` | macOS 14 or later |
+| Mac with Intel | `Stellarator_<version>_x64.dmg` | macOS 14 or later |
+| Windows | `Stellarator_<version>_x64-setup.exe` or `Stellarator_<version>_x64_en-US.msi` | Windows 10 or 11 |
+| Linux | `Stellarator_<version>_amd64.deb` or `Stellarator_<version>_amd64.AppImage` | GTK 4.14 or later: Ubuntu 24.04+, Debian 13+, Fedora 40+ |
+
+- macOS: a build without a Developer ID is ad hoc signed; open it the first time as
+  [Install](#install) describes (`xattr -dr com.apple.quarantine /Applications/Stellarator.app`, or
+  Open Anyway in System Settings > Privacy & Security). A notarized build opens directly.
+- Windows: both installers install for your account only, without administrator rights, under
+  `%LOCALAPPDATA%\Programs\Stellarator`, with a Start menu shortcut; uninstall from Settings >
+  Apps. The `-setup.exe` is Inno Setup (made by `nsh package`), the `.msi` is WiX
+  (`app/packaging/windows/stellarator.wxs`). SmartScreen warns about unsigned builds: More info,
+  then Run anyway. No WebView2 is needed.
+- Linux: `sudo apt install ./Stellarator_<version>_amd64.deb` installs the app under
+  `/usr/lib/stellarator` with `stellarator` on the PATH, the menu entry, the icons and the AppStream
+  metainfo. The AppImage runs where GTK 4.14 or later is installed (every desktop with GNOME 46 or
+  later has it): `chmod +x Stellarator_<version>_amd64.AppImage && ./Stellarator_<version>_amd64.AppImage`.
+
+### One copy at a time
+
+- A second launch brings the running window forward instead of opening another (Windows and
+  Linux: nsh.json `singleInstance`; macOS does this for app bundles itself).
+- Opening a data folder takes a lock on `stellarator.lock` in it (crates/core/src/datalock.rs),
+  held until the process ends, crash included. A second process on the same folder (the Tauri app
+  next to the nsh app, or `stellarator-server` started on the app's folder) shows "Stellarator is
+  already open" with the folder's path and quits, so two processes never write one database.
+
+### Window, menus and keys
+
+- The window opens where you left it: size, position, and maximized or full screen (nsh.json
+  `"restoreBounds"`). It opens hidden and shows once ready, so on macOS 26 it shows with its 26 pt
+  corners from the first frame.
+- macOS menu bar: Stellarator (About, Check for Updates… in builds with the updater, Settings… ⌘,,
+  Hide, Hide Others, Show All, Quit), Edit (Undo, Redo, Cut, Copy, Paste, Select All), View (Back ⌘[,
+  Enter Full Screen), Window (Minimize, Zoom, Close) and Help (Stellarator on GitHub).
+- Windows and Linux have no menu bar, as the Tauri app: Ctrl+[ goes back and Ctrl+, opens Settings;
+  text fields have the system's editing keys.
+
+### Updates
+
+The nsh app updates itself with nsh's updater (app/src/updater.rs): a few seconds after start, then
+every 6 hours, it reads `nsh-latest.json` of the latest release, checks its signature against the
+public key built into the app, and offers **Install and Restart** or **Later**, as the Tauri app
+does. Install and Restart downloads the archive for the computer, checks its size and SHA-256
+against the signed manifest, stops the server the way quitting does, replaces the app and starts
+it again. Where the app cannot replace itself (the `.deb`, an AppImage), the dialog offers
+Download, which opens the release page.
+
+The keys are nsh's (Ed25519), not the Tauri app's (minisign), so they are new secrets. Make them on
+your own Mac, never in CI, with the nsh CLI (`curl -fsSL https://nsh.dev/install.sh | sh`):
+
+```sh
+mkdir -p ~/.nsh-keys && cd ~/.nsh-keys
+nsh keygen stellarator-updates   # writes stellarator-updates.secret and stellarator-updates.pub
+gh secret set NSH_UPDATER_SECRET_KEY --repo thekozugroup/Stellarator < stellarator-updates.secret
+gh secret set NSH_UPDATER_PUBLIC_KEY --repo thekozugroup/Stellarator < stellarator-updates.pub
+```
+
+Keep `stellarator-updates.secret` in a password manager or another backup and never commit it:
+every installed copy trusts only the matching public key. With both secrets set, each build of
+`.github/workflows/release-nsh.yml` adds nsh.json's `"updater"` section (the manifest URL and the
+public key; `app/ci/updater-config.py`), and the release gets the update archives
+(`Stellarator-<version>-<os>-<arch>.tar.gz` or `.zip`), `nsh-latest.json` and its signature
+`latest.json.sig` (`nsh update-manifest`). Without them the builds have no updater and make no
+update requests.
+
+The manifest has its own name so the Tauri app's `latest.json` can stay in the same releases while
+both apps exist. The Tauri app cannot update itself to the nsh app: its updater reads only
+`latest.json` with minisign signatures. Tauri users download the first nsh version by hand.
+
+### Builds and releases
+
+`.github/workflows/release-nsh.yml` builds all six installers on every push to `main` that
+changes `app/`, `crates/` or the workflow, on `v*` tags and by hand, and uploads them as artifacts
+(`stellarator-macos-aarch64`, `stellarator-macos-x64`, `stellarator-windows-x64`,
+`stellarator-linux-amd64`). Both Mac builds run on the Intel runner, the Apple Silicon one
+cross-compiled (`nsh package --arch arm64`). The Windows job installs and uninstalls both
+installers; the Linux job installs the `.deb` in a clean `ubuntu:24.04` container and starts it and
+the AppImage there (screenshots in the `linux-install-check` artifact). It signs and notarizes the
+Mac app with the same `APPLE_*` secrets as the Tauri workflow when they are set.
+
+It does not publish yet. To switch releases from the Tauri app to the nsh app:
+
+1. In `.github/workflows/release-nsh.yml`, set `PUBLISH: "true"`.
+2. Stop desktop.yml from publishing: delete it, or remove its `release` and `publish` jobs (its
+   release names and tags are the same, and two workflows must not publish one version).
+3. Bump the version in `Cargo.toml`, `app/Cargo.toml` and `app/nsh.json` (the first job fails if
+   they differ), add the CHANGELOG section, and push to `main`.
+
+The release is made as the Tauri one is: a draft, the builds upload into it, published as the
+latest release when all of them succeed.
+
+### The web UI in the server
+
+`stellarator-server` (Docker, and `cargo run -p stellarator-server`) serves the nsh app's web build
+from `app/.nsh/web/Stellarator` (`nsh package --target web --out .nsh/web` in `app/`): release builds embed it,
+debug builds read it from disk. Until the switch, the React UI is one variable away:
+`STELLARATOR_WEB_UI=react` when the server compiles (crates/server/build.rs) serves
+`frontend/dist`, which the Tauri app's webview needs (desktop.yml sets it), and
+`docker build --build-arg WEB_UI=react .` builds the image with it. The Content-Security-Policy
+allows `'wasm-unsafe-eval'` (compiling the WebAssembly, no JavaScript eval) and `blob:` images for
+the nsh UI; `.wasm` is served as `application/wasm`, the build's `.br` and `.gz` files go to
+browsers that accept them, and unknown paths get `index.html`.
+
 ## Troubleshooting
 
 | Symptom | Fix |

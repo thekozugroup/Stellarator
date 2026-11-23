@@ -1,8 +1,8 @@
 //! The web UI. Release builds embed it; debug builds read the same folder from disk. Which UI is
 //! chosen when the server compiles (build.rs):
 //!
-//! - the nsh app's web build (`app/.nsh/out/Stellarator`, made by `nsh package --target web` in
-//!   app/), the default;
+//! - the nsh app's web build (`app/.nsh/web/Stellarator`, made by `nsh package --target web --out
+//!   .nsh/web` in app/), the default;
 //! - the React UI (`frontend/dist`), with `STELLARATOR_WEB_UI=react`: the one the Tauri desktop app
 //!   loads, kept until the switch to nsh is done.
 //!
@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 
 #[cfg(not(web_ui_react))]
 #[derive(RustEmbed)]
-#[folder = "../../app/.nsh/out/Stellarator"]
+#[folder = "../../app/.nsh/web/Stellarator"]
 #[allow_missing = true]
 struct Dist;
 
@@ -56,7 +56,7 @@ pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
             .into_response(),
         None => (
             StatusCode::NOT_FOUND,
-            "The web UI is not built. Run `nsh package --target web` in app/, then rebuild the server.",
+            "The web UI is not built. Run `nsh package --target web --out .nsh/web` in app/, then rebuild the server.",
         )
             .into_response(),
     }

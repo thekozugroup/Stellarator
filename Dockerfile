@@ -56,7 +56,7 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 # Where crates/server/build.rs looks for each UI.
-COPY --from=web /web ./app/.nsh/out/Stellarator
+COPY --from=web /web ./app/.nsh/web/Stellarator
 COPY --from=web /web ./frontend/dist
 RUN --mount=type=secret,id=ca,required=false \
     --mount=type=cache,target=/usr/local/cargo/registry \

@@ -1,0 +1,609 @@
+# The installers of the nsh app (app/): macOS (Apple Silicon and Intel), Windows and Linux. It is
+# to replace the Tauri app's release (desktop.yml), with the same file names and download table.
+#
+# Every run uploads the installers as workflow artifacts:
+#   macOS    Stellarator_<v>_aarch64.dmg, Stellarator_<v>_x64.dmg
+#   Windows  Stellarator_<v>_x64-setup.exe (Inno Setup, made by `nsh package`), Stellarator_<v>_x64_en-US.msi (WiX)
+#   Linux    Stellarator_<v>_amd64.deb, Stellarator_<v>_amd64.AppImage
+#
+# Publishing is off until the switch from the Tauri app: set PUBLISH below to "true" (and stop
+# desktop.yml from publishing, see docs/desktop.md). Then a GitHub release tagged v<version in
+# Cargo.toml> is made as desktop.yml makes it: by a push to main whose version has no published
+# release yet, by Run workflow with "Publish a release" checked, or by a v* tag push. One draft is
+# created first, the builds upload into it, and it is published (and marked latest) only when all
+# of them succeed.
+#
+# macOS signing and notarization are optional, with the secrets desktop.yml reads (all of them):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY  Developer ID signing
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID                                 notarization
+# Without them the app is ad hoc signed and users open it as docs/desktop.md describes.
+#
+# In-app updates are optional too (app/src/updater.rs), with nsh's own keys (`nsh keygen`; the
+# Tauri app's minisign keys do not fit). With both secrets set, the builds turn the updater on
+# (nsh.json "updater") and the release gets nsh-latest.json, signed, and the update archives:
+#   NSH_UPDATER_PUBLIC_KEY  the public key (the contents of the .pub file)
+#   NSH_UPDATER_SECRET_KEY  the secret key (the contents of the .secret file)
+
+name: Release (nsh)
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "app/**"
+      - "crates/**"
+      - "store/linux/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/release-nsh.yml"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a release (tag v<version in Cargo.toml>) with the installers (only with PUBLISH on)
+        type: boolean
+        default: false
+
+env:
+  # The switch: "false" builds the installers only; "true" also publishes releases.
+  PUBLISH: "false"
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/app/target
+
+concurrency:
+  group: release-nsh-${{ github.ref }}${{ inputs.release && '-release' || '' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
+
+permissions:
+  contents: write # the release
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+      updater: ${{ steps.check.outputs.updater }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The app's version equals the workspace version (and the tag)
+        id: check
+        env:
+          PUBLIC_KEY: ${{ secrets.NSH_UPDATER_PUBLIC_KEY }}
+          SECRET_KEY: ${{ secrets.NSH_UPDATER_SECRET_KEY }}
+        run: |
+          workspace=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml)
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -n 1)
+          nsh=$(python3 -c 'import json; print(json.load(open("app/nsh.json"))["version"])')
+          echo "workspace $workspace, app/Cargo.toml $crate, app/nsh.json $nsh"
+          if [ "$workspace" != "$crate" ] || [ "$workspace" != "$nsh" ]; then
+            echo "::error file=app/nsh.json::app/Cargo.toml ($crate) and app/nsh.json ($nsh) must have the workspace version ($workspace)."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF_NAME#v}" != "$workspace" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $workspace"
+            exit 1
+          fi
+          echo "version=$workspace" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          if [ -n "$PUBLIC_KEY" ] && [ -n "$SECRET_KEY" ]; then
+            echo "updater=true" >> "$GITHUB_OUTPUT"
+            echo "Updater on: the builds ship the public key; the release gets nsh-latest.json."
+          else
+            echo "updater=false" >> "$GITHUB_OUTPUT"
+            echo "Updater off: NSH_UPDATER_PUBLIC_KEY and NSH_UPDATER_SECRET_KEY are not both set."
+          fi
+
+  release:
+    name: Create the draft release
+    # PUBLISH on, and a push to main or a tag, or Run workflow with "Publish a release" checked.
+    if: needs.version.outputs.publish == 'true' && (github.event_name == 'push' || inputs.release)
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.id }}
+      tag: ${{ steps.create.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+      - id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          EXPLICIT: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release == true }}
+        run: |
+          version="$VERSION"
+          tag="v$version"
+          cat > body.md <<'EOF'
+          ## Download
+
+          | Computer | File |
+          | --- | --- |
+          | Mac with Apple Silicon (M1 or later), macOS 14 or later | `Stellarator_@V@_aarch64.dmg` |
+          | Mac with Intel, macOS 14 or later | `Stellarator_@V@_x64.dmg` |
+          | Windows 10 or 11 | `Stellarator_@V@_x64-setup.exe` (or the `.msi`) |
+          | Linux (Ubuntu 24.04+, Debian 13+) | `Stellarator_@V@_amd64.AppImage` or `.deb` |
+
+          ## macOS: the first open
+
+          If macOS says Stellarator cannot be opened (a build that is not notarized), open the
+          `.dmg`, drag Stellarator to Applications, then run this once in Terminal:
+
+              xattr -dr com.apple.quarantine /Applications/Stellarator.app
+
+          Or open the app once, then click Open Anyway in System Settings > Privacy & Security.
+
+          ## Windows: the first open
+
+          SmartScreen warns about an unsigned app: click More info, then Run anyway. Both
+          installers install for your account only, with no administrator rights.
+
+          ## Linux
+
+          The `.deb` and the AppImage use the computer's GTK 4 (4.14 or later). The AppImage runs
+          on any distribution that has it.
+
+          Setup, data folders and troubleshooting: [docs/desktop.md](https://github.com/thekozugroup/Stellarator/blob/main/docs/desktop.md).
+          EOF
+          sed -i "s/@V@/$version/g" body.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="## $version" '$0 == v { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md \
+              | sed 's/^### /#### /' > notes.md
+            if [ -s notes.md ] && grep -q '[^[:space:]]' notes.md; then
+              { printf "## What's new\n"; cat notes.md; printf "\n"; cat body.md; } > body.new && mv body.new body.md
+            fi
+          fi
+          # As desktop.yml: a published release of this version is final; a draft from an earlier
+          # run is reused (duplicates deleted); otherwise one is created.
+          found=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$tag\" or (.draft and .name == \"Stellarator $tag\")) | \"\(.id) \(.draft)\"")
+          if grep -q ' false$' <<<"$found"; then
+            if [ "$EXPLICIT" = "true" ]; then
+              echo "::error::Release $tag is already published. Bump the version in Cargo.toml, app/Cargo.toml and app/nsh.json."
+              exit 1
+            fi
+            echo "Release $tag is already published; this run only builds the installers."
+            exit 0
+          fi
+          id=""
+          while read -r rid _; do
+            [ -n "$rid" ] || continue
+            if [ -z "$id" ]; then id="$rid"; else gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$rid" --silent; fi
+          done <<<"$found"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" -F body=@body.md --silent
+          else
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" \
+              -f name="Stellarator $tag" -F draft=true -F body=@body.md --jq .id)
+          fi
+          echo "Release $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  macos:
+    name: macOS (${{ matrix.name }})
+    needs: [version, release]
+    if: ${{ !cancelled() && !failure() }}
+    # Both builds run on the Intel runner and Apple Silicon's is cross-compiled
+    # (`nsh package --arch arm64`): as desktop.yml notes, jobs on the arm64 runners sat queued until
+    # GitHub cancelled them in November 2026.
+    runs-on: macos-26-intel
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple Silicon
+            arch: arm64
+            dmg: aarch64
+            update: aarch64
+          - name: Intel
+            arch: x86_64
+            dmg: x64
+            update: x86_64
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-release-macos-${{ matrix.arch }}
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Updater (when the signing secrets are set)
+        if: needs.version.outputs.updater == 'true'
+        env:
+          PUBLIC_KEY: ${{ secrets.NSH_UPDATER_PUBLIC_KEY }}
+        run: python3 app/ci/updater-config.py app/nsh.json "$GITHUB_REPOSITORY"
+
+      - name: Liquid Glass icon (actool)
+        id: glass
+        run: |
+          out="$RUNNER_TEMP/icon-build"
+          mkdir -p "$out"
+          if xcrun actool desktop/icon-src/Stellarator.icon --compile "$out" \
+              --output-format human-readable-text --notices --warnings --errors \
+              --output-partial-info-plist "$out/partial.plist" --app-icon Stellarator \
+              --include-all-app-icons --enable-on-demand-resources NO --development-region en \
+              --target-device mac --minimum-deployment-target 14.0 --platform macosx \
+            && [ -s "$out/Assets.car" ]; then
+            python3 -c '
+          import json
+          path = "app/nsh.json"
+          config = json.load(open(path))
+          config.setdefault("macos", {}).setdefault("infoPlist", {})["CFBundleIconName"] = "Stellarator"
+          json.dump(config, open(path, "w"), indent=2)'
+            echo "car=$out/Assets.car" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::actool could not compile Stellarator.icon; the app keeps the static icon."
+          fi
+
+      - name: Package (nsh package --target macos --arch ${{ matrix.arch }})
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target macos --arch ${{ matrix.arch }}
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          app=.nsh/out/Stellarator.app
+          exe=$(defaults read "$PWD/$app/Contents/Info" CFBundleExecutable)
+          echo "$exe: $(lipo -archs "$app/Contents/MacOS/$exe")"
+          echo "LSMinimumSystemVersion $(defaults read "$PWD/$app/Contents/Info" LSMinimumSystemVersion)"
+
+      - name: Sign (Developer ID when the secrets are set, else ad hoc)
+        env:
+          CAR: ${{ steps.glass.outputs.car }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          app="app/.nsh/out/Stellarator.app"
+          if [ -n "$CAR" ]; then cp "$CAR" "$app/Contents/Resources/Assets.car"; fi
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            keychain="$RUNNER_TEMP/signing.keychain-db"
+            password=$(openssl rand -hex 16)
+            echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+            security create-keychain -p "$password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$password" "$keychain"
+            security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+            security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" > /dev/null
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            codesign --force --deep --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app"
+            echo "Signed with $APPLE_SIGNING_IDENTITY"
+          else
+            codesign --force --deep --sign - "$app"
+            echo "No Apple certificate: ad hoc signed, not notarized."
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: DMG
+        run: |
+          dmg="Stellarator_${VERSION}_${{ matrix.dmg }}.dmg"
+          mkdir -p dmg && cp -R app/.nsh/out/Stellarator.app dmg/ && ln -s /Applications dmg/Applications
+          # hdiutil sometimes fails with "Resource busy" on the hosted runners: try again.
+          for attempt in 1 2 3; do
+            hdiutil create -volname Stellarator -srcfolder dmg -ov -format UDZO "$dmg" && break
+            sleep 10
+          done
+          mkdir -p out && mv "$dmg" out/
+          ls -la out
+
+      - name: Notarize (when the secrets are set)
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Not notarized: the Apple secrets are not all set."
+            exit 0
+          fi
+          dmg=$(ls out/*.dmg)
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+
+      - name: Update archive (when the updater is on)
+        if: needs.version.outputs.updater == 'true'
+        run: |
+          mkdir -p update
+          tar -czf "update/Stellarator-${VERSION}-macos-${{ matrix.update }}.tar.gz" -C app/.nsh/out Stellarator.app
+          ls -la update
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stellarator-macos-${{ matrix.dmg }}
+          if-no-files-found: error
+          path: out/*.dmg
+
+      - uses: actions/upload-artifact@v7
+        if: needs.version.outputs.updater == 'true'
+        with:
+          name: update-macos-${{ matrix.update }}
+          path: update/
+
+      - name: Upload to the release
+        if: needs.release.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: app/ci/upload-release-asset.sh "${{ needs.release.outputs.id }}" out/*.dmg
+
+  windows:
+    name: Windows
+    needs: [version, release]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      # aws-lc-sys (rustls, in the server's HTTP client) uses its prebuilt assembly without NASM.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-release-windows
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        shell: pwsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Updater (when the signing secrets are set)
+        if: needs.version.outputs.updater == 'true'
+        shell: bash
+        env:
+          PUBLIC_KEY: ${{ secrets.NSH_UPDATER_PUBLIC_KEY }}
+        run: python app/ci/updater-config.py app/nsh.json "$GITHUB_REPOSITORY"
+
+      # `nsh package` makes the setup with Inno Setup (preinstalled on the runner): a per-user
+      # install under %LOCALAPPDATA%\Programs, with a Start menu shortcut and an uninstaller.
+      - name: Package (nsh package --target windows)
+        shell: bash
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target windows
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out
+          test -f .nsh/out/Stellarator-setup.exe
+
+      - name: MSI (WiX)
+        shell: bash
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          mkdir -p out
+          wix build app/packaging/windows/stellarator.wxs -arch x64 -d "Version=$VERSION" \
+            -d "Source=app/.nsh/out/Stellarator" -o "out/Stellarator_${VERSION}_x64_en-US.msi"
+          cp app/.nsh/out/Stellarator-setup.exe "out/Stellarator_${VERSION}_x64-setup.exe"
+          ls -la out
+
+      # Each installer installs, puts the app and the Start menu shortcut in place, and uninstalls.
+      - name: Install and uninstall both installers
+        shell: pwsh
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\Stellarator\Stellarator.exe"
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $msi = Get-ChildItem out\*.msi | Select-Object -First 1
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v msi-install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0 -or -not (Test-Path $app)) { Get-Content msi-install.log -Tail 40; throw "MSI install failed ($($p.ExitCode))" }
+          Get-ChildItem -Recurse $menu -Filter "Stellarator*.lnk" | ForEach-Object { "shortcut: $($_.FullName)" }
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$($msi.FullName)`" /qn" -Wait -PassThru
+          if ($p.ExitCode -ne 0 -or (Test-Path $app)) { throw "MSI uninstall failed ($($p.ExitCode))" }
+          "MSI: installed and uninstalled"
+          $setup = Get-ChildItem out\*-setup.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          $installed = Get-ChildItem -Recurse "$env:LOCALAPPDATA\Programs" -Filter Stellarator.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($p.ExitCode -ne 0 -or -not $installed) { throw "setup.exe install failed ($($p.ExitCode))" }
+          "setup.exe installed $($installed.FullName)"
+          Get-ChildItem -Recurse $menu -Filter "Stellarator*.lnk" | ForEach-Object { "shortcut: $($_.FullName)" }
+          $uninstaller = Get-ChildItem $installed.DirectoryName -Filter "unins*.exe" | Select-Object -First 1
+          if (-not $uninstaller) { throw "no uninstaller next to the app" }
+          $p = Start-Process $uninstaller.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 5
+          if (Test-Path $installed.FullName) { throw "setup.exe uninstall left the app" }
+          "setup.exe: installed and uninstalled"
+
+      - name: Update archive (when the updater is on)
+        if: needs.version.outputs.updater == 'true'
+        shell: bash
+        run: |
+          mkdir -p update
+          cp app/.nsh/out/Stellarator.zip "update/Stellarator-${VERSION}-windows-x86_64.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stellarator-windows-x64
+          if-no-files-found: error
+          path: |
+            out/*.msi
+            out/*-setup.exe
+
+      - uses: actions/upload-artifact@v7
+        if: needs.version.outputs.updater == 'true'
+        with:
+          name: update-windows-x86_64
+          path: update/
+
+      - name: Upload to the release
+        if: needs.release.outputs.id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: app/ci/upload-release-asset.sh "${{ needs.release.outputs.id }}" out/*.msi out/*-setup.exe
+
+  linux:
+    name: Linux
+    needs: [version, release]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build dependencies (GTK 4, GStreamer, packaging tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev clang libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            imagemagick dpkg-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nsh-release-linux
+          cache-on-failure: true
+          workspaces: app -> target
+
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Updater (when the signing secrets are set)
+        if: needs.version.outputs.updater == 'true'
+        env:
+          PUBLIC_KEY: ${{ secrets.NSH_UPDATER_PUBLIC_KEY }}
+        run: python3 app/ci/updater-config.py app/nsh.json "$GITHUB_REPOSITORY"
+
+      - name: Package (nsh package --target linux)
+        working-directory: app
+        run: |
+          mkdir -p .nsh/rust && cp Cargo.lock .nsh/rust/Cargo.lock
+          start=$(date +%s)
+          nsh package --target linux
+          echo "nsh package took $(( $(date +%s) - start )) s"
+          ls -la .nsh/out .nsh/out/Stellarator
+
+      - name: .deb and AppImage
+        run: |
+          mkdir -p out
+          app/packaging/linux/build-deb.sh app/.nsh/out/Stellarator "$VERSION" "out/Stellarator_${VERSION}_amd64.deb"
+          app/packaging/linux/build-appimage.sh app/.nsh/out/Stellarator "out/Stellarator_${VERSION}_amd64.AppImage"
+          ls -la out
+
+      # A clean Ubuntu 24.04: the .deb installs with its dependencies and the app opens; the
+      # AppImage, which uses the system's GTK, runs once GTK 4 is there (every Ubuntu desktop has it).
+      - name: Install the .deb and run the AppImage in a clean ubuntu:24.04 container
+        run: |
+          mkdir -p shots
+          docker run --rm -v "$PWD:/w" -w /w ubuntu:24.04 bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq ./out/Stellarator_*_amd64.deb xvfb xauth imagemagick > /dev/null
+            dpkg -s stellarator | sed -n "/^Version/p;/^Depends/p"
+            test -x /usr/bin/stellarator
+            test -f /usr/share/applications/com.thekozugroup.stellarator.desktop
+            test -f /usr/share/metainfo/com.thekozugroup.stellarator.metainfo.xml
+            export STELLARATOR_DATA_DIR=/tmp/data GSK_RENDERER=cairo RUST_LOG=info
+            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "stellarator > deb.log 2>&1 & sleep 15; import -window root shots/deb-ubuntu-24.04.png; pkill -f /usr/lib/stellarator/Stellarator || true"
+            tail -5 deb.log
+            grep -q first_frame deb.log || { echo "the installed app did not draw its window"; exit 1; }
+            chmod +x out/*.AppImage
+            export STELLARATOR_DATA_DIR=/tmp/data2 APPIMAGE_EXTRACT_AND_RUN=1
+            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "./out/Stellarator_*_amd64.AppImage > appimage.log 2>&1 & sleep 15; import -window root shots/appimage-ubuntu-24.04.png; pkill -f Stellarator || true"
+            tail -5 appimage.log
+            grep -q first_frame appimage.log || echo "::warning::the AppImage did not draw its window"
+          '
+          ls -la shots
+
+      - name: Update archive (when the updater is on)
+        if: needs.version.outputs.updater == 'true'
+        run: |
+          mkdir -p update
+          cp app/.nsh/out/Stellarator.tar.gz "update/Stellarator-${VERSION}-linux-x86_64.tar.gz"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stellarator-linux-amd64
+          if-no-files-found: error
+          path: |
+            out/*.deb
+            out/*.AppImage
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-install-check
+          if-no-files-found: warn
+          path: shots/
+
+      - uses: actions/upload-artifact@v7
+        if: needs.version.outputs.updater == 'true'
+        with:
+          name: update-linux-x86_64
+          path: update/
+
+      - name: Upload to the release
+        if: needs.release.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: app/ci/upload-release-asset.sh "${{ needs.release.outputs.id }}" out/*.deb out/*.AppImage
+
+  publish:
+    name: Publish the release
+    if: needs.release.outputs.id != ''
+    needs: [version, release, macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # nsh-latest.json: the version, and per platform its update archive with its size and
+      # SHA-256, signed with the release key (latest.json.sig). The Tauri app's latest.json is a
+      # different file, so both apps can be released side by side.
+      - name: Update manifest (when the updater is on)
+        if: needs.version.outputs.updater == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_KEY: ${{ secrets.NSH_UPDATER_PUBLIC_KEY }}
+          SECRET_KEY: ${{ secrets.NSH_UPDATER_SECRET_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          gh run download "$GITHUB_RUN_ID" --pattern 'update-*' --dir update
+          # update-manifest reads the app's id, version and "updater" section from nsh.json.
+          python3 app/ci/updater-config.py app/nsh.json "$GITHUB_REPOSITORY"
+          mkdir -p manifest
+          umask 077
+          printf '%s\n' "$SECRET_KEY" > "$RUNNER_TEMP/updates.secret"
+          awk -v v="## $VERSION" '$0 == v { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md > notes.md || true
+          notes=(); if grep -q '[^[:space:]]' notes.md; then notes=(--notes notes.md); fi
+          "$HOME/.local/bin/nsh" update-manifest --entry app --key "$RUNNER_TEMP/updates.secret" "${notes[@]}" --out manifest update/*/*
+          rm -f "$RUNNER_TEMP/updates.secret"
+          mv manifest/latest.json manifest/nsh-latest.json
+          ls -la manifest
+          app/ci/upload-release-asset.sh "${{ needs.release.outputs.id }}" manifest/* update/*/*
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ needs.release.outputs.id }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" \
+            -f tag_name="$TAG" -F draft=false -f make_latest=true --jq '"Published " + .html_url'
+          gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets" --jq '.[] | "\(.name)  \(.size)"'
