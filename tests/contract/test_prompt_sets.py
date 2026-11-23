@@ -1,4 +1,4 @@
-"""/api/prompt-sets: list, get, rename, prompts (search, pages), delete and cascades."""
+"""/api/prompt-sets: list, get, rename, prompts (search, pages), delete and cascades, stop."""
 
 from __future__ import annotations
 
@@ -134,6 +134,16 @@ def test_delete_a_prompt_set(api, make_prompt_set):
     assert_error(api.get(f"/api/prompt-sets/{ps['id']}/prompts"), 404)
     assert ps["id"] not in [p["id"] for p in api.get("/api/prompt-sets").json()]
     assert_error(api.delete(f"/api/prompt-sets/{ps['id']}"), 404)
+
+
+def test_stop_keeps_a_set_whose_import_finished(api, make_prompt_set):
+    # "Stop and delete" on an import that has finished deletes nothing: the set is kept.
+    ps = make_prompt_set(3, name="Finished import")
+    r = api.post(f"/api/prompt-sets/{ps['id']}/stop")
+    assert_error(r, 409, detail="This import already finished, so the prompt set was kept.")
+    kept = api.get(f"/api/prompt-sets/{ps['id']}").json()
+    assert kept["status"] == "ready" and kept["prompt_count"] == 3
+    assert_error(api.post("/api/prompt-sets/999999/stop"), 404, detail="Prompt set not found")
 
 
 def test_delete_cascades_to_runs_samples_and_preference_sets(api, make_endpoint, make_prompt_set):

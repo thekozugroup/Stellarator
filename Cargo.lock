@@ -2845,7 +2845,6 @@ name = "stellarator-core"
 version = "0.3.1"
 dependencies = [
  "anyhow",
- "async-trait",
  "axum",
  "chrono",
  "form_urlencoded",
@@ -2861,7 +2860,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid",
 ]
 
 [[package]]

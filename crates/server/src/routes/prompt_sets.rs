@@ -1,8 +1,9 @@
-//! `/api/prompt-sets`: list, rename, browse prompts, delete.
+//! `/api/prompt-sets`: list, rename, browse prompts, delete, and stop an import (which deletes the
+//! partial set, unless the import finished first).
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::NaiveDateTime;
 use serde::Deserialize;
@@ -20,7 +21,11 @@ pub fn router() -> Router<AppState> {
         .route("/api/prompt-sets", get(list))
         .route("/api/prompt-sets/{id}", get(read).patch(rename).delete(remove))
         .route("/api/prompt-sets/{id}/prompts", get(prompts))
+        .route("/api/prompt-sets/{id}/stop", post(stop))
 }
+
+/// Why a stop deleted nothing: the import finished (the set is ready) before it could be stopped.
+const ALREADY_FINISHED: &str = "This import already finished, so the prompt set was kept.";
 
 #[derive(sqlx::FromRow)]
 struct Row {
@@ -194,6 +199,33 @@ async fn prompts(
         })
         .collect();
     Ok(Json(Page { items, total, offset: q.offset, limit: q.limit }))
+}
+
+/// `POST /api/prompt-sets/{id}/stop`: stops the set's import and deletes the partial set, as
+/// "Stop and delete" asks. A set whose import has finished (it is ready) is never deleted here:
+/// 409 with [`ALREADY_FINISHED`], the set as it was. The status is checked before the import is
+/// stopped and again in the delete itself, after the import has stopped writing, so an import that
+/// finishes while the request runs is kept too. A failed import's partial set is deleted, as one
+/// still importing is.
+async fn stop(State(state): State<AppState>, P(id): P<i64>) -> Result<StatusCode, ApiError> {
+    let ctx = &state.ctx;
+    let set = fetch(ctx, id).await?;
+    if PromptSetStatus::parse(&set.status) == PromptSetStatus::Ready {
+        return Err(ApiError::conflict(ALREADY_FINISHED));
+    }
+    // Resolves once the import has stopped writing: from here its status no longer changes.
+    if state.imports.is_importing(id) {
+        state.imports.cancel(id).await;
+    }
+    let deleted = sqlx::query("DELETE FROM prompt_sets WHERE id = ? AND status != 'ready'")
+        .bind(id)
+        .execute(&ctx.db)
+        .await?
+        .rows_affected();
+    if deleted == 0 {
+        return Err(ApiError::conflict(ALREADY_FINISHED));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn remove(State(state): State<AppState>, P(id): P<i64>) -> Result<StatusCode, ApiError> {

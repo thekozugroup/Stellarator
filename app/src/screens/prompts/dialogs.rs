@@ -4,7 +4,7 @@
 
 use nsh_core::prelude::*;
 
-use crate::api::types::{PromptSetOut as PromptSet, PromptSetStatus};
+use crate::api::types::PromptSetOut as PromptSet;
 use crate::data::{Load, call};
 use crate::format::count;
 use crate::nav::{self, Destination};
@@ -166,39 +166,24 @@ fn delete_alert(current: impl Fn() -> Option<PromptSet> + Copy + 'static, open: 
     )
 }
 
-/// What Stop and delete found.
-enum Stopped {
-    /// The set was still importing: it is deleted.
-    Deleted,
-    /// The import ended while the alert was open: the set is kept.
-    Finished(PromptSet),
-}
-
-/// Stops the import of `set`, which deletes the partial set; then goes back to the list. The
-/// server's delete has no "only while importing" (crates/server `prompt_sets::remove` deletes a
-/// ready set too), so the set is read again first: one that finished importing while the alert
-/// was open is kept (the screen, which reads an importing set every second, shows it ready and
-/// reads its prompts again).
+/// Stops the import of `set` (`POST …/stop`), which deletes the partial set; then goes back to the
+/// list. The server never deletes a set whose import finished, even one that finishes while the
+/// request runs (409): that set is kept, the alert closes, and the screen, which reads an
+/// importing set every second, shows it ready and reads its prompts again.
 fn stop_and_leave(set: PromptSet, open: Signal<bool>, busy: Signal<bool>, error: Signal<Option<String>>) {
     busy.set(true);
     let (id, name) = (set.id, set.name);
     call(
-        move |api| async move {
-            let now = api.prompt_set(id).await?;
-            if now.status != PromptSetStatus::Importing {
-                return Ok(Stopped::Finished(now));
-            }
-            api.delete_prompt_set(id).await.map(|()| Stopped::Deleted)
-        },
+        move |api| async move { api.stop_import(id).await },
         move |result| {
             busy.set(false);
             match result {
-                Ok(Stopped::Deleted) => {
+                Ok(()) => {
                     toast_success(format!("Stopped the import of “{name}”."));
                     nav::open(Destination::PromptSets);
                 }
-                Ok(Stopped::Finished(now)) => {
-                    toast_info(format!("“{}” finished importing before it could be stopped, so it was kept.", now.name));
+                Err(e) if e.status == Some(409) => {
+                    toast_info(format!("“{name}” finished importing before it could be stopped, so it was kept."));
                     open.set(false);
                 }
                 Err(e) => error.set(Some(e.message)),

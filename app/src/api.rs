@@ -243,6 +243,13 @@ impl Api {
         self.delete(&format!("/api/prompt-sets/{id}")).await
     }
 
+    /// `POST /api/prompt-sets/{id}/stop`: stops the set's import and deletes the partial set; 409
+    /// (the set kept) when the import has finished, even while the request ran.
+    pub async fn stop_import(&self, id: i64) -> Result<(), ApiError> {
+        let (status, body) = self.send(Method::Post, &format!("/api/prompt-sets/{id}/stop"), Some(serde_json::json!({}))).await?;
+        if (200..300).contains(&status) { Ok(()) } else { Err(error_of(status, &body)) }
+    }
+
     /// `GET /api/prompt-sets/{id}/prompts`: one page of a set's prompts, filtered by `q` when it is
     /// not empty.
     pub async fn prompts(&self, id: i64, offset: i64, limit: i64, q: &str) -> Result<Page<PromptOut>, ApiError> {

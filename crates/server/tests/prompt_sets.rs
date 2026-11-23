@@ -1,6 +1,6 @@
 mod common;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::http::StatusCode;
 use common::*;
@@ -161,6 +161,72 @@ async fn delete_while_importing_cancels_the_import_first() {
     let (other, _) = env.prompt_set("Not importing", 1).await;
     assert_eq!(env.delete(&format!("/api/prompt-sets/{other}")).await.0, StatusCode::NO_CONTENT);
     assert_eq!(imports.cancelled.lock().unwrap().len(), 1);
+}
+
+/// An import that finishes while it is being stopped: its last write (the set made ready) lands
+/// before the stop takes effect, as `Imports::run` writes its outcome after its last check.
+struct FinishesWhileStopped {
+    db: std::sync::OnceLock<sqlx::SqlitePool>,
+    cancelled: Mutex<Vec<i64>>,
+}
+
+impl stellarator_core::probes::ImportsProbe for FinishesWhileStopped {
+    fn is_importing(&self, _id: i64) -> bool {
+        self.cancelled.lock().unwrap().is_empty()
+    }
+    fn cancel(&self, id: i64) -> futures::future::BoxFuture<'_, ()> {
+        Box::pin(async move {
+            self.cancelled.lock().unwrap().push(id);
+            let db = self.db.get().unwrap();
+            sqlx::query("UPDATE prompt_sets SET status = 'ready' WHERE id = ?").bind(id).execute(db).await.unwrap();
+        })
+    }
+}
+
+#[tokio::test]
+async fn stop_deletes_an_importing_set_and_keeps_one_that_finished() {
+    // Still importing: the import is stopped, then the partial set goes with its prompts.
+    let imports = FakeImports::new(1);
+    let env = env_with(Arc::new(Idle), imports.clone()).await;
+    let (id, _) = env.prompt_set("Importing", 5).await;
+    sqlx::query("UPDATE prompt_sets SET status = 'importing' WHERE id = ?").bind(id).execute(&env.ctx.db).await.unwrap();
+    assert_eq!(env.post(&format!("/api/prompt-sets/{id}/stop"), json!({})).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(*imports.cancelled.lock().unwrap(), vec![id]);
+    assert_eq!(env.count("SELECT COUNT(*) FROM prompt_sets").await, 0);
+    assert_eq!(env.count("SELECT COUNT(*) FROM prompts").await, 0);
+
+    // Finished before the request: nothing is stopped or deleted.
+    let (ready, _) = env.prompt_set("Ready", 3).await;
+    let (status, body) = env.post(&format!("/api/prompt-sets/{ready}/stop"), json!({})).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["detail"], "This import already finished, so the prompt set was kept.");
+    assert_eq!(imports.cancelled.lock().unwrap().len(), 1);
+    assert_eq!(env.count("SELECT COUNT(*) FROM prompts").await, 3);
+
+    // A failed import's partial set goes too.
+    let (failed, _) = env.prompt_set("Failed", 2).await;
+    sqlx::query("UPDATE prompt_sets SET status = 'failed' WHERE id = ?").bind(failed).execute(&env.ctx.db).await.unwrap();
+    assert_eq!(env.post(&format!("/api/prompt-sets/{failed}/stop"), json!({})).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(env.count("SELECT COUNT(*) FROM prompt_sets").await, 1);
+
+    assert_eq!(env.post("/api/prompt-sets/99/stop", json!({})).await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn stop_keeps_a_set_whose_import_finishes_while_it_is_stopped() {
+    let imports = Arc::new(FinishesWhileStopped { db: std::sync::OnceLock::new(), cancelled: Mutex::new(Vec::new()) });
+    let env = env_with(Arc::new(Idle), imports.clone()).await;
+    imports.db.set(env.ctx.db.clone()).unwrap();
+    let (id, _) = env.prompt_set("Almost done", 4).await;
+    sqlx::query("UPDATE prompt_sets SET status = 'importing' WHERE id = ?").bind(id).execute(&env.ctx.db).await.unwrap();
+
+    let (status, body) = env.post(&format!("/api/prompt-sets/{id}/stop"), json!({})).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["detail"], "This import already finished, so the prompt set was kept.");
+    assert_eq!(*imports.cancelled.lock().unwrap(), vec![id]);
+    let (status, set) = env.get(&format!("/api/prompt-sets/{id}")).await;
+    assert_eq!((status, set["status"].as_str()), (StatusCode::OK, Some("ready")));
+    assert_eq!(env.count("SELECT COUNT(*) FROM prompts").await, 4);
 }
 
 #[tokio::test]
