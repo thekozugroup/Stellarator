@@ -220,7 +220,10 @@ jobs:
 
       - name: Install nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
+          # Download first, with retries: `curl | sh` would run an empty script if the download failed.
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
+          sh "$RUNNER_TEMP/nsh-install.sh"
+          "$HOME/.local/bin/nsh" --version
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Updater (when the signing secrets are set)
@@ -366,7 +369,10 @@ jobs:
       - name: Install nsh
         shell: pwsh
         run: |
-          irm https://nsh.dev/install.ps1 | iex
+          # Retries: a runner can briefly fail to resolve nsh.dev.
+          $script = $null
+          foreach ($i in 1..5) { try { $script = irm https://nsh.dev/install.ps1; break } catch { if ($i -eq 5) { throw }; Start-Sleep 10 } }
+          iex $script
           "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Updater (when the signing secrets are set)
@@ -492,7 +498,10 @@ jobs:
 
       - name: Install nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
+          # Download first, with retries: `curl | sh` would run an empty script if the download failed.
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
+          sh "$RUNNER_TEMP/nsh-install.sh"
+          "$HOME/.local/bin/nsh" --version
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Updater (when the signing secrets are set)
@@ -600,7 +609,10 @@ jobs:
           SECRET_KEY: ${{ secrets.NSH_UPDATER_SECRET_KEY }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
+          # Download first, with retries: `curl | sh` would run an empty script if the download failed.
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
+          sh "$RUNNER_TEMP/nsh-install.sh"
+          "$HOME/.local/bin/nsh" --version
           gh run download "$GITHUB_RUN_ID" --pattern 'update-*' --dir update
           # update-manifest reads the app's id, version and "updater" section from nsh.json.
           python3 app/ci/updater-config.py app/nsh.json "$GITHUB_REPOSITORY"
