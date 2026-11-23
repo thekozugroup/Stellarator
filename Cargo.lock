@@ -3153,6 +3153,7 @@ dependencies = [
  "stellarator-export",
  "stellarator-import",
  "stellarator-mcp",
+ "stellarator-mock",
  "tempfile",
  "tokio",
  "tower",

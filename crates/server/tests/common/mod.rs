@@ -40,8 +40,27 @@ pub async fn env_on_disk() -> Env {
     build(dir, db, Arc::new(Idle), Arc::new(Idle))
 }
 
+/// [`env`] where stdio MCP servers are allowed (as in the desktop app, or with
+/// STELLARATOR_ALLOW_STDIO_MCP=1).
+pub async fn env_stdio_allowed() -> Env {
+    let dir = tempfile::tempdir().unwrap();
+    let db = stellarator_core::db::connect_memory().await.unwrap();
+    build_with(dir, db, Arc::new(Idle), Arc::new(Idle), true)
+}
+
 fn build(dir: tempfile::TempDir, db: sqlx::SqlitePool, runs: Arc<dyn RunsProbe>, imports: Arc<dyn ImportsProbe>) -> Env {
-    let config = Config::new(dir.path().to_path_buf(), Mode::Native);
+    build_with(dir, db, runs, imports, false)
+}
+
+fn build_with(
+    dir: tempfile::TempDir,
+    db: sqlx::SqlitePool,
+    runs: Arc<dyn RunsProbe>,
+    imports: Arc<dyn ImportsProbe>,
+    allow_stdio_mcp: bool,
+) -> Env {
+    let mut config = Config::new(dir.path().to_path_buf(), Mode::Native);
+    config.allow_stdio_mcp = allow_stdio_mcp;
     // No proxy: the fake servers are on 127.0.0.1.
     let http = reqwest::Client::builder().no_proxy().build().unwrap();
     let ctx = Ctx { db, config: Arc::new(config), http };

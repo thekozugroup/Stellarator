@@ -601,3 +601,140 @@ async fn interrupted_backoff_gives_the_slot_up() {
     let r = generate(&client(), &server.url, "m", &msgs(), &RunParams::default(), 0, &ServerCaps::default(), &Seen::default(), &Halt).await;
     assert_eq!(r, Err(GenerateError::Interrupted));
 }
+
+// ------------------------------------------------------------------------------------ tool calls
+
+use stellarator_core::schemas::ToolCall;
+use stellarator_engine::generation::{generate_round, RequestTools};
+
+fn defs() -> Vec<Value> {
+    vec![json!({"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}})]
+}
+
+async fn run_tools(server: &Server, params: RunParams, choice: &str) -> Result<GenerationResult, GenerateError> {
+    let d = defs();
+    generate_round(
+        &client(),
+        &server.url,
+        "m",
+        &msgs(),
+        &params,
+        0,
+        &ServerCaps::default(),
+        &Seen::default(),
+        &Sleeps::default(),
+        Some(RequestTools { definitions: &d, choice }),
+        2,
+    )
+    .await
+}
+
+fn call(id: &str, name: &str, args: &str) -> ToolCall {
+    ToolCall { id: id.into(), name: name.into(), arguments: args.into() }
+}
+
+fn tc(v: Value) -> Value {
+    json!({"tool_calls": [v]})
+}
+
+#[tokio::test]
+async fn tool_calls_assemble_by_index_from_pieces() {
+    // OpenAI's shape: the first chunk of a call has its id and name, later ones argument pieces;
+    // two calls interleave by index.
+    let events = vec![
+        chunk(json!({"role": "assistant", "content": ""}), None),
+        chunk(json!({"reasoning_content": "I should look."}), None),
+        chunk(tc(json!({"index": 0, "id": "call_a", "type": "function", "function": {"name": "lookup", "arguments": ""}})), None),
+        chunk(tc(json!({"index": 0, "function": {"arguments": "{\"qu"}})), None),
+        chunk(tc(json!({"index": 1, "id": "call_b", "type": "function", "function": {"name": "add", "arguments": "{\"a\":"}})), None),
+        chunk(tc(json!({"index": 0, "function": {"arguments": "ery\": \"x\"}"}})), None),
+        chunk(tc(json!({"index": 1, "function": {"arguments": " 1}"}})), None),
+        chunk(json!({}), Some("tool_calls")),
+    ];
+    let server = Server::start(vec![stream_reply(&events, true)]).await;
+    let r = run_tools(&server, RunParams::default(), "auto").await.unwrap();
+    assert_eq!(r.tool_calls, [call("call_a", "lookup", r#"{"query": "x"}"#), call("call_b", "add", r#"{"a": 1}"#)]);
+    assert_eq!((r.reasoning.as_deref(), r.response.as_str()), (Some("I should look."), ""));
+    assert_eq!(r.finish_reason.as_deref(), Some("tool_calls"));
+    // The request carried the tools and the choice.
+    let req = &server.requests()[0];
+    assert_eq!(req["tools"], json!(defs()));
+    assert_eq!(req["tool_choice"], "auto");
+}
+
+#[tokio::test]
+async fn tool_calls_whole_in_one_chunk() {
+    // Servers that send each call whole (Ollama), even all at index 0 or with no index at all.
+    let events = vec![
+        chunk(tc(json!({"index": 0, "id": "c1", "function": {"name": "lookup", "arguments": "{\"query\": \"a\"}"}})), None),
+        chunk(tc(json!({"index": 0, "id": "c2", "function": {"name": "lookup", "arguments": "{\"query\": \"b\"}"}})), None),
+        chunk(tc(json!({"id": "c3", "function": {"name": "add", "arguments": {"a": 1, "b": 2}}})), None),
+        chunk(json!({}), Some("tool_calls")),
+    ];
+    let server = Server::start(vec![stream_reply(&events, true)]).await;
+    let r = run_tools(&server, RunParams::default(), "required").await.unwrap();
+    assert_eq!(
+        r.tool_calls,
+        [
+            call("c1", "lookup", r#"{"query": "a"}"#),
+            call("c2", "lookup", r#"{"query": "b"}"#),
+            call("c3", "add", r#"{"a":1,"b":2}"#),
+        ]
+    );
+    assert_eq!(server.requests()[0]["tool_choice"], "required");
+}
+
+#[tokio::test]
+async fn tool_calls_without_ids_and_the_legacy_function_call() {
+    // No index and no id: the pieces belong to the call in progress; a missing id gets one.
+    let events = vec![
+        chunk(tc(json!({"function": {"name": "lookup"}})), None),
+        chunk(tc(json!({"function": {"arguments": "{}"}})), None),
+        chunk(json!({}), Some("tool_calls")),
+    ];
+    let server = Server::start(vec![stream_reply(&events, true)]).await;
+    let r = run_tools(&server, RunParams::default(), "auto").await.unwrap();
+    assert_eq!(r.tool_calls, [call("call_1", "lookup", "{}")]);
+    // The deprecated single function_call field.
+    let events = vec![
+        chunk(json!({"function_call": {"name": "lookup", "arguments": "{\"q\""}}), None),
+        chunk(json!({"function_call": {"arguments": ": 1}"}}), None),
+        chunk(json!({}), Some("function_call")),
+    ];
+    let server = Server::start(vec![stream_reply(&events, true)]).await;
+    let r = run_tools(&server, RunParams::default(), "auto").await.unwrap();
+    assert_eq!(r.tool_calls, [call("call_1", "lookup", r#"{"q": 1}"#)]);
+}
+
+#[tokio::test]
+async fn tool_calls_in_a_non_streaming_answer() {
+    let message = json!({"role": "assistant", "content": null, "reasoning": "R", "tool_calls": [
+        {"id": "x1", "type": "function", "function": {"name": "lookup", "arguments": "{\"query\": \"q\"}"}},
+        {"id": "x2", "type": "function", "function": {"name": "add", "arguments": "{}"}}
+    ]});
+    let server = Server::start(vec![message_reply(message, "tool_calls", Some(usage(5, 7, None)))]).await;
+    let r = run_tools(&server, RunParams { stream: false, ..RunParams::default() }, "auto").await.unwrap();
+    assert_eq!(r.tool_calls, [call("x1", "lookup", r#"{"query": "q"}"#), call("x2", "add", "{}")]);
+    assert_eq!((r.reasoning.as_deref(), r.response.as_str(), r.completion_tokens), (Some("R"), "", Some(7)));
+}
+
+#[tokio::test]
+async fn an_endpoint_that_refuses_tools() {
+    let vllm = json!({"object": "error", "message": "\"auto\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set", "type": "BadRequestError", "code": 400});
+    let server = Server::start(vec![status_reply(400, vllm)]).await;
+    match run_tools(&server, RunParams::default(), "auto").await {
+        Err(GenerateError::ToolsRejected { message }) => {
+            assert!(message.starts_with("The endpoint refused the tool definitions (The server answered 400: \"auto\" tool choice requires"), "{message}");
+            assert!(message.ends_with("See https://github.com/thekozugroup/Stellarator/blob/main/docs/tools.md"), "{message}");
+        }
+        other => panic!("expected ToolsRejected, got {other:?}"),
+    }
+    assert_eq!(server.requests().len(), 1, "not retried");
+    // A 400 about something else fails the sample as before.
+    let server = Server::start(vec![status_reply(400, json!({"error": {"message": "max_tokens is too large"}}))]).await;
+    let (message, attempts) = failed(run_tools(&server, RunParams::default(), "auto").await);
+    assert_eq!((message.as_str(), attempts), ("The server answered 400: max_tokens is too large.", 1));
+    // Without tools in the request, an error naming tools is an ordinary failure.
+    let server = Server::start(vec![status_reply(400, json!({"error": {"message": "tools are not supported"}}))]).await;
+    assert!(matches!(run(&server, Opts::default()).await, Err(GenerateError::Failed { .. })));
+}

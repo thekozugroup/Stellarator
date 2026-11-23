@@ -1240,6 +1240,9 @@ pub async fn generate_round(
                 true,
             ),
         };
+        if tools.is_some() && rejects_tools(&error) && !mentions_stream_options(&error) {
+            return Err(GenerateError::ToolsRejected { message: tools_rejected_message(&error.message) });
+        }
         if matches!(error.status, Some(400) | Some(422)) && body.get("stream_options").is_some() && probe_attempt == 0 {
             // Some servers reject stream_options. Try once without it (not counted as an attempt).
             send_stream_options = false;
