@@ -9,17 +9,20 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use nsh_core::prelude::*;
 
-use super::Screen;
+use std::rc::Rc;
+
 use crate::api::types::RunOut as Run;
 use crate::format::{int, relative};
 use crate::theme::fonts::ROBOTO_MONO;
 use crate::theme::text::{body, label, meta};
 use crate::theme::{muted_ink, token};
-use crate::ui::button::{Variant, button, icon_button};
+use crate::nav::{self, Route};
+use crate::ui::blocks::error_block;
+use crate::ui::button::{Button, Size, Variant, button};
 use crate::ui::icon;
 use crate::ui::progress::{progress_bar, progress_bar_full};
-use crate::ui::shell::{is_phone, page};
-use crate::ui::status::run_status;
+use crate::ui::page::page;
+use crate::ui::status::run_status_pill as run_status;
 use crate::ui::table::{Column, cell, header, row};
 
 /// How often the list is read again.
@@ -82,11 +85,7 @@ pub fn screen() -> impl IntoElement {
                 Load::Failed(m) => m.clone(),
                 _ => String::new(),
             });
-            view()
-                .gap(px(12.0))
-                .items_start()
-                .child(body(text(format!("Couldn't load runs. {message}"))).text_color(token("negative-ink")))
-                .child(button(Variant::Secondary, None, "Retry", refresh))
+            error_block(format!("Couldn't load runs. {message}"), Some(Rc::new(refresh)))
         })
         .otherwise(move || {
             when(empty, || {
@@ -110,19 +109,27 @@ pub fn screen() -> impl IntoElement {
         })
     });
 
-    // The toolbar's push button; on a phone a round "+" in the bar.
-    let new_run = if untracked(is_phone) {
-        icon_button(icon::PLUS, "New run", || super::open(Screen::NewRun)).into_element()
-    } else {
-        button(Variant::Primary, Some(icon::PLUS), "New run", || {
-            if crate::platform::probing() {
-                crate::platform::probe_line("press reached nsh: New run button");
-            }
-            super::open(Screen::NewRun)
+    page("Runs")
+        .actions(|| {
+            button("New run")
+                .leading(icon::PLUS)
+                .on_press(|| {
+                    if crate::platform::probing() {
+                        crate::platform::probe_line("press reached nsh: New run button");
+                    }
+                    nav::push(Route::NewRun, None)
+                })
+                .into_element()
         })
-        .into_element()
-    };
-    page("Runs", Some(new_run), content)
+        .bar_actions(|| {
+            Button::icon(icon::PLUS, "New run")
+                .variant(Variant::Secondary)
+                .size(Size::Icon)
+                .round()
+                .on_press(|| nav::push(Route::NewRun, None))
+                .into_element()
+        })
+        .child(content)
 }
 
 /// Below 1024 px: the name and the status, then the facts and the date, then the progress.

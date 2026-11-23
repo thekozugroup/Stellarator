@@ -1,51 +1,31 @@
-//! The screens and which one is open. Only Runs is a real screen in this first slice; the other
-//! destinations show a placeholder that names what will come.
+//! The screens. Each route of [`crate::nav::Route`] has its view here; a screen is a function that
+//! returns a [`crate::ui::page::Page`] (its frame) with its content. Screens not yet ported show a
+//! placeholder that names what will come.
+//!
+//! To add a screen: add its route to `nav::Route` (with its destination and label there), write
+//! `screens/<name>.rs` with `pub fn screen(...) -> impl IntoElement`, and add its arm below.
 
+mod endpoints;
 mod placeholder;
 mod runs;
+mod settings;
 
 use nsh_core::prelude::*;
 
-/// A screen of the app.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Screen {
-    #[default]
-    Runs,
-    NewRun,
-    PromptSets,
-    Endpoints,
-    Preferences,
-    Settings,
-}
+use crate::nav::Route;
 
-impl Screen {
-    /// The sidebar destination the screen belongs to (New run is under Runs).
-    pub fn destination(self) -> Screen {
-        match self {
-            Screen::NewRun => Screen::Runs,
-            other => other,
-        }
-    }
-}
-
-/// The open screen (reactive).
-pub fn current() -> Screen {
-    global::<Screen>().get()
-}
-
-/// Opens `screen`.
-pub fn open(screen: Screen) {
-    global::<Screen>().set(screen);
-}
-
-/// The view of `screen`.
-pub fn view(screen: Screen) -> AnyElement {
-    match screen {
-        Screen::Runs => runs::screen().into_element(),
-        Screen::NewRun => placeholder::screen("New run", "Starting a run").into_element(),
-        Screen::PromptSets => placeholder::screen("Prompt sets", "Prompt sets").into_element(),
-        Screen::Endpoints => placeholder::screen("Endpoints", "Endpoints").into_element(),
-        Screen::Preferences => placeholder::screen("Preferences", "Preference sets").into_element(),
-        Screen::Settings => placeholder::screen("Settings", "Settings").into_element(),
+/// The view of `route`.
+pub fn view(route: Route) -> AnyElement {
+    match route {
+        Route::Runs => runs::screen().into_element(),
+        Route::Endpoints => endpoints::screen().into_element(),
+        Route::Settings => settings::screen().into_element(),
+        Route::NewRun => placeholder::screen("New run", "Starting a run").into_element(),
+        Route::PromptSets => placeholder::screen("Prompt sets", "Prompt sets").into_element(),
+        Route::Preferences => placeholder::screen("Preferences", "Preference sets").into_element(),
+        Route::Run { .. } => placeholder::screen("Run", "The run's samples").into_element(),
+        Route::PromptSet { .. } => placeholder::screen("Prompt set", "The prompt set").into_element(),
+        Route::Import => placeholder::screen("Import prompts", "Importing prompts").into_element(),
+        Route::PreferenceSet { .. } => placeholder::screen("Preference set", "The preference set").into_element(),
     }
 }

@@ -9,64 +9,63 @@
 //! - On macOS the title bar is hidden and the traffic lights sit in the sidebar's top band
 //!   ([`titlebar_height`], 52 px), which the sidebar's content starts below. That band and the
 //!   toolbar's empty areas move the window.
-//! - The page column has a 52 px toolbar (the screen's title, its actions at the end) over the
-//!   screen's content, both in a column at most 1280 px wide with 32 px padding.
-//! - Below 768 px (a phone, or a narrow browser window), as iOS: no sidebar; a 44 px bar with
-//!   Settings at its leading end and the screen's actions at its trailing end, the screen's 28 px
-//!   large title, and the four destinations in a 56 px capsule floating 12 px from the sides and
-//!   the bottom, the current one a capsule of `accent`.
+//! - The page column shows the open screen ([`crate::nav::current`]) in its frame
+//!   ([`super::page`]).
+//! - Below 768 px (a phone, or a narrow browser window), as iOS: no sidebar; the four destinations
+//!   in a 56 px capsule floating 12 px from the sides and the bottom, the current one a capsule of
+//!   `accent`. Settings is in each top-level screen's bar.
+//! - Toasts show over everything ([`super::overlay::toaster`]).
 
 use nsh_base::theme;
 use nsh_core::element::ImageAsset;
 use nsh_core::prelude::*;
 
 use super::icon::{self, icon};
-use crate::screens::{self, Screen};
-use crate::theme::metrics::{CONTROL, PAGE_MAX, PAGE_PADDING, TOOLBAR_HEIGHT};
+use super::overlay::toaster;
+use super::page::{is_phone, probe_press};
+use crate::nav::{self, Destination};
+use crate::screens;
+use crate::theme::metrics::CONTROL;
 use crate::theme::shape::{floating, panel_radius, shell_gap, sidebar_column, titlebar_height};
 use crate::theme::text::{label, title};
 use crate::theme::{background, ink, muted_ink, radius, token};
 
 /// The destinations in the sidebar, in order; Settings sits apart at the bottom.
-const NAV: [(Screen, &str, ImageAsset); 4] = [
-    (Screen::Runs, "Runs", icon::PLAY),
-    (Screen::PromptSets, "Prompt sets", icon::FILE_TEXT),
-    (Screen::Endpoints, "Endpoints", icon::CABLE),
-    (Screen::Preferences, "Preferences", icon::GIT_COMPARE_ARROWS),
+const NAV: [(Destination, &str, ImageAsset); 4] = [
+    (Destination::Runs, "Runs", icon::PLAY),
+    (Destination::PromptSets, "Prompt sets", icon::FILE_TEXT),
+    (Destination::Endpoints, "Endpoints", icon::CABLE),
+    (Destination::Preferences, "Preferences", icon::GIT_COMPARE_ARROWS),
 ];
 
-/// The width below which the layout is a phone's (Tailwind's `md`).
-pub const PHONE_BELOW: f32 = 768.0;
-
-/// Whether the window is narrower than [`PHONE_BELOW`] (reactive).
-pub fn is_phone() -> bool {
-    window().width.0 > 0.0 && window().width.0 < PHONE_BELOW
+/// The open screen, made again only when the route changes (not when its label does).
+fn open_screen() -> impl IntoElement {
+    let route = computed(nav::current);
+    dynamic(move || screens::view(route.get()))
 }
 
 /// The whole window: the sidebar beside the open screen, or on a phone the open screen over the
-/// tab bar. Made again when the width crosses [`PHONE_BELOW`].
+/// tab bar. Made again when the width crosses 768 px.
 pub fn shell() -> impl IntoElement {
-    view().flex_1().bg(background).child(
-        when(is_phone, || {
-            view()
-                .flex_1()
-                .child(view().flex_1().child(dynamic(move || screens::view(screens::current()))))
-                .child(tab_bar())
-        })
-        .otherwise(|| {
-            view()
-                .flex_1()
-                .flex_row()
-                .child(sidebar())
-                .child(view().flex_1().min_w(px(0.0)).child(dynamic(move || screens::view(screens::current()))))
-        }),
-    )
+    view()
+        .flex_1()
+        .bg(background)
+        .child(
+            when(is_phone, || view().flex_1().child(view().flex_1().child(open_screen())).child(tab_bar())).otherwise(|| {
+                view()
+                    .flex_1()
+                    .flex_row()
+                    .child(sidebar())
+                    .child(view().flex_1().min_w(px(0.0)).child(open_screen()))
+            }),
+        )
+        .child(toaster())
 }
 
 /// Phones: the four destinations in a capsule floating over the content.
 fn tab_bar() -> impl IntoElement {
-    let tabs = NAV.map(|(screen, name, glyph)| {
-        let selected = move || screens::current().destination() == screen;
+    let tabs = NAV.map(|(destination, name, glyph)| {
+        let selected = move || nav::destination() == destination;
         view()
             .flex_1()
             .min_w(px(0.0))
@@ -77,7 +76,7 @@ fn tab_bar() -> impl IntoElement {
             .role(AccessibilityRole::Button)
             .label(name)
             .style_when(selected, |s| s.bg(move || theme().accent))
-            .on_press(move || screens::open(screen))
+            .on_press(move || nav::open(destination))
             .child(icon(glyph, 22.0, move || if selected() { ink() } else { muted_ink() }))
             .child(
                 label(text(name))
@@ -106,7 +105,7 @@ fn tab_bar() -> impl IntoElement {
 /// The sidebar column: the gutter around the panel, and on macOS the band over its top that moves
 /// the window.
 fn sidebar() -> impl IntoElement {
-    let rows = NAV.map(|(screen, name, glyph)| sidebar_row(screen, name, glyph));
+    let rows = NAV.map(|(destination, name, glyph)| sidebar_row(destination, name, glyph));
     let panel = view()
         .flex_1()
         .justify_between()
@@ -126,7 +125,7 @@ fn sidebar() -> impl IntoElement {
                 .child(brand())
                 .child(view().gap(px(2.0)).children(rows)),
         )
-        .child(sidebar_row(Screen::Settings, "Settings", icon::SETTINGS));
+        .child(sidebar_row(Destination::Settings, "Settings", icon::SETTINGS));
     view()
         .w(move || px(sidebar_column()))
         .flex_none()
@@ -172,8 +171,8 @@ fn brand() -> impl IntoElement {
 }
 
 /// A destination: its icon (muted until selected) and its label.
-fn sidebar_row(screen: Screen, name: &'static str, glyph: ImageAsset) -> impl IntoElement {
-    let selected = move || screens::current().destination() == screen;
+fn sidebar_row(destination: Destination, name: &'static str, glyph: ImageAsset) -> impl IntoElement {
+    let selected = move || nav::destination() == destination;
     view()
         .h(px(CONTROL))
         .flex_row()
@@ -186,113 +185,7 @@ fn sidebar_row(screen: Screen, name: &'static str, glyph: ImageAsset) -> impl In
         .accessibility_state(move || AccessibilityState { selected: selected(), ..AccessibilityState::default() })
         .style_when(selected, |s| s.bg(move || theme().sidebar_accent))
         .hover(|s| s.bg(move || if selected() { theme().sidebar_accent } else { token("hover")() }))
-        .on_press(move || screens::open(screen))
+        .on_press(move || nav::open(destination))
         .child(icon(glyph, 16.0, move || if selected() { ink() } else { muted_ink() }))
         .child(label(text(name)).number_of_lines(1))
-}
-
-/// A screen: the toolbar with its title and actions over its content, which scrolls. On a phone,
-/// the 44 px bar (Settings, then the actions) over the large title and the content.
-pub fn page(
-    screen_title: &'static str,
-    actions: Option<AnyElement>,
-    content: impl IntoElement,
-) -> AnyElement {
-    if untracked(is_phone) {
-        return phone_page(screen_title, actions, content).into_element();
-    }
-    view()
-        .flex_1()
-        .child(
-            // The toolbar moves the window wherever it has no control (macOS); the actions in it
-            // stay clickable.
-            probe_press(
-                view()
-                    .h(px(TOOLBAR_HEIGHT))
-                    .flex_none()
-                    .flex_row()
-                    .justify_center()
-                    .window_drag(true)
-                    .test_id("toolbar"),
-                "toolbar band",
-            )
-            .child(
-                    column()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(12.0))
-                        .child(title(text(screen_title)).flex_1().number_of_lines(1))
-                        .child(view().flex_row().items_center().gap(px(8.0)).child(actions)),
-                ),
-        )
-        .child(
-            scroll()
-                .flex_1()
-                .child(view().flex_row().justify_center().child(column().pt(px(16.0)).pb(px(32.0)).child(content))),
-        )
-        .into_element()
-}
-
-/// The phone form of [`page`].
-fn phone_page(screen_title: &'static str, actions: Option<AnyElement>, content: impl IntoElement) -> impl IntoElement {
-    let settings_selected = move || screens::current() == Screen::Settings;
-    view()
-        .flex_1()
-        .child(
-            view()
-                .h(px(44.0))
-                .flex_none()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .px(px(16.0))
-                .child(
-                    view()
-                        .w(px(32.0))
-                        .h(px(32.0))
-                        .rounded(px(16.0))
-                        .items_center()
-                        .justify_center()
-                        .role(AccessibilityRole::Button)
-                        .label("Settings")
-                        .bg(move || if settings_selected() { theme().accent } else { theme().secondary })
-                        .on_press(|| screens::open(Screen::Settings))
-                        .child(icon(icon::SETTINGS, 16.0, ink)),
-                )
-                .child(view().flex_row().items_center().gap(px(8.0)).child(actions)),
-        )
-        .child(
-            scroll().flex_1().child(
-                view()
-                    .px(px(16.0))
-                    .pt(px(4.0))
-                    // Clear of the tab bar: its 56 px, its 12 px offset and an 8 px gap.
-                    .pb(px(76.0))
-                    .gap(px(24.0))
-                    .child(
-                        title(text(screen_title))
-                            .font_family(crate::theme::fonts::INTER_DISPLAY.family)
-                            .text_size(px(28.0))
-                            .line_height(px(31.0))
-                            .letter_spacing(px(-0.84)),
-                    )
-                    .child(content),
-            ),
-        )
-}
-
-/// With the click probe on (`STELLARATOR_PROBE=1`), `band` says on standard output when a press reaches
-/// it, so CI can tell whether clicks in the macOS title bar band get to the app's views. Off, it is
-/// unchanged (a press handler would keep the band from moving the window).
-fn probe_press(band: View, what: &'static str) -> View {
-    if crate::platform::probe_mode() == crate::platform::ProbeMode::Clicks {
-        band.on_press(move || crate::platform::probe_line(format!("press reached nsh: {what}")))
-    } else {
-        band
-    }
-}
-
-/// The page column: at most 1280 px wide, 32 px padding.
-fn column() -> View {
-    view().flex_1().max_w(px(PAGE_MAX)).px(px(PAGE_PADDING))
 }

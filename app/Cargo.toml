@@ -24,7 +24,7 @@ path = "src/main.rs"
 [dependencies]
 # nsh, pinned to the CLI version that packages the app (keep all nsh-* crates equal).
 nsh-core = "=0.6.1"
-nsh-base = "=0.6.1"
+nsh-base = { version = "=0.6.1", features = ["math"] }
 
 # The API's request and response types, shared with the server (no server dependencies).
 stellarator-api = { path = "../crates/api" }
