@@ -337,6 +337,12 @@ fn model_items(state: State, data: Data) -> Vec<SelectItem> {
     items
 }
 
+/// Whether Refresh models' answer for endpoint `asked` still concerns the form: the Endpoint field
+/// (`field`, the endpoint's id as text) still holds it.
+pub fn refresh_applies(field: &str, asked: i64) -> bool {
+    field == asked.to_string()
+}
+
 /// Reads the endpoint's model list again and says how it went under the Model field.
 fn refresh_models(state: State, data: Data, id: i64) {
     if state.refreshing.get_untracked() {
@@ -347,6 +353,9 @@ fn refresh_models(state: State, data: Data, id: i64) {
         move |api| async move { api.check_endpoint(id).await },
         move |result| {
             state.refreshing.set(false);
+            // The endpoint was changed while it read: the list is kept for that endpoint, but the
+            // note and a model picked from it would be about another one.
+            let applies = refresh_applies(&state.peek(Field::Endpoint), id);
             let note = match result {
                 Ok(endpoint) => {
                     data.endpoints.update(|l| {
@@ -356,6 +365,9 @@ fn refresh_models(state: State, data: Data, id: i64) {
                             }
                         }
                     });
+                    if !applies {
+                        return;
+                    }
                     if endpoint.last_ok == Some(false) {
                         format!("Couldn't list models. {}", endpoint.last_error.as_deref().unwrap_or("The endpoint did not answer."))
                     } else {
@@ -365,6 +377,7 @@ fn refresh_models(state: State, data: Data, id: i64) {
                         format!("Found {}.", count(endpoint.models.len() as i64, "model", "models"))
                     }
                 }
+                Err(_) if !applies => return,
                 Err(e) => format!("Couldn't list models. {}", e.message),
             };
             state.models_note.set(Some(note));
@@ -536,4 +549,16 @@ fn advanced_rows(state: State, submit: &Rc<dyn Fn()>) -> Vec<AnyElement> {
             .error(state.error(Field::PauseAfter))
             .into_element(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_model_list_answer_counts_only_for_the_endpoint_still_chosen() {
+        assert!(refresh_applies("4", 4));
+        assert!(!refresh_applies("7", 4));
+        assert!(!refresh_applies("", 4));
+    }
 }
