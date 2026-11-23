@@ -11,6 +11,9 @@
 //! - Pause: status "pausing", no new requests, in-flight ones finish, then "paused". Samples
 //!   waiting to retry give up their slot and go back to pending.
 //! - When nothing is pending or in flight the run is "completed".
+//! - A run with MCP tools opens its sessions ([`ToolRuntime`]) before its first request and closes
+//!   them when its task winds down (pause, completion, delete); each sample goes through the tool
+//!   loop ([`crate::tools::run_sample`]) and its trace is stored with the sample.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Weak};
@@ -22,7 +25,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use stellarator_core::openai::{api_root, build_headers};
 use stellarator_core::probes::{ActiveRun, RunsProbe};
-use stellarator_core::schemas::{LiveSequence, RunParams, RunStatus};
+use stellarator_core::schemas::{LiveSequence, RunParams, RunStatus, ToolSnapshot, TraceMessage};
 use stellarator_core::{time, ApiError, Ctx};
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use tokio::task::JoinHandle;
@@ -32,6 +35,7 @@ use crate::generation::{
     generate, last_user_text, prepare_messages, Backoff, GenerateError, GenerationResult, Progress, ProgressSink,
     ServerCaps,
 };
+use crate::tools::{run_sample, ToolRuntime, TOOL_ROUNDS};
 
 pub const RESTART_REASON: &str = "Paused because Stellarator restarted. Resume to continue.";
 pub const ENDPOINT_GONE: &str =
@@ -81,6 +85,9 @@ struct FinishRow {
     attempts: i64,
     error: Option<String>,
     completed_at: String,
+    /// The trace as JSON (runs with tools).
+    trace: Option<String>,
+    tool_calls: i64,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -91,6 +98,7 @@ struct Deltas {
     prompt_tokens: i64,
     completion_tokens: i64,
     reasoning_tokens: i64,
+    tool_calls: i64,
     active: f64,
 }
 
@@ -102,6 +110,7 @@ impl Deltas {
         self.prompt_tokens += o.prompt_tokens;
         self.completion_tokens += o.completion_tokens;
         self.reasoning_tokens += o.reasoning_tokens;
+        self.tool_calls += o.tool_calls;
         self.active += o.active;
     }
 }
@@ -262,7 +271,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE samples SET status = ?, reasoning = ?, response = ?, finish_reason = ?, prompt_tokens = ?, \
              completion_tokens = ?, reasoning_tokens = ?, latency_ms = ?, ttft_ms = ?, attempts = ?, error = ?, \
-             completed_at = ? WHERE id = ?",
+             completed_at = ?, trace = ?, tool_calls = ? WHERE id = ?",
         )
         .bind(f.status)
         .bind(&f.reasoning)
@@ -276,6 +285,8 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         .bind(f.attempts)
         .bind(&f.error)
         .bind(&f.completed_at)
+        .bind(&f.trace)
+        .bind(f.tool_calls)
         .bind(f.sample_id)
         .execute(&mut *tx)
         .await?;
@@ -292,7 +303,8 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE runs SET done = done + ?, failed = failed + ?, truncated = truncated + ?, \
              prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?, \
-             reasoning_tokens = reasoning_tokens + ?, active_seconds = active_seconds + ? WHERE id = ?",
+             reasoning_tokens = reasoning_tokens + ?, tool_calls = tool_calls + ?, active_seconds = active_seconds + ? \
+             WHERE id = ?",
         )
         .bind(d.done)
         .bind(d.failed)
@@ -300,6 +312,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         .bind(d.prompt_tokens)
         .bind(d.completion_tokens)
         .bind(d.reasoning_tokens)
+        .bind(d.tool_calls)
         .bind(d.active)
         .bind(run_id)
         .execute(&mut *tx)
@@ -474,6 +487,11 @@ pub(crate) struct RunTask {
     url: String,
     client: reqwest::Client,
     caps: ServerCaps,
+    /// The tools the run sends (None: a run without tools).
+    tool_snapshot: Option<ToolSnapshot>,
+    /// The open MCP sessions, while the task runs.
+    tools: Mutex<Option<Arc<ToolRuntime>>>,
+    allow_stdio_mcp: bool,
     st: Mutex<State>,
     rates: Mutex<Rates>,
     /// State transitions (pause, resume, retry, finalize).
@@ -500,6 +518,7 @@ struct RunInfo {
     total: i64,
     done: i64,
     failed: i64,
+    tools: Option<ToolSnapshot>,
 }
 
 struct EndpointInfo {
@@ -534,6 +553,9 @@ impl RunTask {
             params: run.params,
             client,
             caps: ServerCaps::default(),
+            tool_snapshot: run.tools,
+            tools: Mutex::new(None),
+            allow_stdio_mcp: engine.ctx.config.allow_stdio_mcp,
             st: Mutex::new(State {
                 concurrency: run.concurrency.max(1) as usize,
                 total: run.total,
@@ -606,7 +628,27 @@ impl RunTask {
         }
     }
 
+    /// Open the run's MCP sessions. Err: why the run cannot go on (it pauses with this reason).
+    async fn open_tools(&self) -> Result<(), String> {
+        let Some(snapshot) = self.tool_snapshot.clone() else { return Ok(()) };
+        let settings = self.params.tools.clone().unwrap_or_default();
+        let opened = tokio::select! {
+            r = ToolRuntime::open(&self.db, snapshot, settings, self.allow_stdio_mcp) => r,
+            _ = self.stop_workers.cancelled() => return Ok(()),
+        };
+        let rt = opened.map_err(|e| format!("Paused: {} Resume to try again.", e.trim_end_matches('.').to_string() + "."))?;
+        *self.tools.lock() = Some(Arc::new(rt));
+        Ok(())
+    }
+
     async fn main(self: Arc<Self>) {
+        if let Err(reason) = self.open_tools().await {
+            tracing::warn!(run_id = self.run_id, %reason, "could not open the run's MCP sessions");
+            *self.reason_final.lock() = Some(reason);
+            self.st.lock().finalizing = true;
+            self.wind_down(Some(RunStatus::Paused)).await;
+            return;
+        }
         self.write_metric(None).await;
         let metrics = {
             let me = self.clone();
@@ -687,6 +729,10 @@ impl RunTask {
         self.record_active().await;
         self.write_metric(Some(0)).await;
         self.writer.flush().await;
+        let tools = self.tools.lock().take();
+        if let Some(rt) = tools {
+            rt.close().await;
+        }
         if let (Some(status), false) = (final_status, cancelled) {
             let res = match status {
                 RunStatus::Completed => sqlx::query(
@@ -907,11 +953,42 @@ impl RunTask {
         drop(messages);
         let sink = SeqSink { seq: &seq, rates: &self.rates };
         let backoff = HaltBackoff { task: self };
+        let tools = self.tools.lock().clone();
+        let send = async {
+            match &tools {
+                None => generate(
+                    &self.client,
+                    &self.url,
+                    &self.model,
+                    &prepared,
+                    &self.params,
+                    item.sample_idx,
+                    &self.caps,
+                    &sink,
+                    &backoff,
+                )
+                .await
+                .map(|r| (r, None, 0)),
+                Some(rt) => run_sample(
+                    rt,
+                    &self.client,
+                    &self.url,
+                    &self.model,
+                    &prepared,
+                    &self.params,
+                    item.sample_idx,
+                    &self.caps,
+                    &sink,
+                    &backoff,
+                )
+                .await
+                .map(|o| (o.result, Some(o.trace), o.tool_calls)),
+            }
+        };
         let outcome = tokio::select! {
             biased;
             _ = self.stop_workers.cancelled() => None,
-            r = generate(&self.client, &self.url, &self.model, &prepared, &self.params, item.sample_idx,
-                         &self.caps, &sink, &backoff) => Some(r),
+            r = send => Some(r),
         };
         match outcome {
             None => {
@@ -922,8 +999,17 @@ impl RunTask {
                 self.reset(key, item.sample_id).await;
                 true
             }
-            Some(Ok(result)) => {
-                self.finish_done(key, item.sample_id, result).await;
+            Some(Err(GenerateError::ToolsRejected { message })) => {
+                // Every sample would fail the same way: pause the run, keep the sample pending.
+                self.reset(key, item.sample_id).await;
+                let _g = self.lock.lock().await;
+                if let Err(e) = self.pause_locked(Some(message)).await {
+                    tracing::error!(run_id = self.run_id, error = %e.detail, "could not pause a run");
+                }
+                false
+            }
+            Some(Ok((result, trace, tool_calls))) => {
+                self.finish_done(key, item.sample_id, result, trace, tool_calls).await;
                 true
             }
             Some(Err(GenerateError::Failed { message, attempts })) => {
@@ -943,14 +1029,22 @@ impl RunTask {
         self.writer.send(Op::Reset { run_id: self.run_id, sample_id, task: self.clone() }).await;
     }
 
-    async fn finish_done(self: &Arc<Self>, key: u64, sample_id: i64, r: GenerationResult) {
-        let truncated = r.finish_reason.as_deref() == Some("length");
+    async fn finish_done(
+        self: &Arc<Self>,
+        key: u64,
+        sample_id: i64,
+        r: GenerationResult,
+        trace: Option<Vec<TraceMessage>>,
+        tool_calls: i64,
+    ) {
+        let truncated = matches!(r.finish_reason.as_deref(), Some("length") | Some(TOOL_ROUNDS));
         let deltas = Deltas {
             done: 1,
             truncated: i64::from(truncated),
             prompt_tokens: r.prompt_tokens.unwrap_or(0),
             completion_tokens: r.completion_tokens.unwrap_or(0),
             reasoning_tokens: r.reasoning_tokens.unwrap_or(0),
+            tool_calls,
             ..Deltas::default()
         };
         {
@@ -975,6 +1069,8 @@ impl RunTask {
             attempts: r.attempts,
             error: None,
             completed_at: time::now_db(),
+            trace: trace.and_then(|t| serde_json::to_string(&t).ok()),
+            tool_calls,
         };
         {
             let mut st = self.st.lock();
@@ -1021,6 +1117,8 @@ impl RunTask {
             attempts,
             error: Some(message),
             completed_at: time::now_db(),
+            trace: None,
+            tool_calls: 0,
         };
         let deltas = Deltas { failed: 1, ..Deltas::default() };
         self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row: Box::new(row), deltas }).await;
@@ -1114,8 +1212,8 @@ impl RunTask {
                     tail: p.tail.clone(),
                     elapsed_ms: s.started.elapsed().as_millis() as i64,
                     attempt: p.attempt,
-                    round: 1,
-                    tools: Vec::new(),
+                    round: p.round,
+                    tools: p.tools.clone(),
                 }
             })
             .collect();
@@ -1170,7 +1268,9 @@ fn copy_progress(dst: &mut Progress, src: &Progress) {
     dst.phase = src.phase;
     dst.tokens = src.tokens;
     dst.attempt = src.attempt;
+    dst.round = src.round;
     dst.tail.clone_from(&src.tail);
+    dst.tools.clone_from(&src.tools);
 }
 
 /// Waits before a retry, unless the run starts pausing: then the slot is given up.
@@ -1262,14 +1362,16 @@ impl Engine {
         }
         let Some(engine) = self.me.upgrade() else { return Ok(()) };
         let db = &self.ctx.db;
-        type RunRow = (i64, Option<i64>, i64, String, sqlx::types::Json<Value>, i64, i64, i64, i64);
+        type RunRow =
+            (i64, Option<i64>, i64, String, sqlx::types::Json<Value>, i64, i64, i64, i64, Option<sqlx::types::Json<Value>>);
         let row: Option<RunRow> = sqlx::query_as(
-            "SELECT id, endpoint_id, prompt_set_id, model, params, concurrency, total, done, failed FROM runs WHERE id = ?",
+            "SELECT id, endpoint_id, prompt_set_id, model, params, concurrency, total, done, failed, tools FROM runs \
+             WHERE id = ?",
         )
         .bind(run_id)
         .fetch_optional(db)
         .await?;
-        let Some((id, endpoint_id, prompt_set_id, model, params, concurrency, total, done, failed)) = row else {
+        let Some((id, endpoint_id, prompt_set_id, model, params, concurrency, total, done, failed, tools)) = row else {
             return Ok(());
         };
         let endpoint: Option<(String, Option<String>, sqlx::types::Json<Value>)> = match endpoint_id {
@@ -1309,6 +1411,7 @@ impl Engine {
             total,
             done,
             failed,
+            tools: tools.and_then(|t| serde_json::from_value(t.0).ok()),
         };
         let task = RunTask::new(&engine, self.writer(), info, EndpointInfo { base_url, api_key, headers })?;
         self.tasks.lock().insert(run_id, task.clone());
@@ -1581,7 +1684,11 @@ impl RunsProbe for Engine {
                 run_id: t.run_id,
                 endpoint_id: t.endpoint_id,
                 prompt_set_id: t.prompt_set_id,
-                mcp_server_ids: Vec::new(),
+                mcp_server_ids: t
+                    .tool_snapshot
+                    .as_ref()
+                    .map(|s| s.servers.iter().map(|x| x.server_id).collect())
+                    .unwrap_or_default(),
             })
             .collect()
     }
@@ -1592,10 +1699,12 @@ async fn recount(tx: &mut sqlx::SqliteConnection, run_id: i64) -> sqlx::Result<(
         "UPDATE runs SET \
          done = (SELECT COUNT(*) FROM samples WHERE run_id = ?1 AND status = 'done'), \
          failed = (SELECT COUNT(*) FROM samples WHERE run_id = ?1 AND status = 'failed'), \
-         truncated = (SELECT COUNT(*) FROM samples WHERE run_id = ?1 AND status = 'done' AND finish_reason = 'length'), \
+         truncated = (SELECT COUNT(*) FROM samples WHERE run_id = ?1 AND status = 'done' \
+           AND finish_reason IN ('length', 'tool_rounds')), \
          prompt_tokens = (SELECT COALESCE(SUM(prompt_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
          completion_tokens = (SELECT COALESCE(SUM(completion_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
-         reasoning_tokens = (SELECT COALESCE(SUM(reasoning_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done') \
+         reasoning_tokens = (SELECT COALESCE(SUM(reasoning_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
+         tool_calls = (SELECT COALESCE(SUM(tool_calls), 0) FROM samples WHERE run_id = ?1 AND status = 'done') \
          WHERE id = ?1",
     )
     .bind(run_id)
@@ -1609,7 +1718,8 @@ async fn reset_failed(db: &SqlitePool, run_id: i64) -> sqlx::Result<i64> {
     let n = sqlx::query(
         "UPDATE samples SET status = 'pending', reasoning = NULL, response = NULL, finish_reason = NULL, \
          prompt_tokens = NULL, completion_tokens = NULL, reasoning_tokens = NULL, latency_ms = NULL, ttft_ms = NULL, \
-         attempts = 0, error = NULL, completed_at = NULL WHERE run_id = ? AND status = 'failed'",
+         attempts = 0, error = NULL, completed_at = NULL, trace = NULL, tool_calls = 0 \
+         WHERE run_id = ? AND status = 'failed'",
     )
     .bind(run_id)
     .execute(&mut *tx)

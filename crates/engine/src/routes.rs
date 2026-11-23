@@ -1,4 +1,7 @@
 //! Runs: create, watch, steer (pause, resume, concurrency, retry failed) and browse samples.
+//!
+//! A run with tools (`params.tools`) checks each selected MCP server when it is created and stores
+//! the exact tool definitions it will send (`runs.tools`, returned as `RunOut.tools`).
 
 use std::sync::Arc;
 
@@ -12,11 +15,14 @@ use serde::Deserialize;
 use serde_json::Value;
 use sqlx::types::Json as SqlJson;
 use sqlx::Row;
+use stellarator_core::config::STDIO_MCP_BLOCKED;
 use stellarator_core::schemas::{
-    MetricPoint, Page, RunCreate, RunLive, RunOut, RunParams, RunPatch, RunStatus, SampleOut, SampleStatus,
-    SampleSummary,
+    McpTransport, MetricPoint, Page, RunCreate, RunLive, RunOut, RunParams, RunPatch, RunStatus, RunTools, SampleOut,
+    SampleStatus, SampleSummary, ToolSnapshot, TraceMessage,
 };
 use stellarator_core::{time, ApiError, ApiJson, ApiQuery};
+use stellarator_mcp::names::{snapshot, Selected};
+use stellarator_mcp::store::{self, CHECK_TIMEOUT};
 
 use crate::engine::{preview, Engine, PREVIEW_CHARS};
 use crate::generation::{last_user_text, prepare_messages};
@@ -62,7 +68,7 @@ fn run_not_found() -> ApiError {
 const RUN_SELECT: &str = "SELECT r.id, r.name, r.endpoint_id, r.endpoint_name, r.model, r.prompt_set_id, r.params, \
     r.concurrency, r.status, r.status_reason, r.total, r.done, r.failed, r.truncated, r.prompt_tokens, \
     r.completion_tokens, r.reasoning_tokens, r.active_seconds, r.created_at, r.started_at, r.finished_at, \
-    ps.name AS prompt_set_name FROM runs r LEFT JOIN prompt_sets ps ON ps.id = r.prompt_set_id";
+    r.tools, r.tool_calls, ps.name AS prompt_set_name FROM runs r LEFT JOIN prompt_sets ps ON ps.id = r.prompt_set_id";
 
 #[derive(sqlx::FromRow)]
 struct RunRow {
@@ -87,6 +93,8 @@ struct RunRow {
     created_at: NaiveDateTime,
     started_at: Option<NaiveDateTime>,
     finished_at: Option<NaiveDateTime>,
+    tools: Option<SqlJson<Value>>,
+    tool_calls: i64,
     prompt_set_name: Option<String>,
 }
 
@@ -121,8 +129,8 @@ fn run_out(engine: &Engine, r: RunRow) -> RunOut {
         created_at: time::utc(r.created_at),
         started_at: time::utc_opt(r.started_at),
         finished_at: time::utc_opt(r.finished_at),
-        tools: None,
-        tool_calls: 0,
+        tools: r.tools.and_then(|t| serde_json::from_value(t.0).ok()),
+        tool_calls: r.tool_calls,
     }
 }
 
@@ -138,6 +146,64 @@ async fn require_run(engine: &Engine, run_id: i64) -> Result<(), ApiError> {
     let found: Option<i64> =
         sqlx::query_scalar("SELECT id FROM runs WHERE id = ?").bind(run_id).fetch_optional(&engine.ctx.db).await?;
     found.map(|_| ()).ok_or_else(run_not_found)
+}
+
+// ------------------------------------------------------------------------------------ tools
+
+/// The tools a new run will send: each selected server is checked now (so the run takes the
+/// definitions the server offers today, and the cached list is refreshed), the picked tools must
+/// exist, and the names must fit (see `stellarator_mcp::names`).
+async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, ApiError> {
+    let ctx = engine.ctx();
+    let mut rows = Vec::new();
+    for (i, s) in t.servers.iter().enumerate() {
+        let field = format!("params.tools.servers.{i}.server_id");
+        let row = store::fetch(&ctx.db, s.server_id)
+            .await?
+            .ok_or_else(|| ApiError::field(&field, "This MCP server does not exist. Pick another server."))?;
+        if !row.enabled {
+            return Err(ApiError::field(
+                &field,
+                format!("The MCP server \"{}\" is turned off. Turn it on, or pick another server.", row.name),
+            ));
+        }
+        if row.transport() == McpTransport::Stdio && !ctx.config.allow_stdio_mcp {
+            return Err(ApiError::new(StatusCode::FORBIDDEN, STDIO_MCP_BLOCKED));
+        }
+        rows.push(row);
+    }
+    let checks = futures::future::join_all(rows.iter().map(|r| async move {
+        let config = r.config();
+        store::check(&config, CHECK_TIMEOUT).await
+    }))
+    .await;
+    let mut selected = Vec::new();
+    for (i, ((row, picked), outcome)) in rows.iter().zip(&t.servers).zip(checks).enumerate() {
+        store::save_check(&ctx.db, row.id, &outcome).await?;
+        let checked = outcome.map_err(|e| {
+            ApiError::field(
+                &format!("params.tools.servers.{i}.server_id"),
+                format!("Couldn't reach the MCP server \"{}\": {}", row.name, e.0),
+            )
+        })?;
+        let tools = match &picked.tools {
+            None => checked.tools,
+            Some(names) => {
+                if let Some(missing) = names.iter().find(|n| !checked.tools.iter().any(|t| &t.name == *n)) {
+                    return Err(ApiError::field(
+                        &format!("params.tools.servers.{i}.tools"),
+                        format!(
+                            "The MCP server \"{}\" has no tool named \"{missing}\". Check the server and pick its tools again.",
+                            row.name
+                        ),
+                    ));
+                }
+                checked.tools.into_iter().filter(|t| names.contains(&t.name)).collect()
+            }
+        };
+        selected.push(Selected { server_id: row.id, name: row.name.clone(), transport: row.transport(), tools });
+    }
+    snapshot(&selected).map_err(|e| ApiError::field("params.tools", e))
 }
 
 // ------------------------------------------------------------------------------------ runs
@@ -187,13 +253,17 @@ async fn create_run(
     let name: String = name.chars().take(300).collect();
     let now = time::now_db();
     let params = serde_json::to_value(&body.params).map_err(anyhow::Error::from)?;
+    let tools = match &body.params.tools {
+        Some(t) => Some(serde_json::to_value(tool_snapshot(&engine, t).await?).map_err(anyhow::Error::from)?),
+        None => None,
+    };
 
     let mut tx = db.begin().await?;
     let run_id = sqlx::query(
         "INSERT INTO runs (name, endpoint_id, endpoint_name, model, prompt_set_id, params, concurrency, status, \
          status_reason, total, done, failed, truncated, prompt_tokens, completion_tokens, reasoning_tokens, \
-         active_seconds, created_at, started_at, finished_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'running', NULL, 0, 0, 0, 0, 0, 0, 0, 0.0, ?, ?, NULL)",
+         active_seconds, created_at, started_at, finished_at, tools) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'running', NULL, 0, 0, 0, 0, 0, 0, 0, 0.0, ?, ?, NULL, ?)",
     )
     .bind(&name)
     .bind(endpoint_id)
@@ -204,6 +274,7 @@ async fn create_run(
     .bind(body.concurrency)
     .bind(&now)
     .bind(&now)
+    .bind(tools.map(SqlJson))
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
@@ -406,7 +477,9 @@ async fn list_samples(
 
     let mut where_sql = String::from("s.run_id = ?");
     match status.as_deref() {
-        Some("truncated") => where_sql.push_str(" AND s.status = 'done' AND s.finish_reason = 'length'"),
+        Some("truncated") => {
+            where_sql.push_str(" AND s.status = 'done' AND s.finish_reason IN ('length', 'tool_rounds')")
+        }
         Some(_) => where_sql.push_str(" AND s.status = ?"),
         None => {}
     }
@@ -437,7 +510,7 @@ async fn list_samples(
     let list_sql = format!(
         "SELECT s.id, s.prompt_idx, s.sample_idx, s.status, substr(s.response, 1, 400) AS response, \
          (s.reasoning IS NOT NULL AND length(s.reasoning) > 0) AS has_reasoning, s.finish_reason, \
-         s.completion_tokens, s.latency_ms, s.error, p.messages \
+         s.completion_tokens, s.latency_ms, s.error, s.tool_calls, p.messages \
          FROM samples s JOIN prompts p ON p.id = s.prompt_id WHERE {where_sql} \
          ORDER BY s.prompt_idx, s.sample_idx, s.id LIMIT ? OFFSET ?"
     );
@@ -470,7 +543,7 @@ async fn list_samples(
             completion_tokens: row.try_get("completion_tokens")?,
             latency_ms: row.try_get("latency_ms")?,
             error: row.try_get("error")?,
-            tool_calls: 0,
+            tool_calls: row.try_get("tool_calls")?,
         });
     }
     Ok(Json(Page { items, total, offset, limit }))
@@ -495,6 +568,8 @@ struct SampleRow {
     attempts: i64,
     error: Option<String>,
     completed_at: Option<NaiveDateTime>,
+    trace: Option<String>,
+    tool_calls: i64,
     messages: Option<String>,
     params: Option<String>,
 }
@@ -503,7 +578,7 @@ async fn get_sample(State(engine): State<Arc<Engine>>, Id(sample_id): Id) -> Res
     let row: Option<SampleRow> = sqlx::query_as(
         "SELECT s.id, s.run_id, s.prompt_id, s.prompt_idx, s.sample_idx, s.status, s.reasoning, s.response, \
          s.finish_reason, s.prompt_tokens, s.completion_tokens, s.reasoning_tokens, s.latency_ms, s.ttft_ms, \
-         s.attempts, s.error, s.completed_at, p.messages, r.params \
+         s.attempts, s.error, s.completed_at, s.trace, s.tool_calls, p.messages, r.params \
          FROM samples s LEFT JOIN prompts p ON p.id = s.prompt_id LEFT JOIN runs r ON r.id = s.run_id WHERE s.id = ?",
     )
     .bind(sample_id)
@@ -534,8 +609,8 @@ async fn get_sample(State(engine): State<Arc<Engine>>, Id(sample_id): Id) -> Res
         error: s.error,
         completed_at: time::utc_opt(s.completed_at),
         messages: prepare_messages(&messages, &params),
-        trace: None,
-        tool_calls: 0,
+        trace: s.trace.as_deref().and_then(|t| serde_json::from_str::<Vec<TraceMessage>>(t).ok()),
+        tool_calls: s.tool_calls,
     }))
 }
 

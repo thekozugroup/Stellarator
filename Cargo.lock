@@ -3028,6 +3028,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stellarator-core",
+ "stellarator-mcp",
  "stellarator-mock",
  "tempfile",
  "tokio",

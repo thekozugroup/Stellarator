@@ -12,8 +12,8 @@
 //! - otherwise the first tool, and also the second (two calls in parallel) when the prompt contains
 //!   "both" or when a hash of the prompt is divisible by 3.
 //!
-//! Arguments are made from each tool's schema (its required properties: strings from the prompt,
-//! numbers from the prompt's numbers) and streamed in pieces of 5 characters. `badargs` in the
+//! Arguments are made from each tool's schema (its required properties: strings from the prompt's
+//! first words, numbers from the prompt's numbers, `seconds` 0.2) and streamed in pieces of 5 characters. `badargs` in the
 //! prompt makes the first call's arguments invalid JSON. Once the results are in, it answers with
 //! a sentence quoting them. Each answer has a thinking trace in `delta.reasoning`.
 //!
@@ -131,7 +131,7 @@ fn arguments(parameters: &Value, prompt: &str) -> Value {
     for name in required {
         let kind = props.get(&name).and_then(|p| p.get("type")).and_then(Value::as_str).unwrap_or("string");
         let value = match (name.as_str(), kind) {
-            ("times", _) => json!(3),
+            ("times", _) => json!(nums.next().unwrap_or(3.0) as i64),
             ("seconds", _) => json!(0.2),
             (_, "number") => json!(nums.next().unwrap_or(2.0)),
             (_, "integer") => json!(nums.next().unwrap_or(2.0) as i64),

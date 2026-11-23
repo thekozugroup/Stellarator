@@ -3,11 +3,16 @@
 //!
 //! Public pieces:
 //! - [`prepare_messages`]: the prompt as sent (system prompt and user template applied)
-//! - [`build_body`]: the JSON request body
+//! - [`build_body`]: the JSON request body ([`build_request`] with tools)
 //! - [`split_inline`]: thinking/answer split for inline tags and gpt-oss harmony text
-//! - [`generate`]: one sample, with retries
+//! - [`generate`]: one sample, with retries ([`generate_round`]: one request of a tool loop)
 //! - [`Progress`], [`ServerCaps`], [`GenerationResult`], [`GenerateError`]
+//!
+//! Tool calls are assembled from `delta.tool_calls` by index (id, name and argument pieces), from a
+//! whole call in one chunk, from `message.tool_calls` in a non-streaming answer, and from the
+//! legacy `function_call` field.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -16,7 +21,7 @@ use futures::StreamExt;
 use reqwest::header::HeaderMap;
 use serde_json::{Map, Value};
 use stellarator_core::openai;
-use stellarator_core::schemas::{Phase, RunParams};
+use stellarator_core::schemas::{Phase, RunParams, ToolCall};
 
 pub const RETRY_STATUSES: [u16; 8] = [408, 409, 425, 429, 500, 502, 503, 504];
 /// Characters of streamed text kept for the live view.
@@ -30,6 +35,8 @@ const HARMONY_CONSTRAIN: &str = "<|constrain|>";
 const HARMONY_FINAL_MARK: &str = "<|channel|>final";
 const HARMONY_ENDS: [&str; 5] = ["<|end|>", "<|return|>", "<|call|>", "<|start|>", "<|channel|>"];
 const DROPPED: &str = "The connection to the server dropped before the answer finished.";
+/// Where docs/tools.md explains which endpoints support tool calling.
+pub const TOOLS_DOC: &str = "https://github.com/thekozugroup/Stellarator/blob/main/docs/tools.md";
 
 // ------------------------------------------------------------------------------------ data
 
@@ -42,11 +49,15 @@ pub struct Progress {
     /// Last ~240 characters of the current phase.
     pub tail: String,
     pub attempt: i64,
+    /// The request of the sample: 1, then one more after each round of tool calls.
+    pub round: i64,
+    /// The tools running, while `phase` is `Tool`.
+    pub tools: Vec<String>,
 }
 
 impl Default for Progress {
     fn default() -> Self {
-        Self { phase: Phase::Waiting, tokens: 0, tail: String::new(), attempt: 1 }
+        Self { phase: Phase::Waiting, tokens: 0, tail: String::new(), attempt: 1, round: 1, tools: Vec::new() }
     }
 }
 
@@ -85,6 +96,8 @@ pub struct GenerationResult {
     pub attempts: i64,
     /// Text-carrying chunks streamed in the successful attempt.
     pub chunks: i64,
+    /// The tools the model called in this answer (empty for a plain answer).
+    pub tool_calls: Vec<ToolCall>,
 }
 
 /// One failed attempt.
@@ -109,6 +122,17 @@ pub enum GenerateError {
     Failed { message: String, attempts: i64 },
     /// A wait before a retry was cut short (the run is pausing); the sample goes back to pending.
     Interrupted,
+    /// The endpoint refused the request's `tools` or `tool_choice`: every sample would fail, so
+    /// the run pauses with this message and the sample goes back to pending.
+    ToolsRejected { message: String },
+}
+
+/// The tools part of a request: the definitions and `tool_choice`.
+#[derive(Clone, Copy, Debug)]
+pub struct RequestTools<'a> {
+    pub definitions: &'a [Value],
+    /// "auto" or "required".
+    pub choice: &'a str,
 }
 
 /// Receives the live state of one request.
@@ -306,6 +330,19 @@ pub fn deep_merge(base: &mut Map<String, Value>, extra: &Map<String, Value>) {
 
 /// The JSON body for POST {api_root}/chat/completions. `messages` are already prepared.
 pub fn build_body(model: &str, messages: &[Value], params: &RunParams, sample_idx: i64, include_usage: bool) -> Value {
+    build_request(model, messages, params, sample_idx, include_usage, None)
+}
+
+/// [`build_body`] with `tools` and `tool_choice` when `tools` is given (before `extra_body`, which
+/// can still override them, e.g. with `parallel_tool_calls`).
+pub fn build_request(
+    model: &str,
+    messages: &[Value],
+    params: &RunParams,
+    sample_idx: i64,
+    include_usage: bool,
+    tools: Option<RequestTools<'_>>,
+) -> Value {
     let mut body = Map::new();
     body.insert("model".into(), Value::String(model.to_string()));
     body.insert("messages".into(), Value::Array(messages.to_vec()));
@@ -330,6 +367,10 @@ pub fn build_body(model: &str, messages: &[Value], params: &RunParams, sample_id
         }
     } else {
         body.insert("stream".into(), Value::Bool(false));
+    }
+    if let Some(t) = tools {
+        body.insert("tools".into(), Value::Array(t.definitions.to_vec()));
+        body.insert("tool_choice".into(), Value::String(t.choice.to_string()));
     }
     deep_merge(&mut body, &params.extra_body);
     Value::Object(body)
@@ -576,6 +617,18 @@ struct Accumulator<'a> {
     /// How streamed content is shown live; None until decided.
     content_mode: Option<ContentMode>,
     content_head: String,
+    /// Tool calls being assembled, in the order they started.
+    calls: Vec<PartialCall>,
+    /// The server's `index` of a call -> its place in `calls`.
+    call_index: HashMap<u64, usize>,
+}
+
+/// A tool call while its pieces arrive.
+#[derive(Default, Debug)]
+struct PartialCall {
+    id: String,
+    name: String,
+    arguments: String,
 }
 
 impl<'a> Accumulator<'a> {
@@ -598,6 +651,8 @@ impl<'a> Accumulator<'a> {
             done: false,
             content_mode: None,
             content_head: String::new(),
+            calls: Vec::new(),
+            call_index: HashMap::new(),
         }
     }
 
@@ -769,6 +824,77 @@ impl<'a> Accumulator<'a> {
             self.content.push_str(&content);
             self.content_chunk(&content);
         }
+        if let Some(Value::Array(calls)) = delta.get("tool_calls") {
+            for item in calls {
+                self.tool_call_piece(item, item.get("function"));
+            }
+        }
+        if let Some(fc @ Value::Object(_)) = delta.get("function_call") {
+            // The legacy single function call: one call at index 0.
+            self.tool_call_piece(&serde_json::json!({"index": 0}), Some(fc));
+        }
+    }
+
+    /// One piece of a tool call: `item` holds `index` and `id`, `function` the name and arguments.
+    fn tool_call_piece(&mut self, item: &Value, function: Option<&Value>) {
+        let id = item.get("id").and_then(Value::as_str).filter(|s| !s.is_empty());
+        let index = item.get("index").and_then(Value::as_u64);
+        let slot = match (index, id) {
+            (Some(i), _) => match self.call_index.get(&i).copied() {
+                // A new id at a used index starts another call (servers that send whole calls,
+                // all at index 0).
+                Some(s) if id.is_none_or(|id| self.calls[s].id.is_empty() || self.calls[s].id == id) => s,
+                _ => {
+                    self.calls.push(PartialCall::default());
+                    self.call_index.insert(i, self.calls.len() - 1);
+                    self.calls.len() - 1
+                }
+            },
+            (None, Some(id)) => match self.calls.iter().position(|c| c.id == id) {
+                Some(s) => s,
+                None => {
+                    self.calls.push(PartialCall::default());
+                    self.calls.len() - 1
+                }
+            },
+            (None, None) => {
+                if self.calls.is_empty() {
+                    self.calls.push(PartialCall::default());
+                }
+                self.calls.len() - 1
+            }
+        };
+        let started = id.is_some();
+        let call = &mut self.calls[slot];
+        if let Some(id) = id {
+            call.id = id.to_string();
+        }
+        let mut shown = String::new();
+        if let Some(f) = function {
+            if let Some(name) = f.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                if call.name.is_empty() || started {
+                    call.name = name.to_string();
+                } else if call.name != name {
+                    call.name.push_str(name);
+                }
+                shown = format!("{name}(");
+            }
+            match f.get("arguments") {
+                Some(Value::String(a)) => {
+                    call.arguments.push_str(a);
+                    shown.push_str(a);
+                }
+                Some(v @ (Value::Object(_) | Value::Array(_))) => {
+                    // A server that sends the arguments as JSON instead of text.
+                    call.arguments = v.to_string();
+                    shown.push_str(&call.arguments);
+                }
+                _ => {}
+            }
+        }
+        if !shown.is_empty() {
+            self.emit(Phase::Answering, &shown);
+        }
     }
 
     fn feed_event(&mut self, obj: &Value) -> Result<(), AttemptError> {
@@ -935,7 +1061,19 @@ impl<'a> Accumulator<'a> {
         if reasoning_tokens.as_ref().map_or(true, Value::is_null) {
             reasoning_tokens = usage.get("reasoning_tokens").cloned();
         }
+        let tool_calls = self
+            .calls
+            .into_iter()
+            .enumerate()
+            .filter(|(_, c)| !c.name.is_empty() || !c.arguments.is_empty())
+            .map(|(i, c)| ToolCall {
+                id: if c.id.is_empty() { format!("call_{}", i + 1) } else { c.id },
+                name: c.name,
+                arguments: c.arguments,
+            })
+            .collect();
         GenerationResult {
+            tool_calls,
             reasoning: reasoning.filter(|r| !r.is_empty()),
             response,
             finish_reason: self.finish_reason,
@@ -1032,7 +1170,45 @@ pub async fn generate(
     sink: &dyn ProgressSink,
     backoff: &dyn Backoff,
 ) -> Result<GenerationResult, GenerateError> {
-    let mut progress = Progress::default();
+    generate_round(client, url, model, messages, params, sample_idx, caps, sink, backoff, None, 1).await
+}
+
+/// True when a 400 or 422 answer to a request with tools says the server does not take them: the
+/// error names tools, tool_choice or tool calling.
+pub fn rejects_tools(err: &AttemptError) -> bool {
+    if !matches!(err.status, Some(400) | Some(422)) {
+        return false;
+    }
+    let text = format!("{} {}", err.message, err.body).to_lowercase();
+    text.contains("tool") || text.contains("function call")
+}
+
+/// The run-pausing message for an endpoint that refused the tools.
+pub fn tools_rejected_message(server_message: &str) -> String {
+    let detail = server_message.trim().trim_end_matches('.');
+    format!(
+        "The endpoint refused the tool definitions ({detail}). Runs with tools need an endpoint with tool calling \
+         turned on; for vLLM, start it with --enable-auto-tool-choice and --tool-call-parser set to the model's parser. See {TOOLS_DOC}"
+    )
+}
+
+/// One request of a sample, with retries, as [`generate`], plus `tools` and the request's number
+/// in the sample (`round`, for the live view).
+#[allow(clippy::too_many_arguments)]
+pub async fn generate_round(
+    client: &reqwest::Client,
+    url: &str,
+    model: &str,
+    messages: &[Value],
+    params: &RunParams,
+    sample_idx: i64,
+    caps: &ServerCaps,
+    sink: &dyn ProgressSink,
+    backoff: &dyn Backoff,
+    tools: Option<RequestTools<'_>>,
+    round: i64,
+) -> Result<GenerationResult, GenerateError> {
+    let mut progress = Progress { round, ..Progress::default() };
     let mut attempt: i64 = 0;
     let mut send_stream_options = true;
     let mut probe_attempt: i64 = 0; // the attempt sent without stream_options after a 400, if any
@@ -1040,7 +1216,7 @@ pub async fn generate(
     loop {
         attempt += 1;
         let include_usage = send_stream_options && caps.stream_options();
-        let body = build_body(model, messages, params, sample_idx, include_usage);
+        let body = build_request(model, messages, params, sample_idx, include_usage, tools);
         progress.phase = Phase::Waiting;
         progress.tokens = 0;
         progress.tail.clear();
@@ -1073,6 +1249,9 @@ pub async fn generate(
             attempt -= 1;
             probe_attempt = attempt + 1;
             continue;
+        }
+        if tools.is_some() && rejects_tools(&error) {
+            return Err(GenerateError::ToolsRejected { message: tools_rejected_message(&error.message) });
         }
         if !error.retryable || attempt >= params.max_attempts {
             return Err(GenerateError::Failed { message: error.message, attempts: attempt });

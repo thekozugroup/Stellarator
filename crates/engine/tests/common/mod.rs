@@ -211,7 +211,8 @@ impl Env {
         .await
         .expect("truth");
         let truncated: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM samples WHERE run_id = ? AND status = 'done' AND finish_reason = 'length'",
+            "SELECT COUNT(*) FROM samples WHERE run_id = ? AND status = 'done' \
+             AND finish_reason IN ('length', 'tool_rounds')",
         )
         .bind(run_id)
         .fetch_one(&self.db)
