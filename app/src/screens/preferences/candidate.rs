@@ -80,7 +80,8 @@ pub fn candidate_card(card: Card) -> impl IntoElement {
         .text_color(move || if r2() { muted_ink() } else { ink() })
         .tooltip(tooltip_bubble(if card.show_model { c.model.clone() } else { c.run_name.clone() }));
     if card.show_model {
-        name = name.font_family(ROBOTO_MONO.family).text_size(px(12.0)).letter_spacing(px(0.0));
+        // `text-xs` sets its own line height over `leading-5`: 16 px.
+        name = name.font_family(ROBOTO_MONO.family).text_size(px(12.0)).line_height(px(16.0)).letter_spacing(px(0.0));
     }
     let note = (sample_note.is_some() || truncated).then(|| {
         view()

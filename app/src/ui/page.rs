@@ -313,7 +313,8 @@ fn meta_row(
             .justify_between()
             .gap_x(px(24.0))
             .gap_y(px(12.0))
-            .child(meta.as_ref().map(|m| view().min_w(px(0.0)).child(m())))
+            // It shrinks to the row (as a CSS flex item does), so a chips row inside wraps.
+            .child(meta.as_ref().map(|m| view().min_w(px(0.0)).flex_shrink(1.0).child(m())))
             .child(
                 actions_now
                     .then(|| view().flex_row().flex_wrap().items_center().gap(px(8.0)).child(actions.as_ref().map(|a| a()))),
