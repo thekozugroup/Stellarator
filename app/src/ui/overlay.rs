@@ -4,9 +4,9 @@
 //!
 //! | Overlay | Corners | Padding | Width | Notes |
 //! | --- | --- | --- | --- | --- |
-//! | [`Dialog`] | 26 px | 16 px | 384 px ([`DialogWidth::Sm`]) or 576 px ([`DialogWidth::Xl`]), at most the window less 32 px | holds 10 px cards (26 - 16) |
+//! | [`Dialog`] | 26 px | 16 px | 384 px ([`DialogWidth::Sm`]), 576 px ([`DialogWidth::Xl`]) or 896 px ([`DialogWidth::FourXl`], the export dialogs), at most the window less 32 px | holds 10 px cards (26 - 16) |
 //! | [`alert`] | 26 px | 16 px | 320 px, 384 px from 640 px | title, description, Cancel and the action |
-//! | [`side_sheet`] | the panel radius | 0 | 448 px, the whole window below 640 px | 8 px inside the window from 640 px, as the sidebar |
+//! | [`side_sheet`] | the panel radius | 0 | 448 px ([`side_sheet_width`]: another width), the whole window below 640 px | 8 px inside the window from 640 px, as the sidebar |
 //! | [`toast_success`] and the others | 14 px | 16 px | 356 px, bottom right, 24 px from the edges | 4 s, then gone |
 //!
 //! Inside a dialog or sheet `muted` reads as [`super::material::dialog_muted`] (the ground in light,
@@ -42,6 +42,8 @@ pub enum DialogWidth {
     Sm,
     /// 576 px (`max-w-xl`): forms.
     Xl,
+    /// 896 px (`max-w-[56rem]`): the export dialogs (options beside the preview).
+    FourXl,
 }
 
 impl DialogWidth {
@@ -50,6 +52,7 @@ impl DialogWidth {
             DialogWidth::Xs => 320.0,
             DialogWidth::Sm => 384.0,
             DialogWidth::Xl => 576.0,
+            DialogWidth::FourXl => 896.0,
         }
     }
 }
@@ -281,6 +284,16 @@ pub fn alert(
 /// panel radius from 640 px (as the sidebar), the whole height and width below. `label` names it
 /// for screen readers.
 pub fn side_sheet(open: Signal<bool>, label: impl Into<SharedString>, content: impl Fn() -> AnyElement + 'static) -> impl IntoElement {
+    side_sheet_width(open, label, 448.0, content)
+}
+
+/// A [`side_sheet`] at most `width` points wide (the sample viewer's 720, `sm:max-w-[45rem]`).
+pub fn side_sheet_width(
+    open: Signal<bool>,
+    label: impl Into<SharedString>,
+    width: f32,
+    content: impl Fn() -> AnyElement + 'static,
+) -> impl IntoElement {
     let label = label.into();
     let content = Rc::new(content);
     sheet()
@@ -300,7 +313,7 @@ pub fn side_sheet(open: Signal<bool>, label: impl Into<SharedString>, content: i
                 .top(px(inset))
                 .bottom(px(inset))
                 .right(px(inset))
-                .w(px((window_width() - 2.0 * inset).min(448.0)))
+                .w(px((window_width() - 2.0 * inset).min(width)))
                 .rounded(px(corner))
                 .overflow_hidden()
         })
@@ -335,6 +348,8 @@ pub struct Toast {
     pub id: u64,
     pub kind: ToastKind,
     pub message: SharedString,
+    /// A second line under the message, at 400 (sonner's `description`).
+    pub description: Option<SharedString>,
     /// When it goes.
     until: nsh_core::time::Instant,
 }
@@ -350,11 +365,15 @@ struct Toasts {
 const TOAST_FOR: Duration = Duration::from_secs(4);
 
 fn show(kind: ToastKind, message: impl Into<SharedString>) {
+    show_with(kind, message.into(), None);
+}
+
+fn show_with(kind: ToastKind, message: SharedString, description: Option<SharedString>) {
     let toasts = global::<Toasts>();
     toasts.update(|t| {
         t.next += 1;
         let id = t.next;
-        t.shown.push(Toast { id, kind, message: message.into(), until: nsh_core::time::now() + TOAST_FOR });
+        t.shown.push(Toast { id, kind, message, description, until: nsh_core::time::now() + TOAST_FOR });
         // At most three at once, as sonner shows.
         if t.shown.len() > 3 {
             t.shown.remove(0);
@@ -375,6 +394,11 @@ pub fn toast_error(message: impl Into<SharedString>) {
 /// A plain notice.
 pub fn toast_info(message: impl Into<SharedString>) {
     show(ToastKind::Info, message);
+}
+
+/// What failed, and a second line under it ("Seqs stays at 16.").
+pub fn toast_error_with(message: impl Into<SharedString>, description: impl Into<SharedString>) {
+    show_with(ToastKind::Error, message.into(), Some(description.into()));
 }
 
 fn toast_glyph(kind: ToastKind) -> (ImageAsset, fn() -> AdaptiveColor) {
@@ -421,7 +445,13 @@ pub fn toaster() -> impl IntoElement {
                 .label(toast.message.clone())
                 .on_press(move || toasts.update(|x| x.shown.retain(|y| y.id != toast.id)))
                 .child(icon(glyph, 16.0, color))
-                .child(body(text(toast.message.clone())).font_weight(FontWeight::MEDIUM).text_color(popover_ink).flex_1())
+                .child(
+                    view()
+                        .flex_1()
+                        .gap(px(2.0))
+                        .child(body(text(toast.message.clone())).font_weight(FontWeight::MEDIUM).text_color(popover_ink))
+                        .child(toast.description.clone().map(|d| body(text(d)).text_color(popover_ink))),
+                )
         }))
     }))
 }

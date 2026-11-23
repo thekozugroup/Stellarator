@@ -6,6 +6,9 @@
 //! `screens/<name>.rs` with `pub fn screen(...) -> impl IntoElement`, and add its arm below.
 
 pub mod endpoints;
+/// The export dialogs' shared layout and the run's export (the preference export uses the same).
+#[allow(dead_code, reason = "Run detail and the preference export open these; they land next")]
+pub mod export;
 mod gallery;
 mod placeholder;
 mod runs;

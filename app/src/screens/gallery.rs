@@ -15,7 +15,10 @@ use crate::ui::field::{field, form_disclosure, form_group, form_row, text_area, 
 use crate::ui::icon;
 use crate::ui::info_tip::info_tip;
 use crate::ui::model_text::{model_text, text_mode_toggle};
-use crate::ui::overlay::{Alert, DialogWidth, alert, dialog, dialog_description, dialog_footer, dialog_header, side_sheet, toast_info};
+use crate::ui::overlay::{
+    Alert, DialogWidth, alert, dialog, dialog_description, dialog_footer, dialog_header, side_sheet, side_sheet_width, toast_error_with,
+    toast_info,
+};
 use crate::ui::page::{page, panel};
 use crate::ui::plasma::plasma;
 use crate::ui::progress::progress_bar_full;
@@ -40,6 +43,8 @@ pub fn screen() -> impl IntoElement {
     let open_dialog = signal(false);
     let open_alert = signal(false);
     let open_sheet = signal(false);
+    let open_wide_sheet = signal(false);
+    let open_wide_dialog = signal(false);
     let disclosure = signal(false);
 
     let buttons = view()
@@ -154,6 +159,13 @@ pub fn screen() -> impl IntoElement {
         .child(button("Alert").variant(Variant::Secondary).on_press(move || open_alert.set(true)))
         .child(button("Sheet").variant(Variant::Secondary).on_press(move || open_sheet.set(true)))
         .child(button("Toast").variant(Variant::Secondary).on_press(|| toast_info("Copied the base URL.")))
+        .child(
+            button("Toast with a second line")
+                .variant(Variant::Secondary)
+                .on_press(|| toast_error_with("Couldn’t change seqs. The server is not answering.", "Seqs stays at 16.")),
+        )
+        .child(button("Wide dialog").variant(Variant::Secondary).on_press(move || open_wide_dialog.set(true)))
+        .child(button("Wide sheet").variant(Variant::Secondary).on_press(move || open_wide_sheet.set(true)))
         .child(menu)
         .child(dialog(open_dialog, "Rename run", move || {
             view()
@@ -182,7 +194,20 @@ pub fn screen() -> impl IntoElement {
         ))
         .child(side_sheet(open_sheet, "Details", move || {
             view().p(px(20.0)).gap(px(12.0)).child(body(text("A side sheet."))).into_element()
-        }));
+        }))
+        .child(side_sheet_width(open_wide_sheet, "Sample", 720.0, move || {
+            view().p(px(20.0)).gap(px(12.0)).child(body(text("A side sheet up to 720 px wide (the sample viewer)."))).into_element()
+        }))
+        .child(
+            dialog(open_wide_dialog, "Export dataset", move || {
+                view()
+                    .gap(px(16.0))
+                    .child(dialog_header("Export dataset", Some(dialog_description("An 896 px dialog: the export dialogs."))))
+                    .child(dialog_footer(vec![button("Cancel").variant(Variant::Secondary).on_press(move || open_wide_dialog.set(false))]))
+                    .into_element()
+            })
+            .width(DialogWidth::FourXl),
+        );
 
     page("Components")
         .bottom_bar(|| action_bar(vec![meta(text("3 prompts · 6 samples")).into_element(), button("Start run").into_element()]).into_element())

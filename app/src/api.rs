@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 pub use stellarator_api as types;
 
 use types::{EndpointOut, EndpointTestIn, EndpointTestOut, Location, RunOut};
+use types::{ExportPreviewOut, HubPushIn, HubPushOut, Page, RunLive, SampleOut, SampleSummary};
 
 /// A request that failed: the server's `detail` message or what went wrong on the way.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +157,71 @@ impl Api {
         self.put("/api/settings", &serde_json::json!({ "hf_token": token })).await
     }
 
+    // ----------------------------------------------------------------------------- a run
+
+    /// `GET /api/runs/{id}/live`: the run, its requests in flight, its rates and its throughput
+    /// readings.
+    pub async fn run_live(&self, id: i64) -> Result<RunLive, ApiError> {
+        self.get(&format!("/api/runs/{id}/live")).await
+    }
+
+    /// `PATCH /api/runs/{id}` with `body` (`{"name": …}` or `{"concurrency": …}`).
+    pub async fn update_run(&self, id: i64, body: &serde_json::Value) -> Result<RunOut, ApiError> {
+        self.patch(&format!("/api/runs/{id}"), body).await
+    }
+
+    /// `POST /api/runs/{id}/{action}`: `action` is "pause", "resume" or "retry-failed".
+    pub async fn run_action(&self, id: i64, action: &str) -> Result<RunOut, ApiError> {
+        self.post(&format!("/api/runs/{id}/{action}"), &serde_json::json!({})).await
+    }
+
+    /// `DELETE /api/runs/{id}`: the run and its samples.
+    pub async fn delete_run(&self, id: i64) -> Result<(), ApiError> {
+        self.delete(&format!("/api/runs/{id}")).await
+    }
+
+    /// `GET /api/runs/{id}/samples` with `query` (`status=failed&limit=1`, no `?`): a page of the
+    /// run's samples.
+    pub async fn run_samples(&self, id: i64, query: &str) -> Result<Page<SampleSummary>, ApiError> {
+        let sep = if query.is_empty() { "" } else { "?" };
+        self.get(&format!("/api/runs/{id}/samples{sep}{query}")).await
+    }
+
+    /// `GET /api/samples/{id}`: one sample in full.
+    pub async fn sample(&self, id: i64) -> Result<SampleOut, ApiError> {
+        self.get(&format!("/api/samples/{id}")).await
+    }
+
+    /// `GET /api/endpoints/{id}`: one endpoint.
+    pub async fn endpoint(&self, id: i64) -> Result<EndpointOut, ApiError> {
+        self.get(&format!("/api/endpoints/{id}")).await
+    }
+
+    // ----------------------------------------------------------------------------- exports
+
+    /// `POST {base}/preview` (`base` is `/api/runs/4/export` or `/api/preference-sets/2/export`):
+    /// how many records an export with `options` holds, what it skips, and its first record.
+    pub async fn export_preview(&self, base: &str, options: &serde_json::Value) -> Result<ExportPreviewOut, ApiError> {
+        self.post(&format!("{base}/preview"), options).await
+    }
+
+    /// `POST {base}/hub`: pushes the export with `options` to a Hugging Face dataset repository.
+    pub async fn export_hub(&self, base: &str, options: &serde_json::Value, target: &HubPushIn) -> Result<HubPushOut, ApiError> {
+        self.post(&format!("{base}/hub"), &serde_json::json!({ "options": options, "target": target })).await
+    }
+
+    /// Saves what `GET path` answers (an export file) in the Downloads folder, under the file name
+    /// the server sends (`fallback` without one), never over an existing file, as the Tauri app
+    /// saved its downloads. The path it was saved at.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn download(&self, path: &str, fallback: &str) -> Result<std::path::PathBuf, ApiError> {
+        match &self.transport {
+            Transport::InProcess { router, runtime } => {
+                in_process::download(router.clone(), runtime, path, fallback.to_owned()).await
+            }
+        }
+    }
+
     /// `GET` `path` and read its JSON.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
         let (status, body) = self.send(Method::Get, path, None).await?;
@@ -267,6 +333,97 @@ mod in_process {
         });
         task.await.map_err(|e| ApiError::transport(format!("The request did not finish: {e}")))?
     }
+
+    /// `GET path`, its body written to a free file name in the Downloads folder as it streams (an
+    /// export can be larger than [`MAX_BODY`]). A file left half written is removed.
+    pub(super) async fn download(
+        router: axum::Router,
+        runtime: &tokio::runtime::Handle,
+        path: &str,
+        fallback: String,
+    ) -> Result<std::path::PathBuf, ApiError> {
+        use std::io::Write;
+
+        let request = Request::builder()
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
+            .map_err(|e| ApiError::transport(e.to_string()))?;
+        let task = runtime.spawn(async move {
+            let response = router.oneshot(request).await.unwrap_or_else(|never| match never {});
+            let status = response.status().as_u16();
+            if !(200..300).contains(&status) {
+                let bytes = response.into_body().collect().await.map(|b| b.to_bytes().to_vec()).unwrap_or_default();
+                return Err(super::error_of(status, &bytes));
+            }
+            let name = response
+                .headers()
+                .get(header::CONTENT_DISPOSITION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(super::disposition_name)
+                .unwrap_or(fallback);
+            let dir = dirs::download_dir()
+                .or_else(dirs::home_dir)
+                .ok_or_else(|| ApiError::transport("There is no Downloads folder to save the file in."))?;
+            let failed = |e: std::io::Error| ApiError::transport(format!("Couldn’t save the file. {e}"));
+            std::fs::create_dir_all(&dir).map_err(failed)?;
+            let dest = super::free_path(&dir, &name);
+            let mut file = std::fs::File::create(&dest).map_err(failed)?;
+            let mut body = response.into_body();
+            let written: Result<(), ApiError> = async {
+                while let Some(frame) = body.frame().await {
+                    let frame = frame.map_err(|e| ApiError::answered(status, e.to_string()))?;
+                    if let Some(data) = frame.data_ref() {
+                        file.write_all(data).map_err(failed)?;
+                    }
+                }
+                file.flush().map_err(failed)
+            }
+            .await;
+            if let Err(e) = written {
+                drop(file);
+                let _ = std::fs::remove_file(&dest);
+                return Err(e);
+            }
+            Ok(dest)
+        });
+        task.await.map_err(|e| ApiError::transport(format!("The request did not finish: {e}")))?
+    }
+}
+
+/// The file name of a `Content-Disposition` header (`attachment; filename="run-4-sft.jsonl"`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn disposition_name(header: &str) -> Option<String> {
+    let at = header.find("filename=")?;
+    let rest = header[at + "filename=".len()..].trim();
+    let name = match rest.strip_prefix('"') {
+        Some(quoted) => quoted.split('"').next().unwrap_or_default(),
+        None => rest.split(';').next().unwrap_or_default().trim(),
+    };
+    // Only a name: no folders, nothing hidden.
+    let name = name.rsplit(['/', '\\']).next().unwrap_or_default().trim_start_matches('.');
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// `name` with " (n)" before its last extension: "run.jsonl" and 2 give "run (2).jsonl".
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn numbered(name: &str, n: u32) -> String {
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => name.split_at(i),
+        _ => (name, ""),
+    };
+    format!("{stem} ({n}){ext}")
+}
+
+/// `dir/name` when it is free, else `dir/<stem> (n).<ext>` with the first free n (as the Tauri
+/// app's downloads).
+#[cfg(not(target_arch = "wasm32"))]
+fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let path = dir.join(name);
+    if !path.exists() {
+        return path;
+    }
+    (1u32..).map(|n| dir.join(numbered(name, n))).find(|p| !p.exists()).unwrap_or(path)
 }
 
 /// The JSON of a response: `T` on success, else the error ([`error_of`]).
@@ -362,6 +519,18 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.fields.get("base_url").map(String::as_str), Some("Must start with http."));
         assert_eq!(decode::<Health>(500, b"").unwrap_err().message, "The Stellarator server hit an error. Check its logs, then retry.");
+    }
+
+    #[test]
+    fn downloads_keep_the_servers_file_name() {
+        assert_eq!(disposition_name("attachment; filename=\"run-4-sft.jsonl\"").as_deref(), Some("run-4-sft.jsonl"));
+        assert_eq!(disposition_name("attachment; filename=pairs.csv; size=3").as_deref(), Some("pairs.csv"));
+        assert_eq!(disposition_name("attachment; filename=\"../../.bashrc\"").as_deref(), Some("bashrc"));
+        assert_eq!(disposition_name("attachment"), None);
+        // The counter goes before the last extension, as the Tauri app named its downloads.
+        assert_eq!(numbered("qwen3.5-run-sft.jsonl", 1), "qwen3.5-run-sft (1).jsonl");
+        assert_eq!(numbered("export", 2), "export (2)");
+        assert_eq!(numbered(".hidden", 1), ".hidden (1)");
     }
 
     #[test]

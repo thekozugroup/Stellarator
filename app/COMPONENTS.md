@@ -55,14 +55,20 @@ Start the desktop app with `STELLARATOR_GALLERY=1` to see every component on one
 | Progress | `progress_bar(done, failed, total, width)`, `progress_bar_full(..)` | `shared/progress-bar.tsx` |
 | Table | `header(&COLUMNS)`, `row(cells, last_fn)`, `cell(Column::fixed("Status", 160.0), el)` | `ui/table.tsx` |
 | Block states | `error_block(message, Some(retry))`, `empty_block(children, action)`, `empty_text(..)`, `bar(w, h)` | `shared/block-states.tsx` |
-| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)`; `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
+| Dialog | `dialog(open, label, \|\| content).width(DialogWidth::Xl).gap(0.0)` (`Xs` 320, `Sm` 384, `Xl` 576, `FourXl` 896 px); `dialog_header`, `dialog_description`, `dialog_footer(vec![buttons])` | `ui/dialog.tsx` |
 | Alert | `alert(open, \|\| Alert { .. }, busy_fn, error_fn, on_action)` | `ui/alert-dialog.tsx` |
-| Side sheet | `side_sheet(open, label, \|\| content)`; `sheet_header`, `sheet_close(open)` | `ui/sheet.tsx` (side right) |
-| Toasts | `toast_success(msg)`, `toast_error(msg)`, `toast_info(msg)` (the shell holds the toaster) | `ui/sonner.tsx` |
+| Side sheet | `side_sheet(open, label, \|\| content)` (448 px), `side_sheet_width(open, label, 720.0, \|\| content)`; `sheet_header`, `sheet_close(open)` | `ui/sheet.tsx` (side right) |
+| Toasts | `toast_success(msg)`, `toast_error(msg)`, `toast_info(msg)`, `toast_error_with(msg, second_line)` (the shell holds the toaster) | `ui/sonner.tsx` |
 | Action bar | `page(..).bottom_bar(\|\| action_bar(vec![..]).into_element())` | `shared/action-bar.ts` |
 | Model text | `model_text(\|\| text, None)`, `text_mode_toggle()` | `shared/model-text.tsx`, `shared/markdown.tsx` |
 | Materials | `material_bar(view())`, `material_thick(..)`, `material_float(..)`, `dialog_muted` | index.css `material-*` |
 | Type | `theme::text::{body, label, meta, title, mono, display}` | Tailwind text classes |
+
+Screens share one more piece outside `ui/`: the export dialogs' layout, `screens::export`
+(`components/export/export-dialog-shell.tsx`). `export_dialog(open, ExportSpec { .. }, || options)`
+draws the preview, the Hugging Face push and Download; the options are built with
+`choice_group`, `option_group` + `check_option` and `file_type_group`. Its module comment shows how
+to use it; `screens/export/run.rs` (a run's export) is the worked example.
 
 Text fields are 13 px, 16 px below 768 px (mono fields stay 12 px), as the web UI's inputs.
 Inside a dialog or sheet, `muted` cards read as `dialog_muted` (the ground in light, the raised
