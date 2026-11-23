@@ -537,7 +537,7 @@ jobs:
           timeout 1500 docker run --rm --name install-check -v "$PWD:/w" -w /w ubuntu:24.04 bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
-            # The runner's own mirror (Azure) is much faster than archive.ubuntu.com from a runner.
+            # The runner mirror (Azure) is much faster than archive.ubuntu.com from a runner.
             src=/etc/apt/sources.list.d/ubuntu.sources
             if [ -f "$src" ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g" "$src"; fi
             echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/80retries
