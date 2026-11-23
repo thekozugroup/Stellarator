@@ -174,13 +174,15 @@ pub fn screen(id: i64) -> impl IntoElement {
         })
     };
     let meta = move || -> AnyElement {
-        match set.with(|l| l.loaded().cloned()) {
+        match set.get() {
             // On a phone the row wraps within the column: the page gives its meta no width of its own.
-            Some(s) => view()
+            Load::Loaded(s) => view()
                 .max_w(move || px(if is_phone() { (window_width() - 2.0 * column_padding()).max(0.0) } else { 100_000.0 }))
                 .child(chip_row_of(&s, now))
                 .into_element(),
-            None => bar(288.0, 20.0).into_element(),
+            Load::Loading => bar(288.0, 20.0).into_element(),
+            // A failed read has no chips to stand in for: the error block says why.
+            Load::Failed(_) => view().into_element(),
         }
     };
     let actions = move || -> AnyElement {
@@ -324,7 +326,7 @@ pub fn screen(id: i64) -> impl IntoElement {
         .child(when(failed, move || {
             let message = set.with(|l| l.error().unwrap_or_default().to_owned());
             error_block(
-                message,
+                format!("Couldn’t load this prompt set. {message}"),
                 Some(Rc::new(move || {
                     set.set(Load::Loading);
                     fetch_set();
