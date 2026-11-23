@@ -636,7 +636,7 @@ impl RunTask {
             r = ToolRuntime::open(&self.db, snapshot, settings, self.allow_stdio_mcp) => r,
             _ = self.stop_workers.cancelled() => return Ok(()),
         };
-        let rt = opened.map_err(|e| format!("Paused: {} Resume to try again.", e.trim_end_matches('.').to_string() + "."))?;
+        let rt = opened.map_err(|e| format!("Paused: {e}"))?;
         *self.tools.lock() = Some(Arc::new(rt));
         Ok(())
     }

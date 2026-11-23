@@ -49,6 +49,9 @@ impl Session {
     /// A new connection, unless another caller already replaced the one that failed (`seen`).
     async fn reconnect(&self, seen: u64) -> Result<Arc<Connection>, McpError> {
         let _g = self.reconnecting.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(McpError("the session was closed".into()));
+        }
         let (conn, generation) = self.current();
         if generation != seen {
             if let Some(c) = conn {

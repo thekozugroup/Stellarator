@@ -68,7 +68,8 @@ impl ToolRuntime {
             let row = stellarator_mcp::store::fetch(db, s.server_id).await.map_err(|e| e.to_string())?;
             let Some(row) = row else {
                 return Err(format!(
-                    "The MCP server \"{}\" this run uses was deleted. Add it again and start a new run with it.",
+                    "The MCP server \"{}\" this run uses was deleted. Add it again and start a new run with it, or \
+                     start one with other servers.",
                     s.name
                 ));
             };
@@ -83,7 +84,9 @@ impl ToolRuntime {
         let opened =
             futures::future::join_all(configs.into_iter().map(|c| async move {
                 let name = c.name.clone();
-                Session::open(c, CHECK_TIMEOUT).await.map_err(|e| format!("Couldn't start the MCP server \"{name}\": {e}"))
+                Session::open(c, CHECK_TIMEOUT)
+                    .await
+                    .map_err(|e| format!("Couldn't start the MCP server \"{name}\": {} Resume to try again.", e.0.trim_end()))
             }))
             .await;
         let mut sessions = Vec::new();
