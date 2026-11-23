@@ -3,7 +3,12 @@
 # screenshot the window (with transparent corners) and the screen, read its memory, let the probe
 # post its clicks, screenshot again, then quit it the way the user does and say how it ended.
 #
-#   app/ci/macos-session.sh <name> <Stellarator.app> <data folder> <out folder> <window-id tool> [VAR=value ...]
+#   app/ci/macos-session.sh <name> <Stellarator.app> <data folder> <out folder> <window-id tool> [VAR=value ...] [-arg ...]
+#
+# VAR=value goes into the app's environment, -arg (and the word after it) onto its command line
+# (`-AppleInterfaceStyle Dark` sets the app's appearance through the argument domain). With
+# LAUNCHER=open in this script's environment the app starts through Launch Services (`open`), as
+# from the Finder: it then shows in the Dock and comes to the front.
 #
 # Writes <out>/<name>.log (the app's output: probe lines and logs), <name>.png (the window),
 # <name>-screen.png, <name>-after-clicks.png, <name>-corner.txt and <name>-memory.txt.
@@ -12,9 +17,29 @@ name=$1 app=$2 data=$3 out=$4 window_id=$5
 shift 5
 exe="$app/Contents/MacOS/Stellarator"
 mkdir -p "$out" "$data"
+vars=(STELLARATOR_PROBE=1 STELLARATOR_DATA_DIR="$data" RUST_LOG=info)
+args=()
+for item in "$@"; do
+  case "$item" in
+    *=*) vars+=("$item") ;;
+    *) args+=("$item") ;;
+  esac
+done
 
-env STELLARATOR_PROBE=1 STELLARATOR_DATA_DIR="$data" RUST_LOG=info "$@" "$exe" > "$out/$name.log" 2>&1 &
-pid=$!
+if [ "${LAUNCHER:-exec}" = open ]; then
+  : > "$out/$name.log"
+  env_args=()
+  for v in "${vars[@]}"; do env_args+=(--env "$v"); done
+  open -n "$app" "${env_args[@]}" --stdout "$out/$name.log" --stderr "$out/$name.log" ${args[@]+--args "${args[@]}"}
+  pid=""
+  for _ in $(seq 1 30); do
+    pid=$(pgrep -n -f "$exe") && break
+    sleep 1
+  done
+else
+  env "${vars[@]}" "$exe" ${args[@]+"${args[@]}"} > "$out/$name.log" 2>&1 &
+  pid=$!
+fi
 wid=""
 for _ in $(seq 1 60); do
   if ! kill -0 "$pid" 2> /dev/null; then

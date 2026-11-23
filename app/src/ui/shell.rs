@@ -281,11 +281,11 @@ fn phone_page(screen_title: &'static str, actions: Option<AnyElement>, content: 
         )
 }
 
-/// With the probe on (`STELLARATOR_PROBE=1`), `band` says on standard output when a press reaches
+/// With the click probe on (`STELLARATOR_PROBE=1`), `band` says on standard output when a press reaches
 /// it, so CI can tell whether clicks in the macOS title bar band get to the app's views. Off, it is
 /// unchanged (a press handler would keep the band from moving the window).
 fn probe_press(band: View, what: &'static str) -> View {
-    if crate::platform::probing() {
+    if crate::platform::probe_mode() == crate::platform::ProbeMode::Clicks {
         band.on_press(move || crate::platform::probe_line(format!("press reached nsh: {what}")))
     } else {
         band

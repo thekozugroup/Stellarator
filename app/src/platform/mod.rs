@@ -11,6 +11,9 @@
 //! and to the New run button's place at (window width - 80, 26); views of the app that receive them
 //! print `probe: press reached nsh: <what>`. The app keeps running.
 //!
+//! `STELLARATOR_PROBE=drag` prints the same readings and posts no clicks; the band then has no
+//! press handlers, so CI can drag the window by it with the system's mouse.
+//!
 //! `STELLARATOR_NO_TOOLBAR=1` leaves the toolbar out, to compare the window without it.
 
 #[cfg(target_os = "macos")]
@@ -22,10 +25,31 @@ use nsh_core::prelude::*;
 
 use crate::theme::shape::WindowShape;
 
-/// Whether the probe runs (`STELLARATOR_PROBE=1`).
+/// Whether the probe runs (`STELLARATOR_PROBE=1`, or `drag`).
 pub fn probing() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("STELLARATOR_PROBE").is_ok_and(|v| v == "1"))
+    probe_mode() != ProbeMode::Off
+}
+
+/// What the probe does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeMode {
+    Off,
+    /// `STELLARATOR_PROBE=1`: the readings, then clicks posted to the top band, which the band's
+    /// views report.
+    Clicks,
+    /// `STELLARATOR_PROBE=drag`: the readings only, and the band without press handlers, so a drag
+    /// from outside (CI's mouse) can move the window.
+    Drag,
+}
+
+/// The probe's mode, from `STELLARATOR_PROBE`.
+pub fn probe_mode() -> ProbeMode {
+    static MODE: std::sync::OnceLock<ProbeMode> = std::sync::OnceLock::new();
+    *MODE.get_or_init(|| match std::env::var("STELLARATOR_PROBE").as_deref() {
+        Ok("1") => ProbeMode::Clicks,
+        Ok("drag") => ProbeMode::Drag,
+        _ => ProbeMode::Off,
+    })
 }
 
 /// A probe line on standard output (flushed: CI reads it while the app runs).
@@ -79,6 +103,9 @@ pub fn setup_window() {
                 match run_on_main_thread(macos::report).await {
                     Ok(lines) => lines.into_iter().for_each(probe_line),
                     Err(e) => probe_line(format!("macOS report failed: {e}")),
+                }
+                if probe_mode() != ProbeMode::Clicks {
+                    return;
                 }
                 timer(Duration::from_secs(7)).await;
                 match run_on_main_thread(macos::post_band_clicks).await {

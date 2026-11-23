@@ -123,8 +123,10 @@ jobs:
           done
           ls -la Stellarator-nsh-x64.dmg
 
-      - name: Window helper
-        run: swiftc -O app/ci/window-id.swift -o "$RUNNER_TEMP/window-id"
+      - name: Window and mouse helpers
+        run: |
+          swiftc -O app/ci/window-id.swift -o "$RUNNER_TEMP/window-id"
+          swiftc -O app/ci/mouse-drag.swift -o "$RUNNER_TEMP/mouse-drag"
 
       - name: Run (light, empty data folder, then seeded, then without the toolbar)
         run: |
@@ -137,6 +139,16 @@ jobs:
           app/ci/macos-session.sh light "$app" "$data" "$out" "$RUNNER_TEMP/window-id"
           app/ci/macos-session.sh light-no-toolbar "$app" "$data" "$out" "$RUNNER_TEMP/window-id" STELLARATOR_NO_TOOLBAR=1
 
+      # Opened through Launch Services (as from the Finder), so the app shows in the Dock with its
+      # icon in the screen shot.
+      - name: Run (opened with open, as from the Finder)
+        env:
+          LAUNCHER: open
+        run: |
+          app/ci/macos-session.sh light-open "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id"
+
+      # The system setting first (`defaults write -g AppleInterfaceStyle`, which running sessions
+      # may not pick up), then the app's own argument domain, which AppKit reads at launch.
       - name: Run (dark)
         run: |
           app="$PWD/app/.nsh/out/Stellarator.app"
@@ -144,6 +156,11 @@ jobs:
           echo "AppleInterfaceStyle: $(defaults read -g AppleInterfaceStyle 2>&1)"
           app/ci/macos-session.sh dark "$app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id"
           defaults delete -g AppleInterfaceStyle || true
+          app/ci/macos-session.sh dark-argument "$app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" -AppleInterfaceStyle Dark
+
+      - name: Drag the window by its top band
+        run: |
+          app/ci/macos-drag.sh "$PWD/app/.nsh/out/Stellarator.app" "$RUNNER_TEMP/data" "$PWD/shots" "$RUNNER_TEMP/window-id" "$RUNNER_TEMP/mouse-drag"
 
       - uses: actions/upload-artifact@v7
         if: always()
