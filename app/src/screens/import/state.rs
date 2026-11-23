@@ -146,6 +146,11 @@ impl State {
         limit_error(self.limit_count()).map(str::to_owned)
     }
 
+    /// "Skip rows" or "Import at most" holds something that is not a row count (reactive).
+    pub fn limits_invalid(&self) -> bool {
+        self.offset_error().is_some() || self.limit_error().is_some()
+    }
+
     /// The mapping the controls describe.
     pub fn mapping(&self) -> ImportMapping {
         let limit = self.limit_count().value().filter(|n| *n > 0);
@@ -166,7 +171,7 @@ impl State {
     }
 
     /// The preview to show for the current source, or none while there is no source (or a row
-    /// limit is invalid).
+    /// limit is invalid: see [`State::limits_invalid`]).
     pub fn request(&self) -> Option<Request> {
         let source = match self.tab.get() {
             SourceTab::HuggingFace => {
@@ -197,7 +202,7 @@ impl State {
                 (ImportSource::Paste { text }, "paste".to_owned())
             }
         };
-        if self.offset_error().is_some() || self.limit_error().is_some() {
+        if self.limits_invalid() {
             return None;
         }
         Some(Request { source: source.0, mapping: self.mapping(), identity: source.1 })

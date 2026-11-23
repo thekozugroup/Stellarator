@@ -108,14 +108,18 @@ pub fn screen() -> impl IntoElement {
         let n = wait_ticket.get_untracked() + 1;
         wait_ticket.set(n);
         let Some(req) = request else {
-            // No source (or a row limit to fix): nothing to show.
+            // Nothing to ask for: an answer on its way is dropped.
             fetch_ticket.update(|t| *t += 1);
             last_request.set(None);
-            data_identity.set(String::new());
-            st.preview.set(None);
-            st.preview_error.set(None);
             st.fetching.set(false);
             st.settling.set(false);
+            // A row limit to fix keeps the last preview, and with it the settings it shows (the
+            // limit field among them, with its error under it). No source: nothing to show.
+            if !(st.source_present() && st.limits_invalid()) {
+                data_identity.set(String::new());
+                st.preview.set(None);
+                st.preview_error.set(None);
+            }
             return;
         };
         let previous = last_request.get_untracked();
