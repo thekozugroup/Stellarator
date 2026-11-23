@@ -41,10 +41,21 @@ struct Stash {
     prefill: Prefill,
 }
 
+/// The entry of a stash kept for the next New run entry made: the screen is made as soon as the
+/// route changes, inside `nav::push`, before the new entry's id is known to [`open`].
+const NEXT_ENTRY: u64 = u64::MAX;
+
 /// Shows New run starting from `prefill`: a run to copy, an endpoint and a prompt set.
 pub fn open(prefill: Prefill) {
+    global::<Stash>().set(Stash { entry: NEXT_ENTRY, prefill });
     nav::push(Route::NewRun, None);
     keep_for_return(prefill);
+}
+
+/// The prefill of screen entry `entry`: the stash's when it was kept for that entry, or for the
+/// next one made (it then belongs to `entry`); nothing otherwise.
+fn prefill_for(stash: Stash, entry: u64) -> Option<Prefill> {
+    (stash.entry == entry || stash.entry == NEXT_ENTRY).then_some(stash.prefill)
 }
 
 /// Keeps `prefill` for the shown entry: the form made again for it (after Edit endpoint, or a
@@ -63,7 +74,11 @@ enum Stage {
 
 /// The New run screen.
 pub fn screen() -> impl IntoElement {
-    let prefill = global::<Stash>().with_untracked(|s| if s.entry == nav::current_entry() { s.prefill } else { Prefill::default() });
+    let prefill = prefill_for(global::<Stash>().get_untracked(), nav::current_entry());
+    if let Some(p) = prefill {
+        keep_for_return(p);
+    }
+    let prefill = prefill.unwrap_or_default();
     let data = Data { endpoints: signal(Load::Loading), sets: signal(Load::Loading), runs: signal(Load::Loading) };
     let source = signal(Load::<Run>::Loading);
     let state = State::new();
@@ -244,4 +259,19 @@ fn skeleton() -> impl IntoElement {
         .bg(move || nsh_base::theme().muted)
         .label("Loading endpoints and prompt sets")
         .children(rows.collect::<Vec<_>>())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_prefill_reaches_the_screen_made_inside_push() {
+        let run = Prefill { from: Some(4), endpoint: None, prompt_set: None };
+        // Kept for the next entry before the push: the screen made for entry 9 takes it.
+        assert_eq!(prefill_for(Stash { entry: NEXT_ENTRY, prefill: run }, 9), Some(run));
+        // Kept for entry 9 (made again after a size change): only entry 9 takes it.
+        assert_eq!(prefill_for(Stash { entry: 9, prefill: run }, 9), Some(run));
+        assert_eq!(prefill_for(Stash { entry: 9, prefill: run }, 12), None);
+    }
 }
