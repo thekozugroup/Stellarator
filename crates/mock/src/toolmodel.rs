@@ -17,6 +17,8 @@
 //! prompt makes the first call's arguments invalid JSON. Once the results are in, it answers with
 //! a sentence quoting them. Each answer has a thinking trace in `delta.reasoning`.
 //!
+//! When the only tool is a Code Mode tool, `mock-tools` writes JavaScript instead ([`crate::codemodel`]).
+//!
 //! Requests are checked as a strict server would: every `tool` message must answer a call of the
 //! assistant message before it, every call must be answered before the next turn, and assistant
 //! messages must not carry earlier reasoning (`reasoning`, `reasoning_content`, `thinking`).
@@ -158,14 +160,18 @@ pub fn plan(model: &str, body: &Value, rng: &mut fastrand::Rng) -> Plan {
     if let Err(e) = check_messages(&messages) {
         return Plan::Reject(e);
     }
-    let tools: Vec<(String, Value)> = body
+    let tools: Vec<(String, Value, String)> = body
         .get("tools")
         .and_then(Value::as_array)
         .map(|list| {
             list.iter()
                 .filter_map(|t| {
                     let f = t.get("function")?;
-                    Some((f.get("name")?.as_str()?.to_string(), f.get("parameters").cloned().unwrap_or(json!({}))))
+                    Some((
+                        f.get("name")?.as_str()?.to_string(),
+                        f.get("parameters").cloned().unwrap_or(json!({})),
+                        f.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+                    ))
                 })
                 .collect()
         })
@@ -205,13 +211,23 @@ pub fn plan(model: &str, body: &Value, rng: &mut fastrand::Rng) -> Plan {
             content: format!("Using the tool results: {}. Final answer: {}.", quoted.join("; "), rng.i64(2..=999)),
         };
     }
-    let named: Vec<&(String, Value)> = prompt
+    if crate::codemodel::is_code_tool(&tools) {
+        if let Some((code, reasoning)) = crate::codemodel::write_code(&tools[0].2, &prompt, hash(&prompt)) {
+            let arguments = if prompt.contains("badargs") {
+                "{\"code\": \"unterminated".to_string()
+            } else {
+                json!({ "code": code }).to_string()
+            };
+            return Plan::Calls { reasoning, calls: vec![Call { id: call_id(rng), name: tools[0].0.clone(), arguments }] };
+        }
+    }
+    let named: Vec<&(String, Value, String)> = prompt
         .split_whitespace()
         .filter_map(|w| w.strip_prefix("tool:"))
         .map(|w| w.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')))
-        .filter_map(|n| tools.iter().find(|(t, _)| t == n || t.ends_with(&format!("__{n}"))))
+        .filter_map(|n| tools.iter().find(|(t, _, _)| t == n || t.ends_with(&format!("__{n}"))))
         .collect();
-    let picked: Vec<&(String, Value)> = if !named.is_empty() {
+    let picked: Vec<&(String, Value, String)> = if !named.is_empty() {
         named
     } else if tools.len() >= 2 && (prompt.contains("both") || hash(&prompt) % 3 == 0) {
         vec![&tools[0], &tools[1]]
@@ -220,7 +236,7 @@ pub fn plan(model: &str, body: &Value, rng: &mut fastrand::Rng) -> Plan {
     };
     let mut calls: Vec<Call> = picked
         .iter()
-        .map(|(name, params)| Call { id: call_id(rng), name: name.clone(), arguments: arguments(params, &prompt).to_string() })
+        .map(|(name, params, _)| Call { id: call_id(rng), name: name.clone(), arguments: arguments(params, &prompt).to_string() })
         .collect();
     if prompt.contains("badargs") {
         calls[0].arguments = "{\"query\": \"unterminated".into();

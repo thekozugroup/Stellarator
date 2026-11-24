@@ -514,3 +514,121 @@ fn preference_records_with_tools_golden() {
     let o: PrefExportOptions = serde_json::from_value(json!({"format": "dpo", "file_type": "parquet"})).unwrap();
     assert!(pref_records_with_tools(&o, &tool_sample(), &r, &prompt(), &json!({}), pair)[0]["tools"].is_string());
 }
+
+// ------------------------------------------------------------------------------ code mode
+
+use stellarator_core::schemas::{CodeExecution, CodeMethod, CodeNamespace, CodeStatus, CodeToolSnapshot, InnerToolCall};
+
+const CODE_TOOL: &str = r#"{"type": "function", "function": {"name": "codemode", "description": "Execute code to achieve a goal.\n\nAvailable:\ntype AddInput = {\n    a: number;\n    b: number;\n}\ntype AddOutput = unknown\n\ndeclare const docs: {\n\t/**\n\t * Add two numbers.\n\t */\n\tadd: (input: AddInput) => Promise<AddOutput>;\n}", "parameters": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"code": {"type": "string", "description": "JavaScript async arrow function to execute"}}, "required": ["code"], "additionalProperties": false}}}"#;
+const CODE: &str = "async () => {\n  const s = await docs.add({ a: 2, b: 2 });\n  console.log(\"sum\", s);\n  return s;\n}";
+
+fn code_run() -> RunInfo {
+    RunInfo {
+        tools: Some(ToolSnapshot {
+            servers: vec![ToolSnapshotServer {
+                server_id: 3,
+                name: "docs".into(),
+                transport: McpTransport::Http,
+                tools: vec![ToolSnapshotTool { name: "docs.add".into(), server_tool: "add".into() }],
+            }],
+            definitions: vec![serde_json::from_str(CODE_TOOL).unwrap()],
+            mode: ToolMode::Code,
+            code: Some(CodeToolSnapshot {
+                tool_name: "codemode".into(),
+                types: "...".into(),
+                namespaces: vec![CodeNamespace {
+                    name: "docs".into(),
+                    methods: vec![CodeMethod { name: "add".into(), server_id: 3, server: "docs".into(), tool: "add".into() }],
+                }],
+                format: "@cloudflare/codemode 0.5.6".into(),
+            }),
+        }),
+        ..run(json!({}))
+    }
+}
+
+/// The model writes code, the code calls docs.add, and the model answers from the result.
+fn code_sample() -> SampleRec {
+    let execution = CodeExecution {
+        code: CODE.into(),
+        status: CodeStatus::Ok,
+        calls: vec![InnerToolCall {
+            method: "docs.add".into(),
+            server: "docs".into(),
+            tool: "add".into(),
+            arguments: json!({"a": 2, "b": 2}),
+            result: "4".into(),
+            is_error: false,
+            truncated: false,
+            latency_ms: 3,
+        }],
+        logs: vec!["sum 4".into()],
+        result: Some("4".into()),
+        error: None,
+        latency_ms: 12,
+    };
+    let arguments = serde_json::to_string(&json!({"code": CODE})).unwrap();
+    SampleRec {
+        reasoning: Some("It is 4.".into()),
+        response: Some("2+2 is 4.".into()),
+        trace: Some(vec![
+            turn(Some("I'll add them in code."), "", &[("call_1", "codemode", &arguments)]),
+            TraceMessage::Tool(TraceTool {
+                tool_call_id: "call_1".into(),
+                name: "codemode".into(),
+                server: String::new(),
+                content: r#"{"result":4,"logs":["sum 4"]}"#.into(),
+                is_error: false,
+                truncated: false,
+                latency_ms: 15,
+                code: Some(execution),
+            }),
+            turn(Some("It is 4."), "2+2 is 4.", &[]),
+        ]),
+        tool_calls: 1,
+        ..sample(None, "")
+    }
+}
+
+fn code_sft(format: SftFormat, p: P) -> String {
+    crate::pyjson::to_string(&sft_record(&tool_opts(format, p, "jsonl"), &code_run(), &code_sample(), &prompt(), None))
+}
+
+#[test]
+fn messages_in_code_mode_golden() {
+    // The code tool's definition, its call with the code, and the result the model saw; nothing of
+    // what ran inside the execution.
+    let want = golden_messages(
+        r#"{"role": "assistant", "content": "<think>\nI'll add them in code.\n</think>\n\n", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "codemode", "arguments": {"code": "async () => {\n  const s = await docs.add({ a: 2, b: 2 });\n  console.log(\"sum\", s);\n  return s;\n}"}}}]}, {"role": "tool", "tool_call_id": "call_1", "name": "codemode", "content": "{\"result\":4,\"logs\":[\"sum 4\"]}"}, {"role": "assistant", "content": "<think>\nIt is 4.\n</think>\n\n2+2 is 4."}"#,
+        &format!("[{CODE_TOOL}]"),
+    );
+    assert_eq!(code_sft(SftFormat::Messages, P::ThinkTags), want);
+}
+
+#[test]
+fn sharegpt_in_code_mode_golden() {
+    let want = r#"{"conversations": [{"from": "system", "value": "Be brief."}, {"from": "human", "value": "What is 2+2? é"}, {"from": "function_call", "value": "<think>\nI'll add them in code.\n</think>\n\n{\"name\": \"codemode\", \"arguments\": {\"code\": \"async () => {\\n  const s = await docs.add({ a: 2, b: 2 });\\n  console.log(\\\"sum\\\", s);\\n  return s;\\n}\"}}"}, {"from": "observation", "value": "{\"result\":4,\"logs\":[\"sum 4\"]}"}, {"from": "gpt", "value": "<think>\nIt is 4.\n</think>\n\n2+2 is 4."}], "tools": "[{\"name\": \"codemode\", \"description\": \"Execute code to achieve a goal.\\n\\nAvailable:\\ntype AddInput = {\\n    a: number;\\n    b: number;\\n}\\ntype AddOutput = unknown\\n\\ndeclare const docs: {\\n\\t/**\\n\\t * Add two numbers.\\n\\t */\\n\\tadd: (input: AddInput) => Promise<AddOutput>;\\n}\", \"parameters\": {\"$schema\": \"http://json-schema.org/draft-07/schema#\", \"type\": \"object\", \"properties\": {\"code\": {\"type\": \"string\", \"description\": \"JavaScript async arrow function to execute\"}}, \"required\": [\"code\"], \"additionalProperties\": false}}]"}"#;
+    assert_eq!(code_sft(SftFormat::Sharegpt, P::ThinkTags), want);
+}
+
+#[test]
+fn raw_in_code_mode_keeps_the_inner_calls() {
+    let rec = sft_record(&tool_opts(SftFormat::Raw, P::ThinkTags, "jsonl"), &code_run(), &code_sample(), &prompt(), None);
+    assert_eq!(rec["tools"], json!([serde_json::from_str::<Value>(CODE_TOOL).unwrap()]));
+    assert_eq!(
+        crate::pyjson::to_string(&rec["trace"][1]),
+        r#"{"role": "tool", "tool_call_id": "call_1", "name": "codemode", "server": "", "content": "{\"result\":4,\"logs\":[\"sum 4\"]}", "is_error": false, "truncated": false, "latency_ms": 15, "code": {"code": "async () => {\n  const s = await docs.add({ a: 2, b: 2 });\n  console.log(\"sum\", s);\n  return s;\n}", "status": "ok", "calls": [{"method": "docs.add", "server": "docs", "tool": "add", "arguments": {"a": 2, "b": 2}, "result": "4", "is_error": false, "truncated": false, "latency_ms": 3}], "logs": ["sum 4"], "result": "4", "error": null, "latency_ms": 12}}"#
+    );
+    // Conversational preference records hold only what the model saw.
+    let o: PrefExportOptions = serde_json::from_value(json!({"format": "kto", "reasoning": "omit"})).unwrap();
+    let defs = code_run().tools.unwrap().definitions;
+    let pair = Some(PairTools { chosen: &defs, rejected: &defs });
+    let kto = pref_records_with_tools(&o, &code_sample(), &code_sample(), &prompt(), &json!({}), pair);
+    assert!(kto[0]["completion"][1].get("code").is_none());
+    assert_eq!(kto[0]["completion"][1]["content"], r#"{"result":4,"logs":["sum 4"]}"#);
+    // The dataset card names the mode.
+    assert_eq!(
+        crate::hub::tools_line(&code_run()).unwrap(),
+        "Tools: Code Mode (@cloudflare/codemode 0.5.6): one tool, `codemode`, whose JavaScript calls docs.add (MCP servers: docs)"
+    );
+}

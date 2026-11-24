@@ -14,22 +14,30 @@
 //! - An answer that still calls tools after `max_rounds` rounds ends the sample as truncated, with
 //!   finish reason `tool_rounds`; those calls are not run.
 //! - Token usage is summed over the sample's requests.
+//!
+//! Code mode (`params.tools.mode` = `code`): the request's one tool is the code tool; each of its
+//! calls runs the model's JavaScript in a sandbox (`stellarator_codemode::execute`), whose
+//! namespace methods call the MCP tools through [`CodeHost`]. The tool message is what Cloudflare's
+//! Code Mode sends the model; the trace also keeps what happened inside (`TraceTool.code`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures::future::BoxFuture;
 use futures::StreamExt;
+use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 use sqlx::SqlitePool;
+use stellarator_codemode::{execute, unknown_tool_message, unwrap_mcp_result, CallAnswer, Host, Limits};
 use stellarator_core::config::STDIO_MCP_BLOCKED;
 use stellarator_core::schemas::{
-    McpTransport, Phase, RunParams, RunTools, ToolCall, ToolChoice, ToolSnapshot, TraceAssistant, TraceMessage,
-    TraceTool,
+    LiveCode, McpTransport, Phase, RunParams, RunTools, ToolCall, ToolChoice, ToolMode, ToolSnapshot, TraceAssistant,
+    TraceMessage, TraceTool,
 };
 use stellarator_mcp::result::truncate;
 use stellarator_mcp::store::CHECK_TIMEOUT;
-use stellarator_mcp::Session;
+use stellarator_mcp::{RawOutcome, Session};
 
 use crate::generation::{
     generate_round, Backoff, GenerateError, GenerationResult, Progress, ProgressSink, RequestTools, ServerCaps,
@@ -51,6 +59,8 @@ pub struct ToolRuntime {
     pub snapshot: ToolSnapshot,
     pub settings: RunTools,
     routes: HashMap<String, Route>,
+    /// Code mode: namespace, then method.
+    code_routes: HashMap<String, HashMap<String, Route>>,
     sessions: Vec<Arc<Session>>,
 }
 
@@ -112,7 +122,108 @@ impl ToolRuntime {
                 );
             }
         }
-        Ok(ToolRuntime { snapshot, settings, routes, sessions })
+        let by_id: HashMap<i64, &Arc<Session>> = snapshot.servers.iter().map(|s| s.server_id).zip(&sessions).collect();
+        let mut code_routes: HashMap<String, HashMap<String, Route>> = HashMap::new();
+        for ns in snapshot.code.iter().flat_map(|c| &c.namespaces) {
+            for m in &ns.methods {
+                if let Some(session) = by_id.get(&m.server_id) {
+                    code_routes.entry(ns.name.clone()).or_default().insert(
+                        m.name.clone(),
+                        Route { session: (*session).clone(), server: m.server.clone(), server_tool: m.tool.clone() },
+                    );
+                }
+            }
+        }
+        Ok(ToolRuntime { snapshot, settings, routes, code_routes, sessions })
+    }
+
+    /// True when the run uses code mode.
+    pub fn code_mode(&self) -> bool {
+        self.snapshot.mode == ToolMode::Code && self.snapshot.code.is_some()
+    }
+
+    fn tool_timeout(&self) -> Duration {
+        Duration::from_secs_f64(self.settings.tool_timeout_s.max(0.001))
+    }
+
+    /// Code mode: run one answer's calls of the code tool, at most [`PARALLEL_CALLS`] at a time.
+    /// Err only when an MCP server's connection failed even after a reconnect.
+    pub async fn run_code_calls(
+        &self,
+        calls: &[ToolCall],
+        round: i64,
+        sink: &dyn ProgressSink,
+    ) -> Result<Vec<TraceTool>, String> {
+        let Some(code) = self.snapshot.code.as_ref() else { return Ok(Vec::new()) };
+        let options = self.settings.code.clone().unwrap_or_default();
+        let budget = (options.max_result_tokens > 0)
+            .then(|| (options.max_result_chars.unwrap_or(options.max_result_tokens * 4), options.max_result_tokens));
+        let limits = Limits {
+            timeout: Duration::from_secs_f64(options.timeout_s.max(0.001)),
+            memory_bytes: (options.memory_limit_mb.max(1) as usize) << 20,
+            budget,
+            store_chars: self.settings.max_result_chars.max(1) as usize,
+        };
+        let namespaces: Vec<String> = code.namespaces.iter().map(|n| n.name.clone()).collect();
+        let host = CodeHost { rt: self };
+        // Each execution's calls, summed for the live view.
+        let live = Mutex::new(vec![LiveCode::default(); calls.len()]);
+        let report = |i: usize, l: &LiveCode| {
+            let all = {
+                let mut slots = live.lock();
+                if let Some(slot) = slots.get_mut(i) {
+                    *slot = l.clone();
+                }
+                LiveCode {
+                    calls: slots.iter().map(|s| s.calls).sum(),
+                    running: slots.iter().flat_map(|s| s.running.iter().cloned()).collect(),
+                }
+            };
+            sink.on_reset(&Progress {
+                phase: Phase::Code,
+                round,
+                tools: vec![code.tool_name.clone()],
+                code: Some(all),
+                ..Progress::default()
+            });
+        };
+        report(0, &LiveCode::default());
+        let (limits, namespaces, host, report) = (&limits, &namespaces, &host, &report);
+        // Built first, as in run_sample: a closure inside the stream would not be Send.
+        let runs: Vec<BoxFuture<'_, Result<TraceTool, String>>> = calls
+            .iter()
+            .enumerate()
+            .map(|(i, c)| -> BoxFuture<'_, Result<TraceTool, String>> {
+                Box::pin(async move {
+                    let started = Instant::now();
+                    if c.name != code.tool_name {
+                        return Ok(TraceTool {
+                            tool_call_id: c.id.clone(),
+                            name: c.name.clone(),
+                            server: String::new(),
+                            content: unknown_tool_message(&c.name, &code.tool_name),
+                            is_error: true,
+                            truncated: false,
+                            latency_ms: 0,
+                            code: None,
+                        });
+                    }
+                    let progress = move |l: &LiveCode| report(i, l);
+                    let e = execute(&code.tool_name, &c.arguments, namespaces, limits, host, &progress).await?;
+                    Ok(TraceTool {
+                        tool_call_id: c.id.clone(),
+                        name: c.name.clone(),
+                        server: String::new(),
+                        content: e.content,
+                        is_error: e.is_error,
+                        truncated: e.truncated,
+                        latency_ms: started.elapsed().as_millis() as i64,
+                        code: e.detail,
+                    })
+                })
+            })
+            .collect();
+        futures::stream::iter(runs).buffered(PARALLEL_CALLS).collect::<Vec<_>>().await.into_iter().collect()
     }
 
     /// End every session (stops stdio servers).
@@ -123,7 +234,7 @@ impl ToolRuntime {
     /// Run one call. Err only when the server's connection failed even after a reconnect.
     pub async fn call(&self, call: &ToolCall) -> Result<TraceTool, String> {
         let started = Instant::now();
-        let timeout = Duration::from_secs_f64(self.settings.tool_timeout_s.max(0.001));
+        let timeout = self.tool_timeout();
         let (server, text, is_error) = match self.routes.get(&call.name) {
             None => {
                 let mut names: Vec<&str> = self.routes.keys().map(String::as_str).collect();
@@ -148,6 +259,44 @@ impl ToolRuntime {
             truncated,
             latency_ms: started.elapsed().as_millis() as i64,
             code: None,
+        })
+    }
+}
+
+/// The namespaces' side of code mode: each method calls its MCP tool on the run's session, and the
+/// code gets what Cloudflare's MCP integration gives it (`unwrapMcpResult`); failures throw with
+/// the MCP TypeScript SDK's messages (`MCP error <code>: <message>`).
+pub struct CodeHost<'a> {
+    rt: &'a ToolRuntime,
+}
+
+impl CodeHost<'_> {
+    fn route(&self, namespace: &str, method: &str) -> Option<&Route> {
+        self.rt.code_routes.get(namespace).and_then(|m| m.get(method))
+    }
+}
+
+impl Host for CodeHost<'_> {
+    fn route(&self, namespace: &str, method: &str) -> Option<(String, String)> {
+        CodeHost::route(self, namespace, method).map(|r| (r.server.clone(), r.server_tool.clone()))
+    }
+
+    fn call(&self, namespace: String, method: String, arguments: Option<Map<String, Value>>) -> BoxFuture<'_, CallAnswer> {
+        Box::pin(async move {
+            let Some(route) = CodeHost::route(self, &namespace, &method) else {
+                return CallAnswer::Thrown(format!("Tool \"{method}\" not found"));
+            };
+            match route.session.call_raw(&route.server_tool, arguments, self.rt.tool_timeout()).await {
+                Err(e) => CallAnswer::Fatal(e),
+                Ok(RawOutcome::Result(v)) => match unwrap_mcp_result(&v) {
+                    Ok(value) => CallAnswer::Value(value),
+                    Err(message) => CallAnswer::Thrown(message),
+                },
+                Ok(RawOutcome::TimedOut(_)) => CallAnswer::Thrown("MCP error -32001: Request timed out".into()),
+                Ok(RawOutcome::ServerError { code, message }) => CallAnswer::Thrown(format!("MCP error {code}: {message}")),
+                Ok(RawOutcome::Failed(text)) => CallAnswer::Thrown(text),
+                Ok(RawOutcome::Transport(e)) => CallAnswer::Fatal(e),
+            }
         })
     }
 }
@@ -218,6 +367,7 @@ pub async fn run_sample(
     let mut convo: Vec<Value> = prepared.to_vec();
     let mut trace: Vec<TraceMessage> = Vec::new();
     let mut executed: i64 = 0;
+    let mut inner: i64 = 0;
     let (mut prompt_tokens, mut completion_tokens, mut reasoning_tokens) = (None, None, None);
     let (mut retries, mut chunks, mut ttft_ms) = (0_i64, 0_i64, None);
     let mut round: i64 = 1;
@@ -264,9 +414,23 @@ pub async fn run_sample(
                 chunks,
                 ..r
             };
-            return Ok(SampleOutcome { result, trace, tool_calls: executed, inner_tool_calls: 0 });
+            return Ok(SampleOutcome { result, trace, tool_calls: executed, inner_tool_calls: inner });
         }
         convo.push(assistant_request_message(&r.response, &r.tool_calls));
+        if rt.code_mode() {
+            let results = rt
+                .run_code_calls(&r.tool_calls, round, sink)
+                .await
+                .map_err(|message| GenerateError::Failed { message, attempts: retries + 1 })?;
+            for t in results {
+                inner += t.code.as_ref().map_or(0, |c| c.calls.len() as i64);
+                convo.push(json!({"role": "tool", "tool_call_id": t.tool_call_id, "content": t.content}));
+                trace.push(TraceMessage::Tool(t));
+                executed += 1;
+            }
+            round += 1;
+            continue;
+        }
         sink.on_reset(&Progress {
             phase: Phase::Tool,
             round,

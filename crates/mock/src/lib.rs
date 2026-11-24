@@ -12,7 +12,7 @@
 //! | `mock-plain` | no thinking at all |
 //! | `mock-flaky` | like `mock-reasoning-content`, but 20% of requests fail with 500 or 429 |
 //! | `mock-truncating` | stops with finish_reason "length" |
-//! | `mock-tools` | calls a tool from the request's `tools`, then answers using the results ([`toolmodel`]) |
+//! | `mock-tools` | calls a tool from the request's `tools`, then answers using the results ([`toolmodel`]); given only a Code Mode tool, writes JavaScript that calls its namespaces ([`codemodel`]) |
 //! | `mock-tools-loop` | calls a tool on every request and never answers |
 //! | `mock-no-tools` | answers 400 to requests with `tools`, as vLLM without a tool parser |
 //!
@@ -43,6 +43,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 pub mod mcp;
+pub mod codemodel;
 pub mod toolmodel;
 
 pub const MODELS: [&str; 10] = [

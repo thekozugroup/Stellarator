@@ -1,7 +1,8 @@
 //! Runs: create, watch, steer (pause, resume, concurrency, retry failed) and browse samples.
 //!
 //! A run with tools (`params.tools`) checks each selected MCP server when it is created and stores
-//! the exact tool definitions it will send (`runs.tools`, returned as `RunOut.tools`).
+//! the exact tool definitions it will send (`runs.tools`, returned as `RunOut.tools`): one function
+//! per tool in direct mode, the code tool with its generated types in code mode.
 
 use std::sync::Arc;
 
@@ -18,7 +19,7 @@ use sqlx::Row;
 use stellarator_core::config::STDIO_MCP_BLOCKED;
 use stellarator_core::schemas::{
     McpTransport, MetricPoint, Page, RunCreate, RunLive, RunOut, RunParams, RunPatch, RunStatus, RunTools, SampleOut,
-    SampleStatus, SampleSummary, ToolSnapshot, TraceMessage,
+    SampleStatus, SampleSummary, ToolMode, ToolSnapshot, TraceMessage,
 };
 use stellarator_core::{time, ApiError, ApiJson, ApiQuery};
 use stellarator_mcp::names::{snapshot, Selected};
@@ -205,7 +206,37 @@ async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, Ap
         };
         selected.push(Selected { server_id: row.id, name: row.name.clone(), transport: row.transport(), tools });
     }
+    if t.mode == ToolMode::Code {
+        return code_snapshot(selected, t.code.clone().unwrap_or_default()).await;
+    }
     snapshot(&selected).map_err(|e| ApiError::field("params.tools", e))
+}
+
+/// Code mode: the one code tool, its description holding the types Cloudflare's generator writes
+/// for the picked tools (on a blocking thread: the generator runs in QuickJS).
+async fn code_snapshot(
+    selected: Vec<Selected>,
+    options: stellarator_core::schemas::CodeModeOptions,
+) -> Result<ToolSnapshot, ApiError> {
+    let servers: Vec<stellarator_codemode::SelectedServer> = selected
+        .into_iter()
+        .map(|s| stellarator_codemode::SelectedServer {
+            server_id: s.server_id,
+            name: s.name,
+            transport: s.transport,
+            tools: s.tools,
+        })
+        .collect();
+    let built = tokio::task::spawn_blocking(move || stellarator_codemode::code_tool(&servers, &options))
+        .await
+        .map_err(anyhow::Error::from)?
+        .map_err(|e| ApiError::field("params.tools", e))?;
+    Ok(ToolSnapshot {
+        servers: built.servers,
+        definitions: vec![built.definition],
+        mode: ToolMode::Code,
+        code: Some(built.snapshot),
+    })
 }
 
 // ------------------------------------------------------------------------------------ runs

@@ -62,11 +62,21 @@ fn card(title: &str, split: &str, lines: &[String]) -> String {
     s
 }
 
-/// "Tools: lookup, add (MCP servers: docs)" for a run with tools.
+/// "Tools: lookup, add (MCP servers: docs)" for a run with tools; in code mode, the code tool and
+/// the methods its code calls.
 pub fn tools_line(run: &RunInfo) -> Option<String> {
     let t = run.tools.as_ref()?;
     let names: Vec<String> = t.servers.iter().flat_map(|s| s.tools.iter().map(|x| x.name.clone())).collect();
     let servers: Vec<&str> = t.servers.iter().map(|s| s.name.as_str()).collect();
+    if let Some(code) = &t.code {
+        return Some(format!(
+            "Tools: Code Mode ({}): one tool, `{}`, whose JavaScript calls {} (MCP servers: {})",
+            code.format,
+            code.tool_name,
+            names.join(", "),
+            servers.join(", ")
+        ));
+    }
     Some(format!("Tools: {} (MCP servers: {})", names.join(", "), servers.join(", ")))
 }
 
