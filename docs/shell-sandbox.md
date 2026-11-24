@@ -168,10 +168,10 @@ that take microseconds on small files.
 
 | | Linux | macOS |
 | --- | --- | --- |
-| One `true`, start to result | 4 to 6 ms (GitHub's `ubuntu-latest`, debug build) | about 30 ms (`macos-26-intel`), most of it `sandbox-exec` reading the profile |
+| One `true`, start to result (median of 20, debug build) | 1.4 ms on GitHub's `ubuntu-latest`, 2.5 ms on a 4-core VM | 30 to 41 ms on `macos-26-intel`, most of it `sandbox-exec` reading the profile |
 | Held per running command | one thread (256 KiB stack), three descriptors | one thread, two descriptors |
 | While it runs | the supervisor answers `chmod`, `setsid` and process starts: about one round trip between two threads each | every half second: one pass over the process list |
-| Commands at once | no cap in the crate; 24 workspaces with 5 commands each ran in parallel in the tests | the same |
+| Commands at once | no cap in the crate. 24 workspaces with 5 commands each, in parallel: 0.22 s in all on the 4-core VM | no cap; the same test passes |
 
 ## Linux
 
@@ -185,7 +185,8 @@ installed and no helper program is started.
 | Supervisor | A thread per command that answers the calls neither can decide alone (seccomp user notification): `chmod`, `chown` and `utimes` (done by the supervisor on a file it has checked is in the sample's folder), `setsid` (allowed, and the session recorded for the kill), new processes (counted), another process's limits and priority, and signals before Linux 6.12. |
 
 **Requirements.** Linux 6.2 or later (Landlock ABI 3, the first that covers `truncate`), with
-Landlock in the kernel's `lsm=` list, on x86-64 or arm64.
+Landlock in the kernel's `lsm=` list, on x86-64 or arm64. The tests ran on x86-64 (Linux 6.18 and
+7.0); the arm64 build compiles and has not been run.
 
 | Distribution | Kernel | Sandbox |
 | --- | --- | --- |
@@ -246,7 +247,7 @@ or a recent Windows build, and a shell is not part of Windows.
 | --- | --- | --- | --- | --- |
 | Restricted token (`CreateRestrictedToken` with `WRITE_RESTRICTED`) and a job object | yes, by access lists on the allowed folders | no: a write-restricted token reads what the user reads | no | nothing. Codex CLI's unelevated mode is this; it points proxy variables at a closed port instead of blocking the network |
 | A separate local account for commands, with firewall filters on that account | yes | yes | yes | one installation with administrator rights. Codex CLI's elevated mode and Anthropic's sandbox-runtime (`srt-win`) are this |
-| AppContainer | yes | yes, by default | by capability; sandbox-runtime calls its enforcement cooperative and does not use it | a shell that starts in an AppContainer; not tried |
+| AppContainer | yes | yes, by default | by capability | a shell that starts in an AppContainer; not tried. sandbox-runtime does not use MXC's AppContainer tiers and calls their network enforcement cooperative |
 | Microsoft MXC, BaseContainer tier | yes | yes | yes | a Windows build that has it (sandbox-runtime measured Windows 11 25H2, build 26200); Microsoft's `mxc-sdk`. Both Codex CLI and sandbox-runtime offer it as an option |
 
 A job object gives the limits on every row: processor time, memory, the number of processes, and
@@ -321,7 +322,9 @@ macOS tests on `macos-26-intel` and the Windows tests on `windows-latest`, in th
 job of `.github/workflows/ci.yml`. Each job prints a report of what a command sees inside the
 sandbox.
 
-On Linux three of the rules were checked the other way round as well: with the supervisor's answer
-for `chmod` taken out, `chmod 777` on a file outside the workspace succeeded under Landlock alone;
-with its answer for signals taken out on ABI 3, `kill -9` ended a process outside; with its answer
-for `prlimit` taken out, a CPU limit of zero was set on a process outside.
+On Linux four of the rules were checked the other way round as well, by taking one answer of the
+supervisor out and running the test again. Without its answer for `chmod`, `chmod 777` on a file
+outside the workspace succeeded under Landlock alone. Without its answer for signals on ABI 3,
+`kill -9` ended a process outside. Without its answer for `prlimit`, a CPU limit of zero was set
+on a process outside. Without its record of `setsid`, a process in a session of its own outlived
+the timeout.

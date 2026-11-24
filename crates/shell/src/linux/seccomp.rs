@@ -19,6 +19,7 @@ use libc::{c_long, sock_filter};
 // Classic BPF.
 const LD_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
 const JEQ: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
+#[cfg(target_arch = "x86_64")]
 const JGE: u16 = 0x35; // BPF_JMP | BPF_JGE | BPF_K
 const JSET: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
 const AND: u16 = 0x54; // BPF_ALU | BPF_AND | BPF_K
@@ -110,6 +111,7 @@ impl Program {
 
 /// The calls the supervisor answers because they change a file's mode, owner or times.
 pub(crate) fn metadata_calls() -> Vec<c_long> {
+    #[allow(unused_mut)]
     let mut calls = vec![
         libc::SYS_fchmod,
         libc::SYS_fchmodat,

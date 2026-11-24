@@ -63,7 +63,10 @@ enum Change {
 /// Where the caller's two times are, by the layout of the call that passed them.
 enum Times {
     Timespec(u64),
+    /// The older calls, which only x86-64 still has.
+    #[cfg(target_arch = "x86_64")]
     Timeval(u64),
+    #[cfg(target_arch = "x86_64")]
     Utimbuf(u64),
 }
 
@@ -403,9 +406,9 @@ fn metadata_call(nr: c_long, a: &[u64; 6]) -> Option<(Target, Change)> {
         follow: flags & libc::AT_SYMLINK_NOFOLLOW as u64 == 0,
         empty_ok: flags & libc::AT_EMPTY_PATH as u64 != 0,
     };
-    let cwd = libc::AT_FDCWD as u64;
     #[cfg(target_arch = "x86_64")]
     {
+        let cwd = libc::AT_FDCWD as u64;
         let nofollow = libc::AT_SYMLINK_NOFOLLOW as u64;
         match nr {
             libc::SYS_chmod => return Some((path(cwd, a[0], 0), Change::Mode(a[1] as u32))),
@@ -499,11 +502,14 @@ fn read_longs<const N: usize>(tid: i32, addr: u64) -> Result<[i64; N], i32> {
 fn load_times(tid: i32, times: &Times) -> Result<Option<[libc::timespec; 2]>, i32> {
     let spec = |sec: i64, nsec: i64| libc::timespec { tv_sec: sec, tv_nsec: nsec };
     Ok(match *times {
-        Times::Timespec(0) | Times::Timeval(0) | Times::Utimbuf(0) => None,
+        Times::Timespec(0) => None,
+        #[cfg(target_arch = "x86_64")]
+        Times::Timeval(0) | Times::Utimbuf(0) => None,
         Times::Timespec(addr) => {
             let [s0, n0, s1, n1] = read_longs::<4>(tid, addr)?;
             Some([spec(s0, n0), spec(s1, n1)])
         }
+        #[cfg(target_arch = "x86_64")]
         Times::Timeval(addr) => {
             let [s0, u0, s1, u1] = read_longs::<4>(tid, addr)?;
             if !(0..1_000_000).contains(&u0) || !(0..1_000_000).contains(&u1) {
@@ -511,6 +517,7 @@ fn load_times(tid: i32, times: &Times) -> Result<Option<[libc::timespec; 2]>, i3
             }
             Some([spec(s0, u0 * 1000), spec(s1, u1 * 1000)])
         }
+        #[cfg(target_arch = "x86_64")]
         Times::Utimbuf(addr) => {
             let [access, modification] = read_longs::<2>(tid, addr)?;
             Some([spec(access, 0), spec(modification, 0)])
