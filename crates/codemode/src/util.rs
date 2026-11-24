@@ -90,8 +90,10 @@ pub(crate) fn describe(ctx: &Ctx<'_>, e: rquickjs::Error) -> String {
     e.to_string()
 }
 
-/// Run `f` on the helper thread and wait for its answer.
-fn run<T: Send + 'static>(f: impl for<'js> FnOnce(&Ctx<'js>, &Object<'js>) -> T + Send + 'static) -> T {
+/// Run `f` on the helper thread and wait for its answer; Err when the thread stopped while it ran.
+fn run<T: Send + 'static>(
+    f: impl for<'js> FnOnce(&Ctx<'js>, &Object<'js>) -> T + Send + 'static,
+) -> Result<T, String> {
     let (tx, rx) = mpsc::channel();
     let job: Job = Box::new(move |ctx, helpers| {
         let _ = tx.send(f(ctx, helpers));
@@ -103,7 +105,7 @@ fn run<T: Send + 'static>(f: impl for<'js> FnOnce(&Ctx<'js>, &Object<'js>) -> T 
         w.tx = spawn();
         let _ = w.tx.send(job);
     }
-    rx.recv().expect("the code mode helper thread answers")
+    rx.recv().map_err(|_| "The code mode helper stopped; try again.".to_string())
 }
 
 /// Call `helpers[name](...args)` with string arguments; Err is the exception's text.
@@ -120,7 +122,7 @@ fn call_helper(name: &'static str, args: Vec<String>) -> Result<Option<String>, 
             return Ok(None);
         }
         v.as_string().and_then(|s| s.to_string().ok()).map(Some).ok_or_else(|| "a helper returned a non-string".to_string())
-    })
+    })?
 }
 
 /// Cloudflare's `normalizeCode`: markdown fences stripped, and code that is not one arrow function

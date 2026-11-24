@@ -108,6 +108,9 @@ struct Outcome {
     logs: Vec<String>,
 }
 
+/// A call waiting for a free slot: its index, the code's call id, namespace, method, arguments.
+type Queued = (usize, f64, String, String, Option<Map<String, Value>>);
+
 struct CancelOnDrop(Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
@@ -158,7 +161,7 @@ pub async fn execute(
     let mut calls: Vec<(InnerToolCall, Instant, bool)> = Vec::new();
     let mut live = LiveCode::default();
     let mut running = FuturesUnordered::<BoxFuture<'_, (usize, f64, CallAnswer)>>::new();
-    let mut queued: VecDeque<(usize, f64, String, String, Option<Map<String, Value>>)> = VecDeque::new();
+    let mut queued: VecDeque<Queued> = VecDeque::new();
     let start_call = |i: usize, id: f64, ns: String, name: String, args: Option<Map<String, Value>>| -> BoxFuture<'_, (usize, f64, CallAnswer)> {
         Box::pin(async move { (i, id, host.call(ns, name, args).await) })
     };

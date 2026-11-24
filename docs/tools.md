@@ -268,7 +268,7 @@ default to Cloudflare's:
 | `description` | null: Cloudflare's | up to 100,000 characters | The description template; the first `{{types}}` is replaced by the generated declarations |
 | `namespaces` | `servers` | `servers`, `codemode` | `servers`: one global per server, named after it (`github.list_issues(...)`). `codemode`: every tool under `codemode` (`codemode.list_issues(...)`); tools of the same name on two servers become `<server>__<tool>` |
 | `timeout_s` | 60 | 1 to 3600 | Seconds one execution may take, its MCP calls included |
-| `max_result_tokens` | 6000 | 0, or 100 to 1,000,000 | The budget of the result and of the console output the model sees, at 4 characters per token; larger values are shrunk as Cloudflare's `truncateResult` does it. 0: no truncation |
+| `max_result_tokens` | 6000 | 0, or 100 to 1,000,000 | The budget of the result and of the console output the model sees, at 4 characters per token; a result or console output over it is shrunk as Cloudflare's `truncateResult` does it. 0: no truncation |
 | `max_result_chars` | null | 1,000 to 4,000,000 | The same budget in characters; overrides `max_result_tokens * 4` |
 | `memory_limit_mb` | 128 | 8 to 1024 | Memory one execution may use (a Workers isolate's limit is 128 MB) |
 
@@ -401,7 +401,7 @@ Code mode does not train a model for other code-calling formats:
 | Format | How it differs |
 | --- | --- |
 | Goose's Code Mode extension | Also JavaScript, but the model gets three meta-tools to find tools, read their interfaces and run code, and the code runs in Deno. Its tool names, descriptions and results differ from Cloudflare's |
-| Anthropic's programmatic tool calling | The model writes Python that runs in the `code_execution` tool's container and calls the tools that allow it; results come back as tool results inside that container. Not JavaScript, and a different message format |
+| Anthropic's programmatic tool calling | The model writes Python that runs in the `code_execution` tool's container. The code calls the tools marked as callable from code; their results go back to the code instead of the model's context, and the code's output returns to the model. Python, not JavaScript, in the Messages API's own blocks |
 
 The tool's name and description template can be changed per run, but the code's format (an async
 arrow function in JavaScript), the namespaces' declarations and the result format stay Cloudflare's.
@@ -476,6 +476,12 @@ Its tools: `lookup` (a short text about the query), `add`, `fail` (always an err
 parser) exercise the loop. Writing `tool:<name>` in a prompt makes `mock-tools` call that tool, and
 `both` makes it call two tools in parallel.
 
+In code mode, `mock-tools` writes JavaScript for the code tool, calling the methods its description
+declares. `code:plain`, `code:fence` (in a markdown fence, ending in an expression), `code:loop`,
+`code:catch` (a try/catch around `fail`), `code:parallel` (`Promise.all`), `code:throw`,
+`code:slow`, `code:syntax`, `code:infinite` and `code:memory` in the prompt pick the code; without
+one, a hash of the prompt picks among the first five.
+
 ## API
 
 | Route | Body | Answer |
@@ -488,6 +494,7 @@ parser) exercise the loop. Writing `tool:<name>` in a prompt makes `mock-tools` 
 | `DELETE /api/mcp-servers/{id}` | | 204; 409 while a running run uses it |
 | `POST /api/mcp-servers/{id}/check` | | `McpServerOut` with `status` `ok` or `error` |
 
-A run's tools are `params.tools` in `POST /api/runs`; `RunOut.tools` holds the definitions sent.
-A sample's `trace` (in `GET /api/samples/{id}`) lists the messages after the prompt, and
-`tool_calls` counts the calls run. The types are in [`crates/api`](../crates/api/src/lib.rs).
+A run's tools are `params.tools` in `POST /api/runs` (`mode` and `code` for code mode);
+`RunOut.tools` holds the definitions sent, and in code mode `RunOut.tools.code` the namespaces. A
+sample's `trace` (in `GET /api/samples/{id}`) lists the messages after the prompt, `tool_calls`
+counts the calls run and `inner_tool_calls` the MCP calls made by code. The types are in [`crates/api`](../crates/api/src/lib.rs).
