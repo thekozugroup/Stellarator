@@ -1,0 +1,245 @@
+(version 1)
+
+; The Seatbelt profile of one Stellarator command (crates/shell).
+;
+; Adapted from OpenAI's Codex CLI (https://github.com/openai/codex, Apache-2.0):
+; codex-rs/sandboxing/src/seatbelt_base_policy.sbpl and
+; codex-rs/sandboxing/src/seatbelt_read_only_platform_defaults.sbpl. Modified: one profile; no
+; terminal devices; no lookup of user accounts or of the per-user temporary folder; /private/etc,
+; /Library and /private/var/db narrowed to lists; Homebrew, the developer tools and the sample's
+; folder added. See crates/shell/NOTICE.md.
+;
+; A later rule wins over an earlier one for the same operation. (param "FOLDER") is the sample's
+; folder, the one place a command may write.
+
+; Everything is refused unless a rule below allows it.
+(deny default)
+
+; ---- Processes --------------------------------------------------------------------------------
+
+; Programs a command starts run under this same profile.
+(allow process-exec)
+(allow process-fork)
+; A command signals and inspects its own processes only.
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+
+; Programs that run as root whoever starts them. The profile holds for root too, but root reads
+; more of what the rules below allow.
+(deny process-exec
+  (literal "/usr/bin/sudo")
+  (literal "/usr/bin/su")
+  (literal "/usr/bin/login")
+  (literal "/usr/bin/newgrp")
+  (literal "/usr/bin/crontab")
+  (literal "/usr/bin/at")
+  (literal "/usr/bin/atq")
+  (literal "/usr/bin/atrm")
+  (literal "/usr/bin/batch"))
+
+; ---- Facts about the machine --------------------------------------------------------------------
+
+(allow sysctl-read
+  (sysctl-name "hw.activecpu")
+  (sysctl-name "hw.busfrequency_compat")
+  (sysctl-name "hw.byteorder")
+  (sysctl-name "hw.cacheconfig")
+  (sysctl-name "hw.cachelinesize_compat")
+  (sysctl-name "hw.cpufamily")
+  (sysctl-name "hw.cpufrequency")
+  (sysctl-name "hw.cpufrequency_compat")
+  (sysctl-name "hw.cputype")
+  (sysctl-name "hw.l1dcachesize_compat")
+  (sysctl-name "hw.l1icachesize_compat")
+  (sysctl-name "hw.l2cachesize_compat")
+  (sysctl-name "hw.l3cachesize_compat")
+  (sysctl-name "hw.logicalcpu")
+  (sysctl-name "hw.logicalcpu_max")
+  (sysctl-name "hw.machine")
+  (sysctl-name "hw.memsize")
+  (sysctl-name "hw.model")
+  (sysctl-name "hw.ncpu")
+  (sysctl-name "hw.nperflevels")
+  (sysctl-name-prefix "hw.optional.")
+  (sysctl-name "hw.packages")
+  (sysctl-name "hw.pagesize")
+  (sysctl-name "hw.pagesize_compat")
+  (sysctl-name-prefix "hw.perflevel")
+  (sysctl-name "hw.physicalcpu")
+  (sysctl-name "hw.physicalcpu_max")
+  (sysctl-name "hw.tbfrequency_compat")
+  (sysctl-name "hw.vectorunit")
+  (sysctl-name "kern.argmax")
+  (sysctl-name "kern.hostname")
+  (sysctl-name "kern.maxfilesperproc")
+  (sysctl-name "kern.maxproc")
+  (sysctl-name "kern.ngroups")
+  (sysctl-name "kern.osproductversion")
+  (sysctl-name "kern.osrelease")
+  (sysctl-name "kern.ostype")
+  (sysctl-name "kern.osvariant_status")
+  (sysctl-name "kern.osversion")
+  (sysctl-name-prefix "kern.proc.pgrp.")
+  (sysctl-name-prefix "kern.proc.pid.")
+  (sysctl-name "kern.secure_kernel")
+  ; Python's ProcessPoolExecutor asks for this through sysconf(_SC_SEM_NSEMS_MAX).
+  (sysctl-name "kern.sysv.semmns")
+  (sysctl-name "kern.usrstack64")
+  (sysctl-name "kern.version")
+  (sysctl-name "machdep.cpu.brand_string")
+  (sysctl-name-prefix "machdep.cpu.")
+  (sysctl-name "sysctl.proc_cputype")
+  (sysctl-name "vm.loadavg"))
+
+; Java reads the processor type through a call that counts as a write.
+(allow sysctl-write (sysctl-name "kern.grade_cputype"))
+
+(allow iokit-open (iokit-registry-entry-class "RootDomainUserClient"))
+
+; ---- Between a command's own processes ----------------------------------------------------------
+
+; POSIX semaphores: Python's multiprocessing locks.
+(allow ipc-posix-sem)
+; OpenMP runtimes (PyTorch, libomp) register themselves under this name.
+(allow ipc-posix-shm-read-data ipc-posix-shm-write-create ipc-posix-shm-write-unlink
+  (ipc-posix-name-regex #"^/__KMP_REGISTERED_LIB_[0-9]+$"))
+
+; Unix socket pairs. Binding or connecting a socket is a network operation, refused below.
+(allow system-socket (socket-domain AF_UNIX))
+
+; ---- System services ----------------------------------------------------------------------------
+
+; Logging and notifications that system libraries reach at startup. Not here on purpose:
+; com.apple.system.opendirectoryd.libinfo (the names of user accounts: `ls -l` shows the user's
+; number instead) and com.apple.bsd.dirhelper (the per-user temporary folder; TMPDIR is set).
+(allow mach-lookup
+  (global-name "com.apple.analyticsd")
+  (global-name "com.apple.analyticsd.messagetracer")
+  (global-name "com.apple.diagnosticd")
+  (global-name "com.apple.logd")
+  (global-name "com.apple.logd.events")
+  (global-name "com.apple.secinitd")
+  (global-name "com.apple.system.logger")
+  (global-name "com.apple.system.notification_center"))
+
+(allow ipc-posix-shm-read*
+  (ipc-posix-name "apple.shm.notification_center"))
+
+(allow system-mac-syscall (mac-policy-name "vnguard"))
+(allow system-mac-syscall
+  (require-all
+    (mac-policy-name "Sandbox")
+    (mac-syscall-number 67)))
+(allow system-fsctl (fsctl-command FSIOC_CAS_BSDFLAGS))
+
+; ---- Files: what a command reads ----------------------------------------------------------------
+
+; Loading code needs an open file first, so the rules for reading decide.
+(allow file-map-executable)
+
+; The system's programs, libraries and data.
+(allow file-read* file-test-existence
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/usr/local")
+  (subpath "/opt/homebrew")
+  (subpath "/System/Library")
+  (subpath "/System/Cryptexes")
+  (subpath "/System/iOSSupport")
+  (subpath "/System/Volumes/Preboot/Cryptexes")
+  (subpath "/Library/Apple")
+  (subpath "/Library/Developer/CommandLineTools")
+  (subpath "/Applications/Xcode.app/Contents/Developer")
+  (subpath "/Library/Frameworks")
+  (subpath "/Library/Java")
+  (subpath "/private/var/db/timezone")
+  (subpath "/private/var/select")
+  (literal "/private/var/db/xcode_select_link")
+  (literal "/private/var/db/eligibilityd/eligibility.plist"))
+
+; Homebrew keeps the data of local databases and their settings beside its programs.
+(deny file-read*
+  (subpath "/usr/local/var")
+  (subpath "/usr/local/etc")
+  (subpath "/opt/homebrew/var")
+  (subpath "/opt/homebrew/etc"))
+(allow file-read* file-test-existence
+  (subpath "/usr/local/etc/openssl")
+  (subpath "/usr/local/etc/openssl@1.1")
+  (subpath "/usr/local/etc/openssl@3")
+  (subpath "/usr/local/etc/ca-certificates")
+  (subpath "/usr/local/etc/gnutls")
+  (subpath "/opt/homebrew/etc/openssl@1.1")
+  (subpath "/opt/homebrew/etc/openssl@3")
+  (subpath "/opt/homebrew/etc/ca-certificates")
+  (subpath "/opt/homebrew/etc/gnutls"))
+
+; /private/etc is a list, not the folder. passwd and group hold system accounts only on macOS.
+(allow file-read* file-test-existence
+  (literal "/private/etc/passwd")
+  (literal "/private/etc/group")
+  (literal "/private/etc/hosts")
+  (literal "/private/etc/resolv.conf")
+  (literal "/private/etc/protocols")
+  (literal "/private/etc/services")
+  (literal "/private/etc/localtime")
+  (literal "/private/etc/shells")
+  (literal "/private/etc/paths")
+  (subpath "/private/etc/paths.d")
+  (literal "/private/etc/manpaths")
+  (subpath "/private/etc/manpaths.d")
+  (subpath "/private/etc/ssl")
+  (literal "/private/etc/gitconfig")
+  (literal "/private/etc/krb5.conf")
+  (literal "/private/var/run/resolv.conf"))
+
+; The standard devices.
+(allow file-read* file-test-existence file-write-data file-ioctl
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/dtracehelper"))
+(allow file-read* file-test-existence
+  (literal "/dev/random")
+  (literal "/dev/urandom")
+  (literal "/dev/autofs_nowait"))
+(allow file-read-data file-test-existence file-write-data
+  (subpath "/dev/fd"))
+
+; Names and attributes, not contents, of the folders that paths pass through.
+(allow file-read-metadata file-test-existence
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var")
+  (literal "/private")
+  (literal "/private/etc")
+  (literal "/private/tmp")
+  (literal "/private/var")
+  (literal "/usr")
+  (literal "/opt")
+  (literal "/System")
+  (literal "/Library")
+  (literal "/Library/Developer")
+  (literal "/Applications")
+  (literal "/Applications/Xcode.app")
+  (literal "/Applications/Xcode.app/Contents")
+  (literal "/dev")
+  (literal "/System/Volumes")
+  (literal "/System/Volumes/Data")
+  (literal "/System/Volumes/Preboot")
+  (path-ancestors "/System/Volumes/Data/private")
+  (path-ancestors (param "FOLDER")))
+(allow file-read-metadata
+  (subpath "/private/var/db")
+  (subpath "/private/var/run")
+  (regex #"^/dev/"))
+
+; ---- Files: the sample's folder -----------------------------------------------------------------
+
+(allow file-read* file-test-existence file-write*
+  (subpath (param "FOLDER")))

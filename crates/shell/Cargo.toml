@@ -1,0 +1,24 @@
+[package]
+name = "stellarator-shell"
+description = "Sandboxed shell commands and file edits in a per-sample workspace: Landlock and seccomp on Linux, Seatbelt on macOS"
+version.workspace = true
+edition.workspace = true
+# MIT, with the Seatbelt profile text adapted from OpenAI's Codex CLI under Apache-2.0 (NOTICE.md).
+license = "MIT AND Apache-2.0"
+rust-version.workspace = true
+
+[dependencies]
+# File access that cannot leave a directory, also through symlinks and `..` (openat2 on Linux, a
+# component-by-component walk elsewhere).
+cap-std = "4.0.3"
+thiserror = "2.0.21"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+# The command runner: only where there is a sandbox to run commands in.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+tokio = { version = "1.53.3", features = ["process", "io-util", "time", "rt", "macros", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.3", features = ["full"] }
