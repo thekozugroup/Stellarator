@@ -7,7 +7,9 @@
 //! each request that called tools, a line naming it ("Request 1 of 3 · 2.1 s"), its thinking
 //! (folded unless short), what the model wrote, and a card per tool call with its result
 //! (`ui::trace`); then the last request's thinking and the response. A sample cut off by its rounds
-//! of tool calls says it has no answer.
+//! of tool calls says it has no answer. A run in code mode shows each call of the code tool as a
+//! code card (`ui::code_trace`): the code, the tool calls it made, its console output and the
+//! result the model saw.
 
 use std::rc::Rc;
 
@@ -30,7 +32,7 @@ use crate::ui::overlay::{sheet_close, side_sheet_width};
 use crate::ui::page::window_width;
 use crate::ui::status::{Tone, status_badge};
 use crate::ui::tooltip::copy_button;
-use crate::ui::trace::{Round, split_final, tool_call_card, trace_rounds};
+use crate::ui::trace::{Round, call_card, split_final, trace_rounds};
 
 /// A thinking trace shorter than this opens by itself.
 const SHORT_TRACE: usize = 1500;
@@ -325,7 +327,7 @@ fn round_cards(round: Round, total: usize) -> Vec<AnyElement> {
     }
     // Many calls in a request open folded, so a long trace stays short to scroll.
     let open = round.calls.len() <= 4;
-    out.extend(round.calls.into_iter().map(|c| tool_call_card(c, open).into_element()));
+    out.extend(round.calls.into_iter().map(|c| call_card(c, open)));
     out
 }
 
@@ -362,10 +364,17 @@ fn thinking_card(trace: String, tokens: Option<i64>, heading: &'static str) -> i
         }))
 }
 
+/// Whether the sample ran in code mode: its trace holds an execution, or its code made tool calls.
+fn is_code_sample(s: &SampleOut) -> bool {
+    s.inner_tool_calls > 0
+        || s.trace.as_ref().is_some_and(|t| t.iter().any(|m| matches!(m, crate::api::types::TraceMessage::Tool(t) if t.code.is_some())))
+}
+
 /// The details: finish reason, tokens, latency, time to first token, attempts, when it ended. A
 /// failed request has no finish reason, tokens or timings: those rows are left out.
 fn facts(s: &SampleOut) -> impl IntoElement {
     let failed = s.status == SampleStatus::Failed;
+    let code_mode = is_code_sample(s);
     let finish = finish_reason_text(s.finish_reason.as_deref());
     let tokens: Vec<String> = [
         s.prompt_tokens.map(|n| format!("{} prompt", int(n))),
@@ -387,7 +396,8 @@ fn facts(s: &SampleOut) -> impl IntoElement {
         ("Tokens", if tokens.is_empty() { DASH.into() } else { tokens.join(" · ") }, !tokens.is_empty(), true, false),
         ("Latency", duration(s.latency_ms.map(|m| m as f64)), s.latency_ms.is_some(), true, false),
         ("Time to first token", duration(s.ttft_ms.map(|m| m as f64)), s.ttft_ms.is_some(), true, false),
-        ("Tool calls", int(s.tool_calls), s.trace.is_some() || s.tool_calls > 0, true, false),
+        (if code_mode { "Code runs" } else { "Tool calls" }, int(s.tool_calls), s.trace.is_some() || s.tool_calls > 0, true, false),
+        ("Tool calls", int(s.inner_tool_calls), code_mode, true, false),
         ("Attempts", int(s.attempts), true, true, false),
         (
             if failed { "Failed" } else { "Completed" },
@@ -401,7 +411,7 @@ fn facts(s: &SampleOut) -> impl IntoElement {
         .into_iter()
         .filter(|(_, _, known, _, _)| *known || !failed)
         // Tool calls only for a sample of a run with tools.
-        .filter(|(k, _, known, _, _)| *k != "Tool calls" || *known)
+        .filter(|(k, _, known, _, _)| !matches!(*k, "Tool calls" | "Code runs") || *known)
         .map(|(k, v, _, is_mono, warn)| {
             let value = if is_mono {
                 mono(text(v)).line_height(px(20.0)).into_element()

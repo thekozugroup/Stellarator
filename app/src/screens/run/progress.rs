@@ -4,17 +4,21 @@
 //! not going shows averages over the time it spent running, and how long that was.
 //!
 //! A run with tools has one more tile, the tool calls it ran (and how many per finished sample),
-//! before the time.
+//! before the time. In code mode there are two: "Code runs" (the code tool's executions) and
+//! "Tool calls" (the calls the code made), each with its figure per finished sample.
 //!
 //! The grid: five columns from 1024 px (the samples tile spans two), three from 640 px and two
 //! below (the samples tile on a row of its own; on phones the time on one too). With the tool
-//! calls tile: six, four and two (on phones the tool calls beside the time).
+//! calls tile: six, four and two (on phones the tool calls beside the time). With both code mode
+//! tiles: seven in one row from 1024 px; from 640 px four columns, the time two wide beside the
+//! rate and the samples a minute, the code runs and tool calls two wide each on the row below; on
+//! phones the two beside each other and the time on a row of its own.
 
 use nsh_base::theme;
 use nsh_core::prelude::*;
 
 use super::data::{duration_parts, int_f, is_active};
-use crate::api::types::{RunLive, RunStatus};
+use crate::api::types::{RunLive, RunStatus, ToolMode};
 use crate::format::{DASH, dec1, int};
 use crate::theme::fonts::INTER_DISPLAY;
 use crate::theme::text::{body, meta};
@@ -65,25 +69,29 @@ pub fn tile_width(row: f32, cols: f32, span: f32) -> f32 {
 }
 
 /// The grid's columns and each tile's span, as the window's width sets them (the samples tile, the
-/// rate, the samples a minute, the time, the tool calls). `tools`: the run has the tool calls tile.
-fn grid(tools: bool) -> (f32, [f32; 5]) {
+/// rate, the samples a minute, the time, the tool calls, the second tool tile). `extra`: how many
+/// tool tiles the run has (none, the tool calls, or the code runs and the tool calls).
+fn grid(extra: usize) -> (f32, [f32; 6]) {
     let w = window_width();
-    match (w >= 1024.0, w >= 640.0, tools) {
-        (true, _, false) => (5.0, [2.0, 1.0, 1.0, 1.0, 0.0]),
-        (true, _, true) => (6.0, [2.0, 1.0, 1.0, 1.0, 1.0]),
-        (false, true, false) => (3.0, [3.0, 1.0, 1.0, 1.0, 0.0]),
-        (false, true, true) => (4.0, [4.0, 1.0, 1.0, 1.0, 1.0]),
-        (false, false, false) => (2.0, [2.0, 1.0, 1.0, 2.0, 0.0]),
-        (false, false, true) => (2.0, [2.0, 1.0, 1.0, 1.0, 1.0]),
+    match (w >= 1024.0, w >= 640.0, extra) {
+        (true, _, 0) => (5.0, [2.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        (true, _, 1) => (6.0, [2.0, 1.0, 1.0, 1.0, 1.0, 0.0]),
+        (true, _, _) => (7.0, [2.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+        (false, true, 0) => (3.0, [3.0, 1.0, 1.0, 1.0, 0.0, 0.0]),
+        (false, true, 1) => (4.0, [4.0, 1.0, 1.0, 1.0, 1.0, 0.0]),
+        (false, true, _) => (4.0, [4.0, 1.0, 1.0, 2.0, 2.0, 2.0]),
+        (false, false, 0) => (2.0, [2.0, 1.0, 1.0, 2.0, 0.0, 0.0]),
+        (false, false, 1) => (2.0, [2.0, 1.0, 1.0, 1.0, 1.0, 0.0]),
+        (false, false, _) => (2.0, [2.0, 1.0, 1.0, 2.0, 1.0, 1.0]),
     }
 }
 
 /// A tile: the figure over its label, with what goes under it. It is `span` of the grid's columns
 /// wide, in a row `row` points wide.
-fn tile(value: AnyElement, label: AnyElement, under: Option<AnyElement>, span: f32, row: Signal<f32>, tools: bool) -> AnyElement {
+fn tile(value: AnyElement, label: AnyElement, under: Option<AnyElement>, span: f32, row: Signal<f32>, extra: usize) -> AnyElement {
     view()
         .w(move || {
-            let (cols, _) = grid(tools);
+            let (cols, _) = grid(extra);
             px(tile_width(row.get(), cols, span).max(0.0))
         })
         .flex_none()
@@ -108,10 +116,15 @@ pub fn run_progress(live: impl Fn() -> RunLive + 'static) -> impl IntoElement {
     let tiles = dynamic(move || {
         let live = live();
         let run = &live.run;
-        let tools = run.tools.is_some();
-        let (_, spans) = grid(tools);
+        let code = run.tools.as_ref().is_some_and(|t| t.mode == ToolMode::Code);
+        let extra = match (&run.tools, code) {
+            (None, _) => 0,
+            (Some(_), false) => 1,
+            (Some(_), true) => 2,
+        };
+        let (_, spans) = grid(extra);
         let tile = |value: AnyElement, label: AnyElement, under: Option<AnyElement>, span: f32, row: Signal<f32>| {
-            tile(value, label, under, span, row, tools)
+            tile(value, label, under, span, row, extra)
         };
         let active = is_active(run.status);
         let finished = run.status == RunStatus::Completed;
@@ -161,32 +174,61 @@ pub fn run_progress(live: impl Fn() -> RunLive + 'static) -> impl IntoElement {
             )
         };
         // The tool calls so far, and per finished sample.
-        let calls = tools.then(|| {
-            let per = (run.done > 0).then(|| format!("{} per sample", dec1(run.tool_calls as f64 / run.done as f64)));
+        // In code mode the code tool's executions count as `tool_calls` and the calls the code made
+        // as `inner_tool_calls`: one tile each. Otherwise the tool calls alone.
+        let counter = |name: &'static str, total: i64, span: f32| {
+            let per = (run.done > 0).then(|| format!("{} per sample", dec1(total as f64 / run.done as f64)));
             tile(
                 view()
                     .flex_row()
                     .items_baseline()
                     .gap(px(6.0))
                     .min_w(px(0.0))
-                    .child(figure(int(run.tool_calls)))
+                    .child(figure(int(total)))
                     .child(per.map(|p| body(text(p)).tabular_nums().number_of_lines(1).text_color(muted_ink).flex_shrink(1.0)))
                     .into_element(),
-                label("Tool calls"),
+                label(name),
                 None,
-                spans[4],
+                span,
                 row_w,
             )
-        });
+        };
+        let mut counters: Vec<AnyElement> = Vec::new();
+        if code {
+            counters.push(counter("Code runs", run.tool_calls, spans[4]));
+            counters.push(counter("Tool calls", run.inner_tool_calls, spans[5]));
+        } else if run.tools.is_some() {
+            counters.push(counter("Tool calls", run.tool_calls, spans[4]));
+        }
         let w = window_width();
         let row = |tiles: Vec<AnyElement>| view().flex_row().gap(px(GAP)).children(tiles).into_element();
-        let rows = match calls {
-            None if w >= 1024.0 => vec![row(vec![samples, rate, per_min, time])],
-            None if w >= 640.0 => vec![row(vec![samples]), row(vec![rate, per_min, time])],
-            None => vec![row(vec![samples]), row(vec![rate, per_min]), row(vec![time])],
-            Some(calls) if w >= 1024.0 => vec![row(vec![samples, rate, per_min, calls, time])],
-            Some(calls) if w >= 640.0 => vec![row(vec![samples]), row(vec![rate, per_min, calls, time])],
-            Some(calls) => vec![row(vec![samples]), row(vec![rate, per_min]), row(vec![calls, time])],
+        let rows = if counters.is_empty() {
+            if w >= 1024.0 {
+                vec![row(vec![samples, rate, per_min, time])]
+            } else if w >= 640.0 {
+                vec![row(vec![samples]), row(vec![rate, per_min, time])]
+            } else {
+                vec![row(vec![samples]), row(vec![rate, per_min]), row(vec![time])]
+            }
+        } else if code {
+            let mut it = counters.into_iter();
+            let (runs, calls) = (it.next().expect("code runs tile"), it.next().expect("tool calls tile"));
+            if w >= 1024.0 {
+                vec![row(vec![samples, rate, per_min, runs, calls, time])]
+            } else if w >= 640.0 {
+                vec![row(vec![samples]), row(vec![rate, per_min, time]), row(vec![runs, calls])]
+            } else {
+                vec![row(vec![samples]), row(vec![rate, per_min]), row(vec![runs, calls]), row(vec![time])]
+            }
+        } else {
+            let calls = counters.pop().expect("tool calls tile");
+            if w >= 1024.0 {
+                vec![row(vec![samples, rate, per_min, calls, time])]
+            } else if w >= 640.0 {
+                vec![row(vec![samples]), row(vec![rate, per_min, calls, time])]
+            } else {
+                vec![row(vec![samples]), row(vec![rate, per_min]), row(vec![calls, time])]
+            }
         };
         view().gap(px(GAP)).children(rows).into_element()
     });

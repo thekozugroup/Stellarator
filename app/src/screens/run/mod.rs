@@ -345,11 +345,18 @@ fn loaded(id: i64, live: Signal<Live>, run: Memo<Option<RunOut>>, seqs_shown: Si
     };
 
     let shape = computed(move || {
-        run.with(|r| r.as_ref().map(|r| (r.params.samples_per_prompt == 1, r.tools.is_some())).unwrap_or((true, false)))
+        run.with(|r| {
+            r.as_ref()
+                .map(|r| {
+                    let code = r.tools.as_ref().is_some_and(|t| t.mode == crate::api::types::ToolMode::Code);
+                    (r.params.samples_per_prompt == 1, r.tools.is_some(), code)
+                })
+                .unwrap_or((true, false, false))
+        })
     });
     let export = dynamic(move || {
-        let (single, tools) = shape.get();
-        run_export_dialog(export_open, id, single, tools).into_element()
+        let (single, tools, code) = shape.get();
+        run_export_dialog(export_open, id, single, tools, code).into_element()
     });
 
     frame = frame

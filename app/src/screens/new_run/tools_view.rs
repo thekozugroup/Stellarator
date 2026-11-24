@@ -6,8 +6,13 @@
 //!   run (blocked here, off, its last check failed, not checked) has its switch dimmed and says why;
 //!   one not checked yet has Check now. Under the servers, "5 tools from 2 servers", and a line for
 //!   each tool name two picked servers share: it is sent as `server__tool`.
+//! - Under "Use tools", Direct tools | Code mode with one line on what code mode does. Picking
+//!   servers and tools works the same in both.
 //! - Tool settings (a group that opens): max rounds (a stepper), the tool timeout, the most
-//!   characters of a result, and Auto | Required.
+//!   characters of a result, and Auto | Required. Code mode adds the code tool's name, where the
+//!   code finds the tools (one namespace per server, or all under `codemode`), its timeout, result
+//!   limit and memory limit, and the tool's description (Cloudflare's default, or your own text
+//!   that starts as the default).
 //! - The footnote: the endpoint must support tool calling, with a link to docs/tools.md.
 
 use std::rc::Rc;
@@ -18,14 +23,14 @@ use nsh_core::prelude::*;
 use super::logic::Field;
 use super::state::{Data, State};
 use super::tools::{clash_lines, clashes, offered, settings_summary, summary, unpickable};
-use crate::api::types::{McpStatus, ToolChoice};
+use crate::api::types::{CODE_TOOL_DESCRIPTION, CodeNamespaces, McpStatus, ToolChoice, ToolMode};
 use crate::data::{Load, call};
 use crate::theme::text::{body, label, meta, mono};
 use crate::theme::{muted_ink, token};
 use crate::ui::blocks::error_block;
-use crate::ui::button::{Button, Size, Variant, external_link, text_link};
+use crate::ui::button::{Button, Size, Variant, button, external_link, text_link};
 use crate::ui::choice::{checkbox_content, segmented_with_get, switch_with};
-use crate::ui::field::{TextField, form_disclosure, form_group, form_item, form_row, text_field};
+use crate::ui::field::{TextField, form_disclosure, form_group, form_item, form_row, text_area, text_field};
 use crate::ui::icon::{self, icon};
 use crate::ui::overlay::toast_error;
 use crate::ui::stepper::number_stepper;
@@ -108,7 +113,8 @@ fn group(state: State, data: Data, submit: Rc<dyn Fn()>) -> impl IntoElement {
         if !on.get() {
             return Vec::new();
         }
-        let mut out: Vec<AnyElement> = rows_shape.get().into_iter().map(|(id, _)| server_row(state, data, id).into_element()).collect();
+        let mut out: Vec<AnyElement> = vec![mode_row(state)];
+        out.extend(rows_shape.get().into_iter().map(|(id, _)| server_row(state, data, id).into_element()));
         out.push(totals_row(state, data).into_element());
         out
     };
@@ -314,23 +320,31 @@ fn totals_row(state: State, data: Data) -> impl IntoElement {
     }))
 }
 
-/// The Tool settings group: max rounds, the timeout, a result's length, the tool choice.
+/// A number's field in the settings: 112 px, left-aligned figures, checked when it loses the focus.
+fn number_field(state: State, field: Field, submit: &Rc<dyn Fn()>) -> TextField {
+    let s = submit.clone();
+    text_field(state.value(field))
+        .width(112.0)
+        .tabular()
+        .invalid(move || state.has_error(field))
+        .on_change(move |_| state.error(field).set(None))
+        .on_blur(move || state.blur(field))
+        .on_submit(move || s())
+        .element(&state.element(field))
+}
+
+/// The Tool settings group: max rounds, the timeout, a result's length, the tool choice; in code
+/// mode also the code tool's name, namespaces, limits and description.
 fn settings(state: State, submit: Rc<dyn Fn()>) -> impl IntoElement {
+    // What decides the rows' structure: the rows are made again only when the mode changes, not
+    // while a pick or a number changes.
+    let code = computed(move || state.tools.with(|t| t.mode == ToolMode::Code));
+    let rows_submit = submit.clone();
     let rows = move || {
-        let s = submit.clone();
-        let number = move |field: Field| -> TextField {
-            let s = s.clone();
-            text_field(state.value(field))
-                .width(112.0)
-                .tabular()
-                .invalid(move || state.has_error(field))
-                .on_change(move |_| state.error(field).set(None))
-                .on_blur(move || state.blur(field))
-                .on_submit(move || s())
-                .element(&state.element(field))
-        };
+        let submit = rows_submit.clone();
+        let in_code = code.get();
         let s2 = submit.clone();
-        vec![
+        let mut rows = vec![
             form_row(
                 "Max rounds",
                 number_stepper(state.value(Field::MaxRounds), "rounds", 1, 32)
@@ -342,17 +356,25 @@ fn settings(state: State, submit: Rc<dyn Fn()>) -> impl IntoElement {
                     .element(&state.element(Field::MaxRounds)),
             )
             .align_end()
-            .hint("Rounds of tool calls per sample, 1–32.")
+            .hint(if in_code { "Rounds of code per sample, 1–32." } else { "Rounds of tool calls per sample, 1–32." })
             .error(state.error(Field::MaxRounds))
             .into_element(),
-            form_row("Tool timeout (s)", number(Field::ToolTimeout))
+            form_row("Tool timeout (s)", number_field(state, Field::ToolTimeout, &submit))
                 .align_end()
-                .hint("Per call. A late call returns an error to the model.")
+                .hint(if in_code {
+                    "Per tool call in the code. A late call throws in the code."
+                } else {
+                    "Per call. A late call returns an error to the model."
+                })
                 .error(state.error(Field::ToolTimeout))
                 .into_element(),
-            form_row("Max result characters", number(Field::MaxResultChars))
+            form_row("Max result characters", number_field(state, Field::MaxResultChars, &submit))
                 .align_end()
-                .hint("Longer results are cut, with a marker.")
+                .hint(if in_code {
+                    "Cuts the copy of each tool result kept in the trace. The code gets it whole."
+                } else {
+                    "Longer results are cut, with a marker."
+                })
                 .error(state.error(Field::MaxResultChars))
                 .into_element(),
             form_row(
@@ -376,20 +398,191 @@ fn settings(state: State, submit: Rc<dyn Fn()>) -> impl IntoElement {
                 )
             })
             .into_element(),
-        ]
+        ];
+        if in_code {
+            rows.extend(code_rows(state, &submit));
+        }
+        rows
     };
     form_disclosure(
         "Tool settings",
         move || {
+            let in_code = code.get();
+            let (timeout, tokens) = (state.get(Field::CodeTimeout), state.get(Field::CodeResultTokens));
             settings_summary(
                 &state.get(Field::MaxRounds),
                 &state.get(Field::ToolTimeout),
                 &state.get(Field::MaxResultChars),
                 state.tools.with(|t| t.choice),
+                in_code.then_some((timeout.as_str(), tokens.as_str())),
             )
         },
         state.tools_open,
         rows,
         false,
     )
+}
+
+/// Code mode's rows in the Tool settings: the tool's name, where the code finds the tools, its
+/// limits, and the description.
+fn code_rows(state: State, submit: &Rc<dyn Fn()>) -> Vec<AnyElement> {
+    let name_submit = submit.clone();
+    vec![
+        form_row(
+            "Code tool name",
+            text_field(state.value(Field::CodeToolName))
+                .mono()
+                .width(224.0)
+                .invalid(move || state.has_error(Field::CodeToolName))
+                .on_change(move |_| state.error(Field::CodeToolName).set(None))
+                .on_blur(move || state.blur(Field::CodeToolName))
+                .on_submit(move || name_submit())
+                .element(&state.element(Field::CodeToolName)),
+        )
+        .align_end()
+        .hint("What the model calls it. Cloudflare names it codemode.")
+        .error(state.error(Field::CodeToolName))
+        .into_element(),
+        form_row(
+            "Namespaces",
+            segmented_with_get(
+                vec![(CodeNamespaces::Servers, "One per server"), (CodeNamespaces::Codemode, "All in codemode")],
+                move || state.tools.with(|t| t.namespaces),
+                move |v| state.tools.update(|t| t.namespaces = v),
+                "Namespaces",
+                false,
+            ),
+        )
+        .align_end()
+        .hint_element(move || {
+            let words = match state.tools.with(|t| t.namespaces) {
+                CodeNamespaces::Servers => "Each server is a global named after it: `github.list_issues()`.",
+                CodeNamespaces::Codemode => "Every tool is under `codemode`: `codemode.list_issues()`.",
+            };
+            Some(hint_with_code(words))
+        })
+        .into_element(),
+        form_row("Code timeout (s)", number_field(state, Field::CodeTimeout, submit))
+            .align_end()
+            .hint("One run of code, its tool calls included.")
+            .error(state.error(Field::CodeTimeout))
+            .into_element(),
+        form_row("Result limit (tokens)", number_field(state, Field::CodeResultTokens, submit))
+            .align_end()
+            .hint("What the model sees of a run's result and console output. 0 does not cut.")
+            .error(state.error(Field::CodeResultTokens))
+            .into_element(),
+        form_row("Result limit (characters)", number_field(state, Field::CodeResultChars, submit).placeholder("Tokens × 4"))
+            .align_end()
+            .optional()
+            .hint("Replaces the tokens × 4 when set.")
+            .error(state.error(Field::CodeResultChars))
+            .into_element(),
+        form_row("Memory limit (MB)", number_field(state, Field::CodeMemory, submit))
+            .align_end()
+            .hint("What one run of code may use.")
+            .error(state.error(Field::CodeMemory))
+            .into_element(),
+        description_row(state),
+    ]
+}
+
+/// A hint line with `backticked` parts in mono.
+fn hint_with_code(words: &str) -> AnyElement {
+    code_spans(words, 12.0).text_size(px(12.0)).line_height(px(16.0)).text_color(muted_ink).into_element()
+}
+
+/// The tool's description: Cloudflare's default (with a button to write your own), or a text area
+/// prefilled with that default and a button to go back to it.
+fn description_row(state: State) -> AnyElement {
+    let custom = computed(move || state.tools.with(|t| t.custom_description));
+    let control = dynamic(move || -> AnyElement {
+        if !custom.get() {
+            return view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .justify_between()
+                .gap(px(8.0))
+                .child(body(text("Cloudflare’s default")).text_color(muted_ink))
+                .child(
+                    button("Customize…")
+                        .variant(Variant::Secondary)
+                        .on_card()
+                        .size(Size::Sm)
+                        .on_press(move || {
+                            // The text starts as the default, so it can be edited, not rewritten.
+                            if state.peek(Field::CodeDescription).trim().is_empty() {
+                                state.value(Field::CodeDescription).set(CODE_TOOL_DESCRIPTION.to_owned());
+                            }
+                            state.tools.update(|t| t.custom_description = true);
+                        }),
+                )
+                .into_element();
+        }
+        view()
+            .gap(px(8.0))
+            .child(
+                text_area(state.value(Field::CodeDescription))
+                    .mono()
+                    .height(224.0)
+                    .invalid(move || state.has_error(Field::CodeDescription))
+                    .on_change(move |_| state.error(Field::CodeDescription).set(None))
+                    .element(&state.element(Field::CodeDescription)),
+            )
+            .child(
+                view().flex_row().child(
+                    button("Reset to default")
+                        .variant(Variant::Secondary)
+                        .on_card()
+                        .size(Size::Sm)
+                        .on_press(move || {
+                            state.value(Field::CodeDescription).set(String::new());
+                            state.error(Field::CodeDescription).set(None);
+                            state.tools.update(|t| t.custom_description = false);
+                        }),
+                ),
+            )
+            .into_element()
+    });
+    form_row("Tool description", control)
+        .stacked()
+        .hint_element(move || {
+            Some(hint_with_code(
+                "`{{types}}` stands for the TypeScript declarations of the tools. Without it the model is not told what it can call.",
+            ))
+        })
+        .error(state.error(Field::CodeDescription))
+        .into_element()
+}
+
+/// The mode row: Direct tools or Code mode, and one line on what code mode does.
+fn mode_row(state: State) -> AnyElement {
+    form_row(
+        "Mode",
+        segmented_with_get(
+            vec![(ToolMode::Direct, "Direct tools"), (ToolMode::Code, "Code mode")],
+            move || state.tools.with(|t| t.mode),
+            move |v| {
+                state.tools.update(|t| t.mode = v);
+                // What a field of the other mode said no longer applies.
+                for f in Field::ALL.iter().filter(|f| f.in_code_settings()) {
+                    state.error(*f).set(None);
+                }
+            },
+            "Tool mode",
+            false,
+        ),
+    )
+    .align_end()
+    .hint_when(move || Some(mode_hint(state.tools.with(|t| t.mode)).into()))
+    .into_element()
+}
+
+/// The line under the mode control.
+pub fn mode_hint(mode: ToolMode) -> &'static str {
+    match mode {
+        ToolMode::Direct => "The model calls each tool and gets every result back.",
+        ToolMode::Code => "The model writes JavaScript that calls the tools, and only the result goes back.",
+    }
 }

@@ -6,7 +6,9 @@
 //!
 //! A run with tools: while a sample's tools run its state word is "tool" (in ink) and the line
 //! under it says which ("calling lookup…") and which request of the sample it is ("round 2"); a
-//! later request that thinks or answers says its round too.
+//! later request that thinks or answers says its round too. In code mode the word is "code" and
+//! the line says "running code · lookup.search…" (the tool calls the code has in progress) with
+//! how many calls it has made so far ("3 calls"), then the round.
 
 use nsh_core::prelude::*;
 
@@ -47,6 +49,16 @@ fn phase_word(phase: Phase) -> &'static str {
 /// for a later request; nothing for a sample's first request.
 pub fn tool_line(s: &LiveSequence) -> Option<String> {
     let round = (s.round > 1).then(|| format!("round {}", int(s.round)));
+    if s.phase == Phase::Code {
+        let live = s.code.clone().unwrap_or_default();
+        let head = match live.running.len() {
+            0 => "running code…".to_owned(),
+            n if n <= 2 => format!("running code · {}…", live.running.join(", ")),
+            n => format!("running code · {} +{}…", live.running[..2].join(", "), int(n as i64 - 2)),
+        };
+        let calls = (live.calls > 0).then(|| count(live.calls, "call", "calls"));
+        return Some([Some(head), calls, round].into_iter().flatten().collect::<Vec<_>>().join(" · "));
+    }
     if s.phase == Phase::Tool {
         let calling = if s.tools.is_empty() { "calling tools…".to_owned() } else { format!("calling {}…", s.tools.join(", ")) };
         return Some(match round {
@@ -102,7 +114,7 @@ pub fn in_flight_list(sequences: Vec<LiveSequence>, in_flight: i64, samples_per_
             // two lines streamed (older text leaves through the top edge).
             let tool = tool_line(&s);
             let facts = (!wide || s.attempt > 1 || tool.is_some()).then(|| {
-                let in_tool = s.phase == Phase::Tool;
+                let in_tool = matches!(s.phase, Phase::Tool | Phase::Code);
                 view()
                     .flex_row()
                     .gap(px(COLUMN_GAP))
@@ -150,6 +162,26 @@ mod tests {
             "tail": "", "elapsed_ms": 0, "attempt": 1, "round": round, "tools": tools
         }))
         .unwrap()
+    }
+
+    fn code_seq(round: i64, calls: i64, running: &[&str]) -> LiveSequence {
+        let mut s = seq(Phase::Code, round, &["codemode"]);
+        s.code = Some(crate::api::types::LiveCode { calls, running: running.iter().map(|r| (*r).to_owned()).collect() });
+        s
+    }
+
+    #[test]
+    fn a_code_phase_names_the_calls_in_progress_and_counts_them() {
+        assert_eq!(tool_line(&code_seq(1, 3, &["lookup.search"])).as_deref(), Some("running code · lookup.search… · 3 calls"));
+        assert_eq!(tool_line(&code_seq(2, 1, &["lookup.search", "lookup.fetch"])).as_deref(), Some("running code · lookup.search, lookup.fetch… · 1 call · round 2"));
+        assert_eq!(tool_line(&code_seq(1, 7, &["a.x", "a.y", "b.z", "b.w"])).as_deref(), Some("running code · a.x, a.y +2… · 7 calls"));
+        // Between two calls, or before the first: nothing in progress.
+        assert_eq!(tool_line(&code_seq(1, 2, &[])).as_deref(), Some("running code… · 2 calls"));
+        assert_eq!(tool_line(&code_seq(1, 0, &[])).as_deref(), Some("running code…"));
+        let mut bare = seq(Phase::Code, 1, &[]);
+        bare.code = None;
+        assert_eq!(tool_line(&bare).as_deref(), Some("running code…"));
+        assert_eq!(phase_word(Phase::Code), "code");
     }
 
     #[test]

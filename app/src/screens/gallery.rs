@@ -29,7 +29,8 @@ use crate::ui::status::{Tone, pill, run_status_badge, status_badge};
 use crate::ui::tiles::{tile, tiles};
 use crate::ui::tooltip::{copy_button, kbd};
 use crate::ui::trace::{CallBlock, compact_calls, data_tag, tool_call_card};
-use crate::api::types::{ToolCall, TraceTool};
+use crate::api::types::{CodeExecution, CodeStatus, InnerToolCall, ToolCall, TraceTool};
+use crate::ui::code_trace::{code_card, compact_code_runs};
 
 /// A call and its result, for the tool trace's pieces.
 fn example_call(id: &str, name: &str, arguments: &str, content: &str, error: bool, truncated: bool) -> CallBlock {
@@ -44,6 +45,52 @@ fn example_call(id: &str, name: &str, arguments: &str, content: &str, error: boo
             truncated,
             latency_ms: 214,
             code: None,
+        }),
+    }
+}
+
+/// A call of the code tool and what happened inside it, for the code card.
+fn example_code_run(id: &str, status: CodeStatus, failing_call: bool) -> CallBlock {
+    let code = "async () => {\n  const hits = await lookup.search({ query: \"rate limits\", limit: 3 });\n  const page = await lookup.fetch({ url: hits[0].url });\n  console.log(`fetched ${page.length} characters`);\n  return { title: hits[0].title, page };\n}";
+    let call = |method: &str, tool: &str, args: serde_json::Value, result: &str, error: bool| InnerToolCall {
+        method: method.into(),
+        server: "lookup".into(),
+        tool: tool.into(),
+        arguments: args,
+        result: result.into(),
+        is_error: error,
+        truncated: false,
+        latency_ms: 180,
+    };
+    let calls = vec![
+        call("lookup.search", "search", serde_json::json!({"query": "rate limits", "limit": 3}), "[{\"title\":\"Rate limits\",\"url\":\"https://docs.example.com/limits\"}]", false),
+        call("lookup.fetch", "fetch", serde_json::json!({"url": "https://docs.example.com/limits"}), if failing_call { "404: no page at that address." } else { "Requests are limited per key." }, failing_call),
+    ];
+    let content = if status == CodeStatus::Ok {
+        "{\"result\":{\"title\":\"Rate limits\"},\"logs\":[\"fetched 29 characters\"]}".to_owned()
+    } else {
+        "Error: Code execution failed: Error: 404: no page at that address.\n\nConsole output:\nfetched 0 characters".to_owned()
+    };
+    let execution = CodeExecution {
+        code: code.into(),
+        status,
+        calls,
+        logs: vec!["fetched 29 characters".into()],
+        result: (status == CodeStatus::Ok).then(|| "{\"title\":\"Rate limits\"}".to_owned()),
+        error: (status != CodeStatus::Ok).then(|| "Error: 404: no page at that address.".to_owned()),
+        latency_ms: 612,
+    };
+    CallBlock {
+        call: ToolCall { id: id.into(), name: "codemode".into(), arguments: serde_json::json!({"code": code}).to_string() },
+        result: Some(TraceTool {
+            tool_call_id: id.into(),
+            name: "codemode".into(),
+            server: String::new(),
+            content,
+            is_error: status != CodeStatus::Ok,
+            truncated: false,
+            latency_ms: 612,
+            code: Some(execution),
         }),
     }
 }
@@ -389,6 +436,30 @@ pub fn screen() -> impl IntoElement {
                                 example_call("c1", "lookup", "{\"query\":\"rate limits\"}", "3 hits", false, false),
                                 example_call("c2", "fetch_page", "{\"url\":\"https://docs.example.com/missing\"}", "404: no page at that address.", true, false),
                             ],
+                            std::rc::Rc::new(|| false),
+                        )),
+                ))
+                // Code mode's pieces (DESIGN.md, "Tool traces").
+                .child(panel(
+                    Some("Code trace".into()),
+                    None,
+                    None,
+                    view()
+                        .gap(px(8.0))
+                        .child(
+                            view()
+                                .flex_row()
+                                .flex_wrap()
+                                .gap(px(8.0))
+                                .child(data_tag("ERROR", "negative-tint", "negative-ink"))
+                                .child(data_tag("SYNTAX ERROR", "negative-tint", "negative-ink"))
+                                .child(data_tag("TIMEOUT", "negative-tint", "negative-ink"))
+                                .child(data_tag("MEMORY LIMIT", "negative-tint", "negative-ink")),
+                        )
+                        .child(code_card(example_code_run("k1", CodeStatus::Ok, false), true))
+                        .child(code_card(example_code_run("k2", CodeStatus::Error, true), true))
+                        .child(compact_code_runs(
+                            vec![example_code_run("k1", CodeStatus::Ok, false), example_code_run("k2", CodeStatus::Error, true)],
                             std::rc::Rc::new(|| false),
                         )),
                 ))

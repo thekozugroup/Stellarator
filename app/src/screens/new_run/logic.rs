@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::tools::{ToolsForm, dropped_note, from_run_tools, to_run_tools};
 use crate::api::types::{
-    EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet, PromptSetStatus, RunCreate, RunOut as Run,
-    RunParams, RunTools,
+    CODE_TOOL_DESCRIPTION, CODE_TOOL_NAME, CodeModeOptions, EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet,
+    PromptSetStatus, RunCreate, RunOut as Run, RunParams, RunTools, ToolMode,
 };
 use crate::format::{count, date_time, duration, int};
 use crate::ui::stepper::parse_int;
@@ -33,6 +33,18 @@ pub enum Field {
     MaxRounds,
     ToolTimeout,
     MaxResultChars,
+    /// Code mode: the code tool's name.
+    CodeToolName,
+    /// Code mode: seconds one execution may take.
+    CodeTimeout,
+    /// Code mode: the result budget in tokens (0: not cut).
+    CodeResultTokens,
+    /// Code mode: the same budget in characters (empty: tokens times four).
+    CodeResultChars,
+    /// Code mode: memory one execution may use, in MB.
+    CodeMemory,
+    /// Code mode: the description's text (used while `ToolsForm::custom_description`).
+    CodeDescription,
     SystemPrompt,
     UserTemplate,
     ExtraBody,
@@ -45,8 +57,11 @@ pub enum Field {
 }
 
 impl Field {
+    /// How many fields there are.
+    pub const COUNT: usize = 28;
+
     /// The fields in the order they are on screen: the first with an error gets the focus.
-    pub const ALL: [Field; 22] = [
+    pub const ALL: [Field; Field::COUNT] = [
         Field::Endpoint,
         Field::Model,
         Field::PromptSet,
@@ -60,6 +75,12 @@ impl Field {
         Field::MaxRounds,
         Field::ToolTimeout,
         Field::MaxResultChars,
+        Field::CodeToolName,
+        Field::CodeTimeout,
+        Field::CodeResultTokens,
+        Field::CodeResultChars,
+        Field::CodeMemory,
+        Field::CodeDescription,
         Field::SystemPrompt,
         Field::UserTemplate,
         Field::ExtraBody,
@@ -91,7 +112,20 @@ impl Field {
 
     /// In the Tool settings group, which opens to show an error.
     pub fn in_tool_settings(self) -> bool {
-        matches!(self, Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars)
+        matches!(self, Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars) || self.in_code_settings()
+    }
+
+    /// One of code mode's settings (shown, and checked, in code mode only).
+    pub fn in_code_settings(self) -> bool {
+        matches!(
+            self,
+            Field::CodeToolName
+                | Field::CodeTimeout
+                | Field::CodeResultTokens
+                | Field::CodeResultChars
+                | Field::CodeMemory
+                | Field::CodeDescription
+        )
     }
 
     /// The field a server message names (a path of `RunCreate`).
@@ -118,6 +152,12 @@ impl Field {
             "params.tools.max_rounds" => Field::MaxRounds,
             "params.tools.tool_timeout_s" => Field::ToolTimeout,
             "params.tools.max_result_chars" => Field::MaxResultChars,
+            "params.tools.code.tool_name" => Field::CodeToolName,
+            "params.tools.code.timeout_s" => Field::CodeTimeout,
+            "params.tools.code.max_result_tokens" => Field::CodeResultTokens,
+            "params.tools.code.max_result_chars" => Field::CodeResultChars,
+            "params.tools.code.memory_limit_mb" => Field::CodeMemory,
+            "params.tools.code.description" => Field::CodeDescription,
             p if p == "params.tools" || p.starts_with("params.tools.") => Field::Tools,
             _ => return None,
         })
@@ -127,7 +167,7 @@ impl Field {
 /// The form's values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Form {
-    values: [String; 22],
+    values: [String; Field::COUNT],
     pub max_tokens_field: MaxTokensField,
     pub stream: bool,
     /// "Use tools" and the servers and tools picked.
@@ -152,6 +192,10 @@ impl Default for Form {
             (Field::MaxRounds, "8"),
             (Field::ToolTimeout, "60"),
             (Field::MaxResultChars, "20000"),
+            (Field::CodeToolName, CODE_TOOL_NAME),
+            (Field::CodeTimeout, "60"),
+            (Field::CodeResultTokens, "6000"),
+            (Field::CodeMemory, "128"),
         ] {
             form.set(field, value);
         }
@@ -265,13 +309,34 @@ pub fn check(field: Field, form: &Form) -> Option<String> {
             (num.is_nan() || v.is_empty() || !(1.0..=3600.0).contains(&num)).then(|| "The tool timeout must be from 1 to 3,600 seconds.".to_owned())
         }
         Field::MaxResultChars => int_in(1000, 1_000_000, "Max result characters"),
+        // Code mode's settings count only in code mode.
+        _ if field.in_code_settings() && form.tools.mode != ToolMode::Code => None,
+        Field::CodeToolName => {
+            let ok = (1..=64).contains(&v.len()) && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+            (!ok).then(|| "Use 1 to 64 letters, digits, _ or -.".to_owned())
+        }
+        Field::CodeTimeout => {
+            (num.is_nan() || v.is_empty() || !(1.0..=3600.0).contains(&num)).then(|| "Use a number of seconds from 1 to 3,600.".to_owned())
+        }
+        Field::CodeResultTokens => {
+            let ok = is_int(v) && (num == 0.0 || (100.0..=1_000_000.0).contains(&num));
+            (!ok).then(|| "Use 0 (no truncation) or a number from 100 to 1,000,000.".to_owned())
+        }
+        Field::CodeResultChars => {
+            if v.is_empty() {
+                return None;
+            }
+            int_in(1000, 4_000_000, "Result characters")
+        }
+        Field::CodeMemory => int_in(8, 1024, "Memory"),
+        Field::CodeDescription => (form.tools.custom_description && form.get(field).chars().count() > 100_000).then(|| "At most 100,000 characters.".to_owned()),
         Field::SystemPrompt | Field::Name => None,
     }
 }
 
 /// A field of the Tools group.
 fn field_of_tools(field: Field) -> bool {
-    matches!(field, Field::Tools | Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars)
+    matches!(field, Field::Tools | Field::MaxRounds | Field::ToolTimeout | Field::MaxResultChars) || field.in_code_settings()
 }
 
 /// Every field's message, for the fields that have one, in screen order.
@@ -298,6 +363,23 @@ pub fn server_errors(fields: &BTreeMap<String, String>) -> (Vec<(Field, String)>
     (mapped, other)
 }
 
+/// The code mode options the form's fields say (for a valid form). The description is null unless
+/// it is the user's own: not turned on, empty, or Cloudflare's text unchanged.
+pub fn code_options(form: &Form) -> CodeModeOptions {
+    let chars = form.get(Field::CodeResultChars).trim();
+    let description = form.get(Field::CodeDescription);
+    let custom = form.tools.custom_description && !description.trim().is_empty() && description != CODE_TOOL_DESCRIPTION;
+    CodeModeOptions {
+        tool_name: form.get(Field::CodeToolName).trim().to_owned(),
+        description: custom.then(|| description.to_owned()),
+        namespaces: form.tools.namespaces,
+        timeout_s: js_number(form.get(Field::CodeTimeout)),
+        max_result_tokens: js_number(form.get(Field::CodeResultTokens)) as i64,
+        max_result_chars: (!chars.is_empty()).then(|| js_number(chars) as i64),
+        memory_limit_mb: js_number(form.get(Field::CodeMemory)) as i64,
+    }
+}
+
 /// The run's `params.tools` for a valid `form`, the picks of servers in `servers` only.
 pub fn tools_param(form: &Form, servers: &[Server]) -> Option<RunTools> {
     to_run_tools(
@@ -306,6 +388,7 @@ pub fn tools_param(form: &Form, servers: &[Server]) -> Option<RunTools> {
         js_number(form.get(Field::MaxRounds)) as i64,
         js_number(form.get(Field::ToolTimeout)),
         js_number(form.get(Field::MaxResultChars)) as i64,
+        (form.tools.mode == ToolMode::Code).then(|| code_options(form)),
     )
 }
 
@@ -412,6 +495,14 @@ fn from_run(run: &Run) -> Form {
         f.set(Field::MaxRounds, t.max_rounds.to_string());
         f.set(Field::ToolTimeout, t.tool_timeout_s.to_string());
         f.set(Field::MaxResultChars, t.max_result_chars.to_string());
+        if let Some(c) = &t.code {
+            f.set(Field::CodeToolName, c.tool_name.clone());
+            f.set(Field::CodeTimeout, c.timeout_s.to_string());
+            f.set(Field::CodeResultTokens, c.max_result_tokens.to_string());
+            f.set(Field::CodeResultChars, c.max_result_chars.map(|n| n.to_string()).unwrap_or_default());
+            f.set(Field::CodeMemory, c.memory_limit_mb.to_string());
+            f.set(Field::CodeDescription, c.description.clone().unwrap_or_default());
+        }
     }
     f
 }
@@ -470,8 +561,13 @@ pub fn initial_state(
                 }
                 None => tools_note = Some("Couldn't read the MCP servers, so the run's tools were not copied.".to_owned()),
             }
+            // Code mode's settings are all in that group: it opens when the copied run changed any.
             tools_open = [Field::MaxRounds, Field::ToolTimeout, Field::MaxResultChars].iter().any(|f| form.get(*f) != d.get(*f))
-                || form.tools.choice != Default::default();
+                || form.tools.choice != Default::default()
+                || (form.tools.mode == ToolMode::Code
+                    && (form.tools.namespaces != Default::default()
+                        || form.tools.custom_description
+                        || Field::ALL.iter().filter(|f| f.in_code_settings()).any(|f| form.get(*f) != d.get(*f))));
         }
     } else {
         let picked = prefill.endpoint.and_then(|id| endpoints.iter().find(|e| e.id == id)).or(if endpoints.len() == 1 { endpoints.first() } else { None });
@@ -595,6 +691,7 @@ pub fn prompt_set_note(set: &PromptSet, same_name: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::types::CodeNamespaces;
     use serde_json::json;
 
     fn endpoint(id: i64, models: &[&str], concurrency: i64, ok: Option<bool>) -> Endpoint {
@@ -918,5 +1015,160 @@ mod tests {
         assert_eq!(prompt_set_note(&set(4, "c", 0, "importing"), 1), "Importing");
         assert_eq!(prompt_set_note(&set(5, "c", 0, "failed"), 2), "Failed");
         assert!(prompt_set_note(&sets[0], 2).starts_with("1 prompt · "));
+    }
+
+    fn mcp_server(id: i64, name: &str, tools: &[&str]) -> Server {
+        serde_json::from_value(json!({
+            "id": id, "name": name, "transport": "http", "command": null, "args": [], "env": [],
+            "url": "http://x/mcp", "headers": [], "enabled": true, "status": "ok", "error": null,
+            "checked_at": null, "server_info": null,
+            "tools": tools.iter().map(|t| json!({"name": t, "description": null, "input_schema": {}})).collect::<Vec<_>>(),
+            "blocked": null, "run_count": 0,
+            "created_at": "2026-11-01T00:00:00Z", "updated_at": "2026-11-01T00:00:00Z"
+        }))
+        .unwrap()
+    }
+
+    /// A form in code mode on server 1, ready to send.
+    fn code_form() -> Form {
+        let mut f = with(&[(Field::Endpoint, "1"), (Field::Model, "m"), (Field::PromptSet, "2")]);
+        f.tools.on = true;
+        f.tools.mode = ToolMode::Code;
+        f.tools.picks = vec![super::super::tools::Pick { server_id: 1, tools: None }];
+        f
+    }
+
+    #[test]
+    fn code_mode_with_every_default_sends_no_options() {
+        let servers = [mcp_server(1, "docs", &["search"])];
+        let f = code_form();
+        assert!(check_all(&f).is_empty());
+        let tools = to_body(&f, &servers).unwrap().params.tools.unwrap();
+        assert_eq!((tools.mode, tools.code), (ToolMode::Code, None));
+        // Direct mode never sends them, whatever the fields hold.
+        let mut direct = code_form();
+        direct.tools.mode = ToolMode::Direct;
+        direct.set(Field::CodeToolName, "x");
+        let tools = to_body(&direct, &servers).unwrap().params.tools.unwrap();
+        assert_eq!((tools.mode, tools.code), (ToolMode::Direct, None));
+    }
+
+    #[test]
+    fn code_mode_options_go_to_the_request_and_back_into_the_form() {
+        let servers = [mcp_server(1, "docs", &["search"])];
+        let eps = [endpoint(1, &["m"], 8, Some(true))];
+        let sets = [set(2, "p", 4, "ready")];
+        let mut f = code_form();
+        f.tools.namespaces = CodeNamespaces::Codemode;
+        f.tools.custom_description = true;
+        f.set(Field::CodeToolName, " run_code ");
+        f.set(Field::CodeTimeout, "90");
+        f.set(Field::CodeResultTokens, "0");
+        f.set(Field::CodeResultChars, "8000");
+        f.set(Field::CodeMemory, "256");
+        f.set(Field::CodeDescription, "Run JS.\n{{types}}");
+        assert!(check_all(&f).is_empty());
+        let sent = to_body(&f, &servers).unwrap();
+        let code = sent.params.tools.clone().unwrap().code.unwrap();
+        assert_eq!(code.tool_name, "run_code");
+        assert_eq!(code.description.as_deref(), Some("Run JS.\n{{types}}"));
+        assert_eq!(
+            (code.namespaces, code.timeout_s, code.max_result_tokens, code.max_result_chars, code.memory_limit_mb),
+            (CodeNamespaces::Codemode, 90.0, 0, Some(8000), 256)
+        );
+        // Run again: the same run's params fill the same form.
+        let source = run(1, "m", serde_json::to_value(&sent.params).unwrap());
+        let initial = initial_state(&eps, &sets, None, Some(&source), Some(&servers), Prefill::default());
+        assert_eq!(initial.form.tools.mode, ToolMode::Code);
+        assert_eq!(initial.form.tools.namespaces, CodeNamespaces::Codemode);
+        assert!(initial.form.tools.custom_description);
+        for field in
+            [Field::CodeToolName, Field::CodeTimeout, Field::CodeResultTokens, Field::CodeResultChars, Field::CodeMemory, Field::CodeDescription]
+        {
+            assert_eq!(initial.form.get(field), f.get(field).trim(), "{field:?}");
+        }
+        assert!(initial.tools_open, "the settings group opens for options that are not the defaults");
+        assert_eq!(to_body(&initial.form, &servers).unwrap().params.tools, sent.params.tools);
+    }
+
+    #[test]
+    fn run_again_copies_the_mode_and_a_default_code_run_keeps_the_group_closed() {
+        let servers = [mcp_server(1, "docs", &["search"])];
+        let eps = [endpoint(1, &["m"], 8, Some(true))];
+        let sets = [set(2, "p", 4, "ready")];
+        let source = run(1, "m", json!({"tools": {"servers": [{"server_id": 1}], "mode": "code"}}));
+        let initial = initial_state(&eps, &sets, None, Some(&source), Some(&servers), Prefill::default());
+        assert_eq!(initial.form.tools.mode, ToolMode::Code);
+        assert!(!initial.form.tools.custom_description);
+        assert!(!initial.tools_open);
+        assert_eq!(initial.form.get(Field::CodeToolName), "codemode");
+        // An older run has no mode: direct.
+        let old = run(1, "m", json!({"tools": {"servers": [{"server_id": 1}]}}));
+        let initial = initial_state(&eps, &sets, None, Some(&old), Some(&servers), Prefill::default());
+        assert_eq!(initial.form.tools.mode, ToolMode::Direct);
+    }
+
+    #[test]
+    fn the_description_is_null_unless_it_is_the_users_own() {
+        let mut f = code_form();
+        f.tools.custom_description = true;
+        // The default text, unchanged, is Cloudflare's default.
+        f.set(Field::CodeDescription, CODE_TOOL_DESCRIPTION);
+        assert_eq!(code_options(&f).description, None);
+        f.set(Field::CodeDescription, "  ");
+        assert_eq!(code_options(&f).description, None);
+        f.set(Field::CodeDescription, "Mine {{types}}");
+        assert_eq!(code_options(&f).description.as_deref(), Some("Mine {{types}}"));
+        // Turned off (Reset to default): the text is ignored.
+        f.tools.custom_description = false;
+        assert_eq!(code_options(&f).description, None);
+    }
+
+    #[test]
+    fn code_mode_fields_are_checked_in_code_mode_only() {
+        let bad = |field, v: &str| {
+            let mut f = code_form();
+            f.set(field, v);
+            check(field, &f)
+        };
+        assert_eq!(bad(Field::CodeToolName, "run code").as_deref(), Some("Use 1 to 64 letters, digits, _ or -."));
+        assert_eq!(bad(Field::CodeToolName, "").as_deref(), Some("Use 1 to 64 letters, digits, _ or -."));
+        assert_eq!(bad(Field::CodeToolName, &"a".repeat(65)).as_deref(), Some("Use 1 to 64 letters, digits, _ or -."));
+        assert_eq!(bad(Field::CodeToolName, "my-tool_2"), None);
+        assert!(bad(Field::CodeTimeout, "0.5").is_some() && bad(Field::CodeTimeout, "3601").is_some());
+        assert!(bad(Field::CodeTimeout, "3600").is_none() && bad(Field::CodeTimeout, "1").is_none());
+        assert!(bad(Field::CodeResultTokens, "50").is_some() && bad(Field::CodeResultTokens, "1000001").is_some());
+        assert!(bad(Field::CodeResultTokens, "0").is_none() && bad(Field::CodeResultTokens, "100").is_none());
+        assert!(bad(Field::CodeResultChars, "999").is_some() && bad(Field::CodeResultChars, "4000001").is_some());
+        assert!(bad(Field::CodeResultChars, "").is_none() && bad(Field::CodeResultChars, "1000").is_none());
+        assert!(bad(Field::CodeMemory, "7").is_some() && bad(Field::CodeMemory, "1025").is_some());
+        assert!(bad(Field::CodeMemory, "8").is_none() && bad(Field::CodeMemory, "1024").is_none());
+        // Direct mode, or tools off: nothing in code mode's fields counts.
+        let mut direct = code_form();
+        direct.tools.mode = ToolMode::Direct;
+        direct.set(Field::CodeMemory, "1");
+        assert_eq!(check(Field::CodeMemory, &direct), None);
+        let mut off = code_form();
+        off.tools.on = false;
+        off.set(Field::CodeMemory, "1");
+        assert_eq!(check(Field::CodeMemory, &off), None);
+    }
+
+    #[test]
+    fn the_servers_code_mode_messages_land_on_their_fields() {
+        for (path, field) in [
+            ("params.tools.code.tool_name", Field::CodeToolName),
+            ("params.tools.code.timeout_s", Field::CodeTimeout),
+            ("params.tools.code.max_result_tokens", Field::CodeResultTokens),
+            ("params.tools.code.max_result_chars", Field::CodeResultChars),
+            ("params.tools.code.memory_limit_mb", Field::CodeMemory),
+            ("params.tools.code.description", Field::CodeDescription),
+        ] {
+            assert_eq!(Field::from_server(path), Some(field), "{path}");
+            assert!(field.in_tool_settings(), "{path} opens the Tool settings group");
+        }
+        // Anything else under tools is still the group's.
+        assert_eq!(Field::from_server("params.tools.servers"), Some(Field::Tools));
+        assert_eq!(Field::ALL.len(), Field::COUNT);
     }
 }

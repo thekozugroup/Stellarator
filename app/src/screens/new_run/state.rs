@@ -51,9 +51,9 @@ impl Data {
 /// The form's signals.
 #[derive(Clone, Copy)]
 pub struct State {
-    values: [Signal<String>; 22],
-    errors: [Signal<Option<String>>; 22],
-    elements: [ElementRef; 22],
+    values: [Signal<String>; Field::COUNT],
+    errors: [Signal<Option<String>>; Field::COUNT],
+    elements: [ElementRef; Field::COUNT],
     pub stream: Signal<bool>,
     /// "Use tools", the picks and the tool choice.
     pub tools: Signal<ToolsForm>,

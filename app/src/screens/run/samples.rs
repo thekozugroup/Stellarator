@@ -1,7 +1,7 @@
 //! The run's samples (frontend/src/components/runs/samples-section.tsx): a status filter with
 //! counts (line tabs from 1024 px, a pop-up button below), a search box, 50 rows a page from the
 //! server (a table from 1024 px, stacked rows below), and the sample viewer a row opens. A run with
-//! tools has a Tools column with each sample's tool calls (on phones, "3 tool calls" in the row's
+//! tools has a Tools column with each sample's tool calls (in code mode, the tool calls its code made; on phones, "3 tool calls" in the row's
 //! first line). The rows
 //! are read again every 3 s while the run goes; the last page stays on screen at 60% while the next
 //! one comes.
@@ -15,7 +15,7 @@ use nsh_core::prelude::*;
 use super::data::{SampleFilter, is_active, no_trace, page_span, sample_label, samples_query, show_status};
 use super::step_pair::{Step, step_pair};
 use super::viewer::sample_viewer;
-use crate::api::types::{Page, RunOut, SampleStatus, SampleSummary};
+use crate::api::types::{Page, RunOut, SampleStatus, SampleSummary, ToolMode};
 use crate::data::call;
 use crate::format::{DASH, count, duration, int, int_opt};
 use crate::shortcuts;
@@ -52,12 +52,12 @@ const TOOLS: Column = Column::numeric("Tools", 72.0);
 
 /// The table's columns: the Thinking column when some row has no trace, Tools for a run with tools,
 /// Status unless the tab names it.
-fn columns(thinking: bool, tools: bool, status: bool) -> Vec<Column> {
+fn columns(thinking: bool, tools: ToolCol, status: bool) -> Vec<Column> {
     let mut c = vec![NUMBER, PROMPT, RESPONSE];
     if thinking {
         c.push(THINKING);
     }
-    if tools {
+    if tools != ToolCol::Off {
         c.push(TOOLS);
     }
     c.extend([TOKENS, LATENCY]);
@@ -82,7 +82,31 @@ enum Shape {
     Failed(String),
     Loading,
     Empty { key: Key, total: i64 },
-    List { wide: bool, thinking: bool, status: bool, tools: bool },
+    List { wide: bool, thinking: bool, status: bool, tools: ToolCol },
+}
+
+/// Whether the run has tools, and how: the Tools column counts a sample's tool calls, and in code
+/// mode the tool calls its code made (a code run is not a tool call of its own to count).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolCol {
+    Off,
+    Direct,
+    Code,
+}
+
+impl ToolCol {
+    fn of(run: &RunOut) -> ToolCol {
+        match &run.tools {
+            None => ToolCol::Off,
+            Some(t) if t.mode == ToolMode::Code => ToolCol::Code,
+            Some(_) => ToolCol::Direct,
+        }
+    }
+
+    /// The tool calls to show for `s`.
+    fn calls(self, s: &SampleSummary) -> i64 {
+        if self == ToolCol::Code { s.inner_tool_calls } else { s.tool_calls }
+    }
 }
 
 /// The rows shown and how they came.
@@ -206,7 +230,7 @@ pub fn samples_section(run: impl Fn() -> RunOut + Clone + 'static) -> impl IntoE
     let r2 = run.clone();
     let r4 = run.clone();
     let shape = computed(move || {
-        let tools = untracked(&r4).tools.is_some();
+        let tools = ToolCol::of(&untracked(&r4));
         let wide = window_width() >= TABLE_FROM;
         let thinking_wide = window_width() >= THINKING_FROM;
         rows.with(|r| match (&r.data, &r.error) {
@@ -525,7 +549,7 @@ fn sample_table(
     items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
     thinking: bool,
-    tools: bool,
+    tools: ToolCol,
     status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
@@ -542,13 +566,13 @@ fn sample_table(
         if thinking {
             cells.push(cell(THINKING, body(text(move || if s.with(no_trace) { "None" } else { "" })).text_color(muted_ink)).into_element());
         }
-        if tools {
+        if tools != ToolCol::Off {
             cells.push(
                 cell(
                     TOOLS,
-                    body(text(move || s.with(|s| if s.status == SampleStatus::Done || s.tool_calls > 0 { int(s.tool_calls) } else { DASH.to_owned() })))
+                    body(text(move || s.with(|s| if s.status == SampleStatus::Done || tools.calls(s) > 0 { int(tools.calls(s)) } else { DASH.to_owned() })))
                         .tabular_nums()
-                        .text_color(move || if s.with(|s| s.tool_calls > 0) { theme().foreground } else { muted_ink() }),
+                        .text_color(move || if s.with(|s| tools.calls(s) > 0) { theme().foreground } else { muted_ink() }),
                 )
                 .into_element(),
             );
@@ -587,7 +611,7 @@ fn sample_table(
 fn stacked_rows(
     items: impl Fn() -> Vec<SampleSummary> + Copy + 'static,
     spp: i64,
-    tools: bool,
+    tools: ToolCol,
     status: bool,
     selected: Signal<Option<i64>>,
     open: impl Fn(i64) + Copy + 'static,
@@ -631,10 +655,10 @@ fn stacked_rows(
                             bound(s, |s| (s.status, s.finish_reason.clone()), |s| sample_status_pill(s.status, s.finish_reason.as_deref()).into_element())
                         }))
                         .child(view().flex_1())
-                        .child(bound(s, |s| (s.tool_calls, s.completion_tokens), move |s| {
+                        .child(bound(s, |s| (s.tool_calls, s.inner_tool_calls, s.completion_tokens), move |s| {
                             // "2 tool calls · 76 tokens" (tool calls only for a run with tools).
                             let parts: Vec<String> = [
-                                (tools && s.tool_calls > 0).then(|| count(s.tool_calls, "tool call", "tool calls")),
+                                (tools != ToolCol::Off && tools.calls(s) > 0).then(|| count(tools.calls(s), "tool call", "tool calls")),
                                 s.completion_tokens.map(|t| format!("{} tokens", int(t))),
                             ]
                             .into_iter()

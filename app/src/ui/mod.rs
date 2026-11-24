@@ -6,6 +6,7 @@ pub mod action_bar;
 pub mod blocks;
 pub mod button;
 pub mod chip;
+pub mod code_trace;
 pub mod choice;
 pub mod field;
 pub mod icon;

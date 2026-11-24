@@ -5,7 +5,9 @@
 //!
 //! A response of a run with tools also has its tool calls, folded to one line in a ground well
 //! ("3 tool calls · lookup, search", `ui::trace::compact_calls`) between the thinking trace and the
-//! response; open, a line per call with the start of its result.
+//! response; open, a line per call with the start of its result. In code mode it is "2 code runs ·
+//! 5 tool calls" (`ui::code_trace::compact_code_runs`): each run's code, its tool calls and what the
+//! model saw.
 //!
 //! The chosen response carries the accent: a 2 px periwinkle ring and a CHOSEN tag. The rejected
 //! one steps back: its text turns muted and it carries a REJECTED tag. Choose and Reject are the
@@ -27,6 +29,7 @@ use crate::ui::model_text::{ModelTextStyle, model_text_with};
 use crate::ui::page::window_width;
 use crate::ui::status::{Tone, pill_small};
 use crate::ui::tooltip::tooltip_bubble;
+use crate::ui::code_trace::{compact_code_runs, code_runs};
 use crate::ui::trace::{all_calls, compact_calls, trace_rounds};
 
 /// What a card shows and does.
@@ -165,9 +168,14 @@ pub fn candidate_card(card: Card) -> impl IntoElement {
     let tokens = c.completion_tokens.map(|n| {
         meta(text(count(n, "completion token", "completion tokens"))).tabular_nums().px(px(12.0)).pt(px(2.0)).pb(px(4.0))
     });
+    // A run in code mode folds to "2 code runs · 5 tool calls", any other to "3 tool calls · …".
     let calls = c.trace.as_ref().map(|t| all_calls(&trace_rounds(t))).filter(|calls| !calls.is_empty()).map(|calls| {
         let r4 = rejected.clone();
-        compact_calls(calls, Rc::new(move || r4()))
+        if code_runs(&calls).is_empty() {
+            compact_calls(calls, Rc::new(move || r4())).into_element()
+        } else {
+            compact_code_runs(calls, Rc::new(move || r4())).into_element()
+        }
     });
     let content = view().gap(px(8.0)).px(px(8.0)).pb(px(8.0)).min_w(px(0.0)).child(trace).child(calls).child(response_well).child(tokens);
 

@@ -64,10 +64,24 @@ pub fn off_with_tools(format: SftFormat) -> Option<&'static str> {
     }
 }
 
+/// The note above a run's options: what a record holds when the run used tools, `None` without
+/// tools. In code mode (`code`) the tool is the code tool, and its call and result are what the
+/// model wrote and saw: the tool calls the code made are not records of their own.
+pub fn tools_note(with_tools: bool, code: bool) -> Option<&'static str> {
+    match (with_tools, code) {
+        (false, _) => None,
+        (true, false) => Some("This run used tools: each record includes the tool definitions, the calls and their results."),
+        (true, true) => Some(
+            "This run used code mode: each record includes the code tool, the code the model wrote and its results, as the model saw them. The tool calls the code made are not records of their own.",
+        ),
+    }
+}
+
 /// The export dialog of run `run_id`, shown while `open` holds. A run that takes one sample per
 /// prompt (`single_sample`) has no others to leave out, so that option is not offered. A run with
-/// tools (`with_tools`) offers the conversational formats only.
-pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool, with_tools: bool) -> impl IntoElement {
+/// tools (`with_tools`) offers the conversational formats only; in code mode (`code`) the note says
+/// what its records hold.
+pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool, with_tools: bool, code: bool) -> impl IntoElement {
     let options = signal(default_options());
     let spec = ExportSpec {
         title: "Export dataset",
@@ -108,8 +122,8 @@ pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool, w
             choice_group("Format", FORMATS.to_vec(), move || options.with(|o| o.format), move |v| options.update(|o| o.format = v))
         };
         let mut groups = Vec::new();
-        if with_tools {
-            groups.push(options_note("This run used tools: each record includes the tool definitions, the calls and their results."));
+        if let Some(note) = tools_note(with_tools, code) {
+            groups.push(options_note(note));
         }
         groups.extend([
             format,
@@ -126,6 +140,14 @@ pub fn run_export_dialog(open: Signal<bool>, run_id: i64, single_sample: bool, w
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_note_says_what_a_records_tool_calls_are() {
+        assert_eq!(tools_note(false, false), None);
+        assert!(tools_note(true, false).unwrap().contains("the tool definitions, the calls and their results"));
+        let code = tools_note(true, true).unwrap();
+        assert!(code.contains("code tool") && code.contains("as the model saw them"));
+    }
 
     #[test]
     fn runs_with_tools_export_conversations_only() {

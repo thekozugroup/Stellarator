@@ -247,7 +247,7 @@ pub fn data_tag(words: &'static str, tint: &'static str, ink: &'static str) -> i
 }
 
 /// A ground well (8 px corners, inside a 16 px card 8 px in) of mono text; `error` tints it.
-fn mono_well(content: String, error: bool) -> View {
+pub(super) fn mono_well(content: String, error: bool) -> View {
     view()
         .rounded(px(radius::SM))
         .bg(move || if error { token("negative-tint")() } else { dialog_well() })
@@ -289,7 +289,7 @@ fn result_well(result: TraceTool) -> impl IntoElement {
 }
 
 /// A call's arguments in their well, and a coral note when they are not JSON.
-fn arguments_well(raw: String) -> impl IntoElement {
+pub(super) fn arguments_well(raw: String) -> impl IntoElement {
     dynamic(move || {
         let (shown, valid) = arguments_text(&raw, text_mode());
         view()
@@ -297,6 +297,16 @@ fn arguments_well(raw: String) -> impl IntoElement {
             .child(mono_well(shown, false))
             .child((!valid).then(|| meta(text("Not valid JSON: shown as the model wrote it.")).text_color(token("coral-ink")).px(px(4.0))))
     })
+}
+
+/// One call of a trace in the sample viewer: the code card for a call of the code tool that ran
+/// code, the tool call card for any other.
+pub fn call_card(block: CallBlock, open_at_first: bool) -> AnyElement {
+    if super::code_trace::execution_of(&block).is_some() {
+        super::code_trace::code_card(block, open_at_first).into_element()
+    } else {
+        tool_call_card(block, open_at_first).into_element()
+    }
 }
 
 /// One tool call in the sample viewer: a card, open while `open` holds (Rendered and Raw apply to
@@ -362,7 +372,13 @@ pub fn tool_call_card(block: CallBlock, open_at_first: bool) -> impl IntoElement
 }
 
 /// The result under a call: "Result" with its tags and copy button, then its well.
-fn result_block(r: TraceTool) -> impl IntoElement {
+pub(super) fn result_block(r: TraceTool) -> impl IntoElement {
+    let title = if r.is_error { "Error result" } else { "Result" };
+    result_block_with_title(r, title)
+}
+
+/// [`result_block`] under another title (the code card's "Result the model saw").
+pub(super) fn result_block_with_title(r: TraceTool, title: &'static str) -> impl IntoElement {
     let content = r.content.clone();
     view()
         .gap(px(4.0))
@@ -374,7 +390,7 @@ fn result_block(r: TraceTool) -> impl IntoElement {
                 .gap(px(8.0))
                 .pl(px(8.0))
                 .pr(px(2.0))
-                .child(body(text(if r.is_error { "Error result" } else { "Result" })).font_weight(FontWeight::SEMIBOLD).text_color(move || {
+                .child(body(text(title)).font_weight(FontWeight::SEMIBOLD).text_color(move || {
                     if r.is_error { token("negative-ink")() } else { theme().foreground }
                 }))
                 .child(r.truncated.then(|| data_tag("TRUNCATED", "coral-tint", "coral-ink")))

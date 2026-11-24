@@ -2,7 +2,9 @@
 //! `params.tools`, the summary and the name clashes the group shows, and a copied run's tools
 //! checked against the servers there are now (Run again).
 
-use crate::api::types::{McpServerOut as Server, McpStatus, RunToolServer, RunTools, ToolChoice, ToolSnapshot};
+use crate::api::types::{
+    CodeModeOptions, CodeNamespaces, McpServerOut as Server, McpStatus, RunToolServer, RunTools, ToolChoice, ToolMode, ToolSnapshot,
+};
 use crate::format::{count, int};
 
 /// One server picked for the run: all its tools (`None`), or these, in the server's order.
@@ -20,6 +22,13 @@ pub struct ToolsForm {
     /// In the order the servers are listed.
     pub picks: Vec<Pick>,
     pub choice: ToolChoice,
+    /// How the model gets the tools: one function each, or one code tool.
+    pub mode: ToolMode,
+    /// Code mode: where the code finds the tools.
+    pub namespaces: CodeNamespaces,
+    /// Code mode: the description is the user's own (its text is the `CodeDescription` field);
+    /// otherwise Cloudflare's default is sent as null.
+    pub custom_description: bool,
 }
 
 /// Why `server` cannot be picked, or `None` when it can: blocked here, turned off, its last check
@@ -190,6 +199,10 @@ pub fn clash_lines(found: &[Clash]) -> Vec<String> {
 
 /// The names offered by more than one picked server, in the order they first appear.
 pub fn clashes(form: &ToolsForm, servers: &[Server]) -> Vec<Clash> {
+    // Code mode with a namespace per server keeps the names apart (`docs.search`, `github.search`).
+    if form.mode == ToolMode::Code && form.namespaces == CodeNamespaces::Servers {
+        return Vec::new();
+    }
     let mut by_name: Vec<(String, Vec<String>)> = Vec::new();
     for (pick, server) in live(form, servers) {
         for tool in offered(pick, server) {
@@ -204,7 +217,15 @@ pub fn clashes(form: &ToolsForm, servers: &[Server]) -> Vec<Clash> {
 
 /// The run's `params.tools` for the picks and the numbers (already checked); `None` when tools
 /// are off. A server whose every tool is checked is sent as "all", so tools it adds later come too.
-pub fn to_run_tools(form: &ToolsForm, servers: &[Server], max_rounds: i64, tool_timeout_s: f64, max_result_chars: i64) -> Option<RunTools> {
+/// `code` is the code mode options for a form in code mode, already checked.
+pub fn to_run_tools(
+    form: &ToolsForm,
+    servers: &[Server],
+    max_rounds: i64,
+    tool_timeout_s: f64,
+    max_result_chars: i64,
+    code: Option<CodeModeOptions>,
+) -> Option<RunTools> {
     if !form.on {
         return None;
     }
@@ -219,7 +240,8 @@ pub fn to_run_tools(form: &ToolsForm, servers: &[Server], max_rounds: i64, tool_
             Some(RunToolServer { server_id: server.id, tools: if all { None } else { Some(names) } })
         })
         .collect();
-    Some(RunTools { servers: picked, max_rounds, tool_timeout_s, max_result_chars, tool_choice: form.choice, ..RunTools::default() })
+    let code = if form.mode == ToolMode::Code { code.filter(|c| *c != CodeModeOptions::default()) } else { None };
+    Some(RunTools { servers: picked, max_rounds, tool_timeout_s, max_result_chars, tool_choice: form.choice, mode: form.mode, code })
 }
 
 /// A copied run's tools against the servers there are now: the picks kept, and a note for each
@@ -257,7 +279,16 @@ pub fn from_run_tools(tools: &RunTools, snapshot: Option<&ToolSnapshot>, servers
     }
     let order = |id: i64| servers.iter().position(|s| s.id == id).unwrap_or(usize::MAX);
     picks.sort_by_key(|p| order(p.server_id));
-    (ToolsForm { on: true, picks, choice: tools.tool_choice }, notes)
+    let code = tools.code.as_ref();
+    let form = ToolsForm {
+        on: true,
+        picks,
+        choice: tools.tool_choice,
+        mode: tools.mode,
+        namespaces: code.map(|c| c.namespaces).unwrap_or_default(),
+        custom_description: code.is_some_and(|c| c.description.is_some()),
+    };
+    (form, notes)
 }
 
 /// The note under the group after Run again dropped something.
@@ -266,8 +297,9 @@ pub fn dropped_note(dropped: &[String]) -> Option<String> {
 }
 
 /// The Tool settings group's closed summary: "8 rounds, 60 s per call, 20,000 characters per
-/// result, auto".
-pub fn settings_summary(rounds: &str, timeout: &str, chars: &str, choice: ToolChoice) -> String {
+/// result, auto"; in code mode "8 rounds, 60 s per call, auto, 60 s per run, 6,000 tokens per
+/// result" (the characters are the trace's copy, which the code does not see).
+pub fn settings_summary(rounds: &str, timeout: &str, chars: &str, choice: ToolChoice, code: Option<(&str, &str)>) -> String {
     let n = |s: &str| s.trim().parse::<f64>().ok();
     let mut parts = Vec::new();
     if let Some(r) = n(rounds) {
@@ -276,13 +308,23 @@ pub fn settings_summary(rounds: &str, timeout: &str, chars: &str, choice: ToolCh
     if let Some(t) = n(timeout) {
         parts.push(format!("{t} s per call"));
     }
-    if let Some(c) = n(chars) {
+    if let (Some(c), None) = (n(chars), code) {
         parts.push(format!("{} characters per result", int(c as i64)));
     }
     parts.push(match choice {
         ToolChoice::Auto => "auto".to_owned(),
         ToolChoice::Required => "a call required".to_owned(),
     });
+    if let Some((run_timeout, tokens)) = code {
+        if let Some(t) = n(run_timeout) {
+            parts.push(format!("{t} s per run"));
+        }
+        match n(tokens) {
+            Some(0.0) => parts.push("results not cut".to_owned()),
+            Some(k) => parts.push(format!("{} tokens per result", int(k as i64))),
+            None => {}
+        }
+    }
     parts.join(", ")
 }
 
@@ -319,7 +361,7 @@ mod tests {
         f.set_tool(&list[1], "prs", false, &list);
         assert_eq!(f.pick(2).unwrap().tools.as_deref(), Some(&["search".to_owned(), "issues".to_owned()][..]));
         assert_eq!(summary(&f, &list), "4 tools from 2 servers");
-        let rt = to_run_tools(&f, &list, 8, 60.0, 20_000).unwrap();
+        let rt = to_run_tools(&f, &list, 8, 60.0, 20_000, None).unwrap();
         assert_eq!(rt.servers, vec![
             RunToolServer { server_id: 1, tools: None },
             RunToolServer { server_id: 2, tools: Some(vec!["search".into(), "issues".into()]) },
@@ -334,7 +376,7 @@ mod tests {
         assert!(f.pick(1).is_none());
         // Tools off: no tools section.
         f.on = false;
-        assert_eq!(to_run_tools(&f, &list, 8, 60.0, 20_000), None);
+        assert_eq!(to_run_tools(&f, &list, 8, 60.0, 20_000, None), None);
     }
 
     #[test]
@@ -348,8 +390,8 @@ mod tests {
         let unchecked = server(4, "new", "unchecked", &[]);
         assert_eq!(unpickable(&unchecked).as_deref(), Some("Not checked yet."));
         // A pick of a server that went bad is not sent.
-        let f = ToolsForm { on: true, picks: vec![Pick { server_id: 3, tools: None }], choice: ToolChoice::Auto };
-        assert_eq!(to_run_tools(&f, &list, 8, 60.0, 20_000).unwrap().servers, vec![]);
+        let f = ToolsForm { on: true, picks: vec![Pick { server_id: 3, tools: None }], ..Default::default() };
+        assert_eq!(to_run_tools(&f, &list, 8, 60.0, 20_000, None).unwrap().servers, vec![]);
         assert_eq!(summary(&f, &list), "No tools picked");
     }
 
@@ -374,6 +416,13 @@ mod tests {
                 "`x` is on a, b and c: sent as `a__x`, `b__x` and `c__x`.",
             ]
         );
+        // Code mode with a namespace per server keeps the names apart (`docs.search`); with all
+        // tools under `codemode` they clash again.
+        f.mode = ToolMode::Code;
+        assert!(clashes(&f, &list).is_empty());
+        f.namespaces = CodeNamespaces::Codemode;
+        assert_eq!(clashes(&f, &list), found);
+        f.mode = ToolMode::Direct;
         // Not offered from github: no clash.
         f.set_tool(&list[1], "search", false, &list);
         assert!(clashes(&f, &list).is_empty());
@@ -411,7 +460,12 @@ mod tests {
 
     #[test]
     fn the_settings_summary() {
-        assert_eq!(settings_summary("8", "60", "20000", ToolChoice::Auto), "8 rounds, 60 s per call, 20,000 characters per result, auto");
-        assert_eq!(settings_summary("1", "", "x", ToolChoice::Required), "1 round, a call required");
+        assert_eq!(settings_summary("8", "60", "20000", ToolChoice::Auto, None), "8 rounds, 60 s per call, 20,000 characters per result, auto");
+        assert_eq!(settings_summary("1", "", "x", ToolChoice::Required, None), "1 round, a call required");
+        assert_eq!(
+            settings_summary("8", "60", "20000", ToolChoice::Auto, Some(("90", "6000"))),
+            "8 rounds, 60 s per call, auto, 90 s per run, 6,000 tokens per result"
+        );
+        assert_eq!(settings_summary("8", "60", "20000", ToolChoice::Auto, Some(("60", "0"))), "8 rounds, 60 s per call, auto, 60 s per run, results not cut");
     }
 }
