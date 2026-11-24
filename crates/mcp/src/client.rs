@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 use rmcp::model::{CallToolRequestParams, ClientCapabilities, ClientConfig, Implementation};
 use rmcp::service::{Peer, RunningService, ServiceError};
+use rmcp::transport::common::client_side_sse::ExponentialBackoff;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
@@ -232,12 +233,11 @@ impl Connection {
             .connect_timeout(timeout.min(Duration::from_secs(15)))
             .build()
             .map_err(|e| McpError(format!("Couldn't set up the HTTP client: {e}.")))?;
-        let transport = StreamableHttpClientTransport::with_client(
-            client,
-            StreamableHttpClientTransportConfig::with_uri(url.to_string())
-                .custom_headers(headers)
-                .reinit_on_expired_session(true),
-        );
+        let mut transport_config = StreamableHttpClientTransportConfig::with_uri(url.to_string())
+            .custom_headers(headers)
+            .reinit_on_expired_session(true);
+        transport_config.retry_config = Arc::new(stream_retries());
+        let transport = StreamableHttpClientTransport::with_client(client, transport_config);
         let service = match tokio::time::timeout(timeout, client_config().serve(transport)).await {
             Ok(Ok(s)) => s,
             Ok(Err(e)) => {
@@ -340,6 +340,19 @@ impl Connection {
     fn with_stderr(&self, sentence: &str) -> String {
         with_stderr(sentence, &self.stderr.lock())
     }
+}
+
+/// How often the HTTP transport tries to resume a response stream that ended before its answer:
+/// 3 times, after 0.5, 1 and 2 seconds. rmcp's default has no limit, so a call that was in flight
+/// when its server went away waited for the whole tool timeout and reached the model as a tool
+/// that was too slow. With a limit the call ends as a failed connection after about 3.5 seconds,
+/// and the session reconnects once like for every other connection failure.
+fn stream_retries() -> ExponentialBackoff {
+    let mut policy = ExponentialBackoff::default();
+    policy.max_times = Some(3);
+    policy.base_duration = Duration::from_millis(500);
+    policy.max_delay = Some(Duration::from_secs(2));
+    policy
 }
 
 /// `sentence`, with the end of the server's error output when it wrote any.

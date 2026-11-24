@@ -127,7 +127,7 @@ Rules:
 | The tool reports an error (`isError`) or times out | The same: the error text is the result. |
 | The answer after the last round still calls tools | The sample ends as truncated, with finish reason `tool_rounds`; those calls do not run. |
 | The answer stops at `max_tokens` | Finish reason `length`, truncated; its calls do not run. |
-| An MCP server's connection fails (it crashed or went down) | Stellarator reconnects once (a stdio server is started again) and repeats the call. If that fails too, the sample fails with the server's name; **Retry failed** runs it again later. |
+| An MCP server's connection fails (it crashed or went down) | Stellarator reconnects once (a stdio server is started again) and repeats the call. If that fails too, the sample fails with the server's name; **Retry failed** runs it again later. A call that was waiting for its answer when an HTTP server went away is handled the same way after about 3.5 seconds: the client first tries three times to resume the answer's stream. |
 | The endpoint refuses the tool definitions (a 400 naming tools or `tool_choice`) | The run pauses and says the endpoint must support tool calling. No sample fails. |
 
 - Earlier thinking traces are not sent back to the model; they are kept in the trace.

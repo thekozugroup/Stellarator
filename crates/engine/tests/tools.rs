@@ -254,9 +254,18 @@ async fn a_crashed_server_fails_samples_and_retry_failed_recovers() {
     proxy.cut().await;
     let run = e.wait_for(rid, |x| x["status"] == "completed", 60.0).await;
     assert!(i(&run["failed"]) > 0, "{run}");
-    let failed = e.get(&format!("/api/runs/{rid}/samples?status=failed")).await;
-    let err = s(&failed["items"][0]["error"]);
-    assert!(err.starts_with("The MCP server \"flaky-tools\" stopped answering"), "{err}");
+    // Every sample that met the dead server failed with the reason, the one whose call was in
+    // flight included: its lost answer is a failed connection, not a tool that was too slow. (A
+    // sample is done only if its call had finished before the server went away.)
+    for x in samples(&e, rid).await {
+        if x["status"] == "failed" {
+            let err = s(&x["error"]);
+            assert!(err.starts_with("The MCP server \"flaky-tools\" stopped answering"), "{err}");
+        } else {
+            let tool = x["trace"].as_array().unwrap().iter().find(|m| m["role"] == "tool").unwrap();
+            assert!(!s(&tool["content"]).contains("did not finish within"), "{x}");
+        }
+    }
 
     // The server is back on the same port: Retry failed runs them again.
     let back = Proxy::start(addr, target).await;

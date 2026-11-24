@@ -342,7 +342,9 @@ async fn circuit_breaker_and_deleted_endpoint() {
 
     let (status, r) = e.post(&format!("/api/runs/{rid}/resume"), json!({})).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(r["status_reason"].is_null());
+    // Resuming clears the reason. A dead endpoint refuses at once, so the run can be paused again
+    // by the time the answer is read; then the reason is the new pause's.
+    assert!(r["status_reason"].is_null() || r["status"] == "paused", "{r}");
     let run = e.wait_for(rid, |x| x["status"] == "paused", 20.0).await;
     assert!(s(&run["status_reason"]).starts_with("Paused after 3 failures in a row."));
 
