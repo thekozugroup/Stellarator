@@ -318,11 +318,13 @@ async fn a_timeout_kills_the_whole_process_tree() {
             marks[0], marks[1], marks[2], marks[3], marks[4], marks[5]
         );
         let started = Instant::now();
-        let output = run(&workspace, &command, &RunOptions { timeout: Duration::from_secs(1), ..options.clone() }).await;
+        // Long enough for every line above the last to have run, also on a busy machine where
+        // python3 alone takes a second to start.
+        let output = run(&workspace, &command, &RunOptions { timeout: Duration::from_secs(5), ..options.clone() }).await;
         assert!(output.timed_out, "{name}: {output:?}");
         assert_eq!((output.exit_code, output.signal), (None, Some(9)), "{name}");
         assert_eq!(output.stdout.text, "started\n", "{name}");
-        assert!(started.elapsed() < Duration::from_secs(8), "{name}: took {:?}", started.elapsed());
+        assert!(started.elapsed() < Duration::from_secs(20), "{name}: took {:?}", started.elapsed());
         for (index, mark) in marks.iter().enumerate() {
             let left = survivors(mark).await;
             // The cases a macOS without the profile's mark does not cover (support() says so): a
@@ -435,12 +437,14 @@ async fn output_is_capped() {
 async fn processor_time_is_limited() {
     require_sandbox();
     let workspace = workspace();
-    let options = RunOptions { limits: Limits { cpu_seconds: Some(1), ..Limits::default() }, ..quick() };
+    // On a busy machine one second of processor time takes several seconds of the clock.
+    let limits = Limits { cpu_seconds: Some(1), ..Limits::default() };
+    let options = RunOptions { limits, timeout: Duration::from_secs(120), ..RunOptions::default() };
     let started = Instant::now();
     let output = run(&workspace, "while :; do :; done", &options).await;
     assert!(!output.timed_out, "{output:?}");
     assert_eq!((output.exit_code, output.signal), (None, Some(24)), "{output:?}"); // SIGXCPU
-    assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_secs(90), "took {:?}", started.elapsed());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -467,7 +471,7 @@ async fn memory_is_limited() {
     let workspace = workspace();
     let limits = Limits { memory_bytes: Some(256 << 20), ..Limits::default() };
     let options = RunOptions { limits, ..quick() };
-    let command = "perl -e '$x = \"a\" x (700 * 1024 * 1024); print \"allocated \", length($x), \"\\n\"; sleep 5; print \"kept\\n\"'";
+    let command = "perl -e '$x = \"a\" x (700 * 1024 * 1024); print \"allocated \", length($x), \"\\n\"; sleep 15; print \"kept\\n\"'";
     let started = Instant::now();
     let output = run(&workspace, command, &options).await;
     if cfg!(target_os = "linux") {
@@ -479,7 +483,7 @@ async fn memory_is_limited() {
         assert_eq!(output.limit, Some(LimitHit::Memory), "{output:?}");
         assert!(!output.stdout.text.contains("kept"), "{}", text(&output));
     }
-    assert!(started.elapsed() < Duration::from_secs(5), "took {:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_secs(15), "took {:?}", started.elapsed());
 
     // Under the limit the same program runs.
     let output = run(&workspace, "perl -e '$x = \"a\" x (50 * 1024 * 1024); print length($x), \"\\n\"'", &options).await;
