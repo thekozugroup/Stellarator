@@ -82,7 +82,7 @@ values; enter a new value to replace one.
 
 | Transport | How Stellarator reaches it |
 | --- | --- |
-| `stdio` | Starts `command` with `args` and `env` (added to Stellarator's own environment) and talks over stdin and stdout. The command is looked up on `PATH`, so `npx` and `uvx` work, also as `npx.cmd` on Windows. |
+| `stdio` | Starts `command` with `args` and talks over stdin and stdout. The command is looked up on `PATH`, so `npx` and `uvx` work, also as `npx.cmd` on Windows. The server gets the server's `env` plus a short list of Stellarator's own variables: `PATH`, `HOME`, `USER`, `SHELL`, `TERM`, locale and temp folder, Windows' profile and system folders, and proxy and certificate settings. Other variables, such as `HF_TOKEN` or API keys, are not passed: add what a server needs under its `env`. |
 | `http` | Streamable HTTP at `url`, with `headers` on every request. |
 
 ## Use tools in a run

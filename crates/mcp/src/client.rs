@@ -117,6 +117,10 @@ impl Connection {
             }
         };
         cmd.args(&config.args);
+        // Only a short list of Stellarator's own variables reaches the server (as the MCP SDKs do),
+        // then the server's `env`: tokens in Stellarator's environment, such as HF_TOKEN, stay out.
+        cmd.env_clear();
+        cmd.envs(inherited_env(std::env::vars_os()));
         cmd.envs(&config.env);
         cmd.kill_on_drop(true);
         #[cfg(windows)]
@@ -342,4 +346,57 @@ fn describe_init_error(raw: &str) -> String {
         return "nothing was found at this URL (404); MCP endpoints often end in /mcp".into();
     }
     raw.chars().take(300).collect()
+}
+
+/// The variables of Stellarator's own environment a stdio server starts with (its `env` is added
+/// on top): what commands such as `npx` and `uvx` need to run (the list the MCP SDKs pass), plus
+/// locale, temp folder, proxy and certificate settings. Everything else, tokens included, is left
+/// out.
+const INHERITED: &[&str] = &[
+    // Unix
+    "HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR",
+    // Windows (names are matched without regard to case)
+    "APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PROCESSOR_ARCHITECTURE", "PROGRAMFILES",
+    "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERNAME", "USERPROFILE", "PATHEXT", "COMSPEC",
+    // Network
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE",
+];
+
+/// The entries of `vars` a stdio server inherits (see [`INHERITED`]).
+fn inherited_env(
+    vars: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    vars.filter(|(key, _)| {
+        key.to_str().is_some_and(|k| INHERITED.iter().any(|allowed| allowed.eq_ignore_ascii_case(k)))
+    })
+    .collect()
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::inherited_env;
+    use std::ffi::OsString;
+
+    fn vars(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
+        pairs.iter().map(|(k, v)| (OsString::from(k), OsString::from(v))).collect()
+    }
+
+    #[test]
+    fn a_stdio_server_gets_the_basics_and_no_tokens() {
+        let kept = inherited_env(
+            vars(&[
+                ("PATH", "/usr/bin"),
+                ("HOME", "/home/a"),
+                ("https_proxy", "http://proxy:3128"),
+                ("Path", "C:\\Windows"),
+                ("HF_TOKEN", "hf_secret"),
+                ("OPENAI_API_KEY", "sk-secret"),
+                ("STELLARATOR_DATA_DIR", "/data"),
+            ])
+            .into_iter(),
+        );
+        let names: Vec<_> = kept.iter().map(|(k, _)| k.to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["PATH", "HOME", "https_proxy", "Path"]);
+    }
 }
