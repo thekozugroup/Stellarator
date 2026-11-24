@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/api", "crates/core", "crates/engine", "crates/import", "crates/export", "crates/server", "crates/mock", "crates/mcp"]
+members = ["crates/api", "crates/core", "crates/engine", "crates/import", "crates/export", "crates/server", "crates/mock", "crates/mcp", "crates/codemode"]
 exclude = ["app"]
 # The app (app/) is its own workspace so nsh's dependencies don't slow down server builds; it
 # depends on crates/server by path.

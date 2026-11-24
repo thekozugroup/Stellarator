@@ -1,0 +1,21 @@
+[package]
+name = "stellarator-codemode"
+description = "Cloudflare's Code Mode for Stellarator's MCP tool runs: the code tool's definition and types, normalizeCode, and a QuickJS sandbox that runs the model's JavaScript against the run's MCP tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+futures = "0.3.34"
+parking_lot = "0.12.5"
+# QuickJS-NG, embedded: no file system or network unless given; interrupt handler and memory limit.
+rquickjs = { version = "0.14.0", default-features = false, features = ["std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+# `preserve_order`: schemas reach the type generator with their properties in order.
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+stellarator-api = { version = "0.4.0", path = "../api" }
+tokio = { version = "1.53.3", features = ["sync", "time", "macros", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.3", features = ["full"] }

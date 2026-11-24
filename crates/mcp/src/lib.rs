@@ -18,5 +18,5 @@ pub mod result;
 pub mod session;
 pub mod store;
 
-pub use client::{CallOutcome, Connection, McpError, ServerConfig};
+pub use client::{CallOutcome, Connection, McpError, RawOutcome, ServerConfig};
 pub use session::{Answer, Session};

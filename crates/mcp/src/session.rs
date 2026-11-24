@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 
-use crate::client::{CallOutcome, Connection, McpError, ServerConfig};
+use crate::client::{Connection, McpError, RawOutcome, ServerConfig};
 
 pub struct Session {
     pub config: ServerConfig,
@@ -71,11 +71,24 @@ impl Session {
     /// Call `tool` on the server. `Err` only when the connection failed, a reconnect was tried, and
     /// the call failed again; the message names the server.
     pub async fn call(&self, tool: &str, arguments: Option<Map<String, Value>>, timeout: Duration) -> Result<Answer, String> {
+        match self.call_raw(tool, arguments, timeout).await?.into_answer() {
+            crate::CallOutcome::Answered { text, is_error } => Ok(Answer { text, is_error }),
+            crate::CallOutcome::Transport(e) => Err(e),
+        }
+    }
+
+    /// [`Self::call`], with the server's result as it came (never [`RawOutcome::Transport`]).
+    pub async fn call_raw(
+        &self,
+        tool: &str,
+        arguments: Option<Map<String, Value>>,
+        timeout: Duration,
+    ) -> Result<RawOutcome, String> {
         let (conn, seen) = self.current();
         let first_error = match conn {
-            Some(c) => match c.call(tool, arguments.clone(), timeout).await {
-                CallOutcome::Answered { text, is_error } => return Ok(Answer { text, is_error }),
-                CallOutcome::Transport(e) => e,
+            Some(c) => match c.call_raw(tool, arguments.clone(), timeout).await {
+                RawOutcome::Transport(e) => e,
+                answered => return Ok(answered),
             },
             None => "the session was closed".to_string(),
         };
@@ -89,12 +102,12 @@ impl Session {
                 first_error.trim_end_matches('.')
             )
         })?;
-        match conn.call(tool, arguments, timeout).await {
-            CallOutcome::Answered { text, is_error } => Ok(Answer { text, is_error }),
-            CallOutcome::Transport(e) => Err(format!(
+        match conn.call_raw(tool, arguments, timeout).await {
+            RawOutcome::Transport(e) => Err(format!(
                 "The MCP server \"{name}\" stopped answering, also after a reconnect: {}",
                 e.trim_end_matches('.').to_string() + "."
             )),
+            answered => Ok(answered),
         }
     }
 

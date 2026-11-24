@@ -59,6 +59,44 @@ pub enum CallOutcome {
     Transport(String),
 }
 
+/// The result of one tool call, before it becomes text for the model.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RawOutcome {
+    /// The server's `tools/call` result in MCP's JSON form (`content`, `structuredContent`,
+    /// `isError`).
+    Result(Value),
+    /// The call did not finish within its timeout.
+    TimedOut(Duration),
+    /// The server answered with a JSON-RPC error.
+    ServerError { code: i32, message: String },
+    /// Any other failure that is not the connection's, described.
+    Failed(String),
+    /// The connection failed. Worth one reconnect.
+    Transport(String),
+}
+
+impl RawOutcome {
+    /// The text and error flag the model gets in direct mode.
+    pub fn into_answer(self) -> CallOutcome {
+        match self {
+            RawOutcome::Result(v) => {
+                let (text, is_error) = result_text(&v);
+                CallOutcome::Answered { text, is_error }
+            }
+            RawOutcome::TimedOut(t) => CallOutcome::Answered {
+                text: format!("The tool did not finish within {} s.", fmt_secs(t.as_secs_f64())),
+                is_error: true,
+            },
+            RawOutcome::ServerError { message, .. } => CallOutcome::Answered {
+                text: format!("The server could not run the tool: {}", period(&message)),
+                is_error: true,
+            },
+            RawOutcome::Failed(text) => CallOutcome::Answered { text, is_error: true },
+            RawOutcome::Transport(e) => CallOutcome::Transport(e),
+        }
+    }
+}
+
 /// An open, initialized MCP session.
 pub struct Connection {
     name: String,
@@ -256,30 +294,29 @@ impl Connection {
 
     /// Call `tool` with `arguments`, waiting at most `timeout`.
     pub async fn call(&self, tool: &str, arguments: Option<Map<String, Value>>, timeout: Duration) -> CallOutcome {
+        self.call_raw(tool, arguments, timeout).await.into_answer()
+    }
+
+    /// [`Self::call`], with the server's result as it came.
+    pub async fn call_raw(&self, tool: &str, arguments: Option<Map<String, Value>>, timeout: Duration) -> RawOutcome {
         let mut params = CallToolRequestParams::new(tool.to_string());
         if let Some(args) = arguments {
             params = params.with_arguments(args);
         }
         let started = Instant::now();
         match tokio::time::timeout(timeout, self.peer.call_tool(params)).await {
-            Err(_) => CallOutcome::Answered {
-                text: format!("The tool did not finish within {} s.", fmt_secs(timeout.as_secs_f64())),
-                is_error: true,
-            },
+            Err(_) => RawOutcome::TimedOut(timeout),
             Ok(Ok(result)) => {
                 let value = serde_json::to_value(&result).unwrap_or(Value::Null);
-                let (text, is_error) = result_text(&value);
+                let is_error = value.get("isError").and_then(Value::as_bool).unwrap_or(false);
                 tracing::debug!(server = %self.name, tool, ms = started.elapsed().as_millis() as u64, is_error, "tool call");
-                CallOutcome::Answered { text, is_error }
+                RawOutcome::Result(value)
             }
-            Ok(Err(ServiceError::McpError(e))) => CallOutcome::Answered {
-                text: format!("The server could not run the tool: {}", period(&e.message)),
-                is_error: true,
-            },
+            Ok(Err(ServiceError::McpError(e))) => RawOutcome::ServerError { code: e.code.0, message: e.message.to_string() },
             Ok(Err(e @ (ServiceError::TransportClosed | ServiceError::TransportSend(_)))) => {
-                CallOutcome::Transport(self.with_stderr(&describe_service_error(&e)))
+                RawOutcome::Transport(self.with_stderr(&describe_service_error(&e)))
             }
-            Ok(Err(e)) => CallOutcome::Answered { text: period(&describe_service_error(&e)), is_error: true },
+            Ok(Err(e)) => RawOutcome::Failed(period(&describe_service_error(&e))),
         }
     }
 
