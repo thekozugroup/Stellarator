@@ -41,6 +41,35 @@ Each version's section is copied into its GitHub release under "What's new".
 - Cloudflare's own JavaScript generates the types, normalizes the code (with acorn) and truncates
   results (6,000 tokens by default), run as published in QuickJS; tests compare them with the
   package's output.
+- A second format, `params.tools.code.format: "runtime"`, reproduces the setup Cloudflare's
+  documentation leads with: the durable runtime, `createCodemodeRuntime(...).tool()` with one
+  `McpConnector` per MCP server. The tool's description lists the connectors and declares no
+  types; the model finds methods with `codemode.search` and `codemode.describe`, then calls them;
+  results come back as `{"status": "completed", "executionId": ..., "result": ..., "logs": [...]}`
+  or `{"status": "error", ...}`, not shrunk unless the run sets a budget. `connector_hints` adds a
+  hint per connector, and `codemode.describe` of a connector shows the MCP server's instructions
+  (`server_instructions`). Approvals, saved snippets and rollback are not simulated: a run behaves
+  as a runtime with none configured. The default format is unchanged (`code_tool`).
+- Code mode is checked against the real package. A reference harness
+  (`crates/codemode/tests/golden`) runs `@cloudflare/codemode` 0.5.6 on workerd through the AI SDK
+  for both setups and records what a model server receives; a conformance test runs the same 661
+  and 749 conversations through Stellarator and compares them byte for byte. 528 and 618 are the
+  same; the rest are listed by cause (QuickJS's syntax error and some engine error messages,
+  Workers globals and `Intl` the sandbox does not define, and a few more) in
+  [docs/tools.md](docs/tools.md#how-close-it-is-to-cloudflares).
+- To get there, the sandbox now loads the module Cloudflare's executor builds and defines the
+  Workers globals that behave the same: `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`,
+  `atob`, `btoa`, `crypto.randomUUID`, `structuredClone`, `performance.now`, `setImmediate`, and a
+  `fetch` that is refused as in a Worker without outbound access. Engine errors with a fixed V8
+  wording read as V8's (`Cannot read properties of undefined (reading 'x')`), and so do
+  `JSON.parse` errors. Code that does not parse answers as workerd does
+  (`Error: Failed to start Worker:\nUncaught SyntaxError: ...`), where it answered
+  `SyntaxError: ...`. Console output inside an error is no longer shortened.
+- Between rounds, a code mode run sends the assistant message back as the AI SDK does: `content`
+  is `null` when there was no text, and the call's arguments are `{"code": ...}` written again
+  with `JSON.stringify`. The trace keeps what the model wrote.
+- `params.tools.code.max_result_tokens` can be null, the default, which means the format's own:
+  6,000 for `code_tool`, no truncation for `runtime`. Stored runs read as before.
 - Per run: the tool's name and description template, the namespaces, the execution timeout (60 s),
   the result budget and a memory limit (128 MB). Executions have no network or file access.
 - The trace keeps, for each execution, the code as run, every MCP call it made (arguments, result,
@@ -56,7 +85,9 @@ Each version's section is copied into its GitHub release under "What's new".
   result the model saw.
 - MCP tool lists keep each tool's output schema, which code mode turns into the method's result type.
 - The mock tool model writes JavaScript when it is given a Code Mode tool (`code:loop`,
-  `code:catch`, `code:fence` and more in the prompt pick the shape).
+  `code:catch`, `code:fence` and more in the prompt pick the shape). Given the runtime format's
+  tool it searches, describes and then calls, one execution per request. The mock serves a second
+  MCP server, an issue tracker at `/tracker/mcp`, with instructions and an output schema.
 
 ## 0.4.0
 

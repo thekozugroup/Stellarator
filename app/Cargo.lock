@@ -4934,12 +4934,14 @@ name = "stellarator-codemode"
 version = "0.4.0"
 dependencies = [
  "futures",
+ "getrandom 0.3.4",
  "parking_lot",
  "rquickjs",
  "serde",
  "serde_json",
  "stellarator-api",
  "tokio",
+ "url",
 ]
 
 [[package]]

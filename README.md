@@ -190,8 +190,10 @@ in the formats trainers read, so a student model learns from the teacher's real 
   result length.
 - The endpoint must support tool calling (vLLM: `--enable-auto-tool-choice --tool-call-parser`).
 - Code mode: instead of one tool per MCP tool, the model gets Cloudflare's Code Mode tool and writes
-  JavaScript that calls the MCP tools through typed namespaces. The code runs in a sandbox, and the
-  traces match what a model sees and writes in Cloudflare's Code Mode.
+  JavaScript that calls the MCP tools. The code runs in a sandbox, and the traces match what a
+  model sees and writes in Cloudflare's Code Mode, in either of its two setups: the code tool with
+  typed namespaces, or the durable runtime, where the model searches for methods first. Both are
+  compared, message for message, with the real package running on workerd.
 
 [docs/tools.md](docs/tools.md) has the details: endpoint flags, export formats per trainer, code
 mode, and the server-mode rule for stdio servers.
@@ -303,7 +305,7 @@ app/              The app: screens and components in Rust on nsh; installers in 
 crates/core       API contract, database, settings, endpoint presets
 crates/engine     Runs: worker pool, streaming, thinking-trace extraction, retries, metrics, the tool loop
 crates/mcp        MCP client (stdio and streamable HTTP), pasted-config import, tool names
-crates/codemode   Code mode: Cloudflare's code tool, types and normalizeCode, and a QuickJS sandbox
+crates/codemode   Code mode: Cloudflare's code tool and durable runtime formats, a QuickJS sandbox, the reference harness
 crates/import     Hugging Face (Parquet range reads), file and pasted-text imports
 crates/export     Dataset formats, JSONL/JSON/Parquet/CSV writers, Hugging Face Hub push
 crates/server     HTTP routes and the embedded web UI; the stellarator-server binary
