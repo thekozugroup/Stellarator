@@ -48,6 +48,12 @@ Each version's section is copied into its GitHub release under "What's new".
   tool calls in progress. Samples and runs count these inner calls (`inner_tool_calls`).
 - Exports carry what the model saw: messages and ShareGPT hold the code tool's definition, the
   calls with their code and the results; raw also holds the inner calls.
+- In the app, New run's Tools group has a Mode switch (Direct tools, Code mode) and the code mode
+  settings, including Customize… for the description; Run again copies them. A code mode run shows
+  a "Code mode · N tools" chip with the declarations the model was given, and Code runs and Tool
+  calls tiles. The sample viewer shows each execution as a card: the code as the model wrote it
+  (with the normalized code that ran below it), the calls it made, its console output, and the
+  result the model saw.
 - MCP tool lists keep each tool's output schema, which code mode turns into the method's result type.
 - The mock tool model writes JavaScript when it is given a Code Mode tool (`code:loop`,
   `code:catch`, `code:fence` and more in the prompt pick the shape).
