@@ -15,6 +15,7 @@
 use std::rc::Rc;
 
 use nsh_base::{TextViewClasses, text_view, theme};
+use nsh_core::geometry::relative;
 use nsh_core::prelude::*;
 
 use super::button::{Size, Variant, button};
@@ -107,6 +108,16 @@ pub struct CodeRun {
 /// The code of `block`, when it is a call of the code tool that ran code.
 pub fn execution_of(block: &CallBlock) -> Option<&CodeExecution> {
     block.result.as_ref().and_then(|r| r.code.as_ref())
+}
+
+/// The code as the model wrote it: the `code` string of the call's arguments (what the dataset
+/// export holds), or the normalized code of the execution when the arguments are not
+/// `{"code": string}`.
+pub fn written_code(block: &CallBlock) -> String {
+    let parsed = serde_json::from_str::<serde_json::Value>(&block.call.arguments)
+        .ok()
+        .and_then(|v| v.get("code").and_then(|c| c.as_str()).map(str::to_owned));
+    parsed.or_else(|| execution_of(block).map(|e| e.code.clone())).unwrap_or_default()
 }
 
 /// The calls of `blocks` that ran code, in order.
@@ -365,12 +376,30 @@ fn inner_calls(calls: Vec<InnerToolCall>) -> impl IntoElement {
         .children(rows)
 }
 
+/// "Ran as normalized code", closed: what actually ran when it differs from what the model wrote.
+fn ran_as(code: String) -> impl IntoElement {
+    let open = signal(false);
+    let title = view()
+        .flex_row()
+        .flex_wrap()
+        .items_baseline()
+        .gap_x(px(8.0))
+        .min_w(px(0.0))
+        .flex_1()
+        .child(body(text("Ran as normalized code")).text_color(muted_ink))
+        // On a phone the hint wraps under the words in the row's own width.
+        .child(meta(text("Fences removed and wrapped in an async arrow function before running.")).w(px(if super::page::is_phone() { 300.0 } else { 520.0 })).max_w(relative(1.0)));
+    view().gap(px(4.0)).child(fold_row(open, "Ran as normalized code".to_owned(), title)).child(when(move || open.get(), move || code_block(code.clone())))
+}
+
 /// One execution in the sample viewer: a card, open while `open` holds.
 pub fn code_card(block: CallBlock, open_at_first: bool) -> impl IntoElement {
     let open = signal(open_at_first);
     let CallBlock { call, result } = block;
     let result = result.expect("a code run has its result");
     let execution = result.code.clone().expect("a code run has its execution");
+    let written = written_code(&CallBlock { call: call.clone(), result: Some(result.clone()) });
+    let normalized = (written != execution.code).then(|| execution.code.clone());
     let tag = status_tag(execution.status);
     let words = calls_words(&execution);
     let label = format!("Code run {}: {}", call.name, status_word(execution.status));
@@ -405,14 +434,15 @@ pub fn code_card(block: CallBlock, open_at_first: bool) -> impl IntoElement {
         .pl(px(8.0))
         .pr(px(2.0))
         .child(trigger)
-        .child(copy_button(execution.code.clone(), "Copy code"));
+        .child(copy_button(written.clone(), "Copy code"));
     let body_el = when(move || open.get(), move || {
         let e = execution.clone();
         let r = result.clone();
         view()
             .gap(px(8.0))
             .pt(px(4.0))
-            .child(code_block(e.code.clone()))
+            .child(code_block(written.clone()))
+            .child(normalized.clone().map(ran_as))
             .child((!e.calls.is_empty()).then(|| inner_calls(e.calls.clone())))
             .child((!e.logs.is_empty()).then(|| console(e.logs.clone())))
             .child(model_result(r))
@@ -481,7 +511,8 @@ fn compact_run(b: CallBlock, index: usize, muted: Rc<dyn Fn() -> bool>) -> impl 
         return view().py(px(8.0)).gap(px(4.0)).child(mono(text(b.call.name.clone())).text_color(ink)).child(meta(text(start)).font_family(ROBOTO_MONO.family)).into_element();
     };
     let tag = status_tag(e.status);
-    let code_start = clamp_lines(&e.code, 6, 500).unwrap_or_else(|| e.code.clone());
+    let written = written_code(&b);
+    let code_start = clamp_lines(&written, 6, 500).unwrap_or(written);
     let lines: Vec<AnyElement> = e
         .calls
         .iter()
@@ -569,6 +600,23 @@ mod tests {
                 latency_ms: 120,
                 code: exec,
             }),
+        }
+    }
+
+    #[test]
+    fn the_written_code_is_the_models_text_not_the_normalized_code() {
+        let mut b = block("a", Some(execution(CodeStatus::Ok, vec![])));
+        // Fenced, no arrow function: what the model wrote differs from what ran.
+        b.call.arguments = serde_json::json!({"code": "```js\nreturn 1;\n```"}).to_string();
+        assert_eq!(written_code(&b), "```js\nreturn 1;\n```");
+        assert_ne!(written_code(&b), execution_of(&b).unwrap().code);
+        // Already an arrow function, as it ran: the same text.
+        b.call.arguments = serde_json::json!({"code": "async () => 1"}).to_string();
+        assert_eq!(written_code(&b), execution_of(&b).unwrap().code);
+        // Arguments that are not {"code": string} fall back to the execution's code.
+        for bad in ["{oops", "{\"code\": 3}", "{}", ""] {
+            b.call.arguments = bad.into();
+            assert_eq!(written_code(&b), "async () => 1", "{bad}");
         }
     }
 

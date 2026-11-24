@@ -357,7 +357,12 @@ to the code: it is always highlighted.
 - **Status tag**: none when the code returned. ERROR (it threw, also from a tool call), SYNTAX
   ERROR, TIMEOUT and MEMORY LIMIT are data tags in the negative tint, as the tool call card's
   ERROR is. The execution's own result says why, in the part "Error the model saw".
-- **Code**: a ground well (8 px corners, 12 px by 10 px padding, `dialog_well`) of JavaScript in
+- **Code**: the code as the model wrote it (the `code` of the call's arguments, which is what the
+  dataset export holds; the execution's normalized code only when the arguments have none), and
+  the copy button copies that text. When it differs from what ran (fences stripped, wrapped in an
+  async arrow function), a closed row "Ran as normalized code" with the hint "Fences removed and
+  wrapped in an async arrow function before running." opens the normalized code in the same well.
+  A ground well (8 px corners, 12 px by 10 px padding, `dialog_well`) of JavaScript in
   Roboto Mono 12 px on 19.5 px lines, highlighted by the text view with its own palette. Long
   lines scroll sideways, as any code block does. A program over 20 lines or 2,000 characters shows
   its start with "Show all 38 lines", as results do.
