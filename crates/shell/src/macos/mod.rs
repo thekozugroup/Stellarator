@@ -166,9 +166,18 @@ extern "C" {
 
 /// How many processes `uid` runs: what the kernel compares `RLIMIT_NPROC` with.
 fn user_processes(uid: u32) -> u64 {
-    // SAFETY: a null buffer asks for the size only.
-    let bytes = unsafe { proc_listpids(PROC_UID_ONLY, uid, std::ptr::null_mut(), 0) };
-    (bytes.max(0) as u64) / size_of::<libc::pid_t>() as u64
+    // SAFETY: a null buffer asks for a size that fits every process; then a buffer of that size,
+    // which the kernel fills with the user's processes and returns the bytes written.
+    unsafe {
+        let room = proc_listpids(PROC_UID_ONLY, uid, std::ptr::null_mut(), 0);
+        if room <= 0 {
+            return 0;
+        }
+        let mut pids = vec![0 as libc::pid_t; room as usize / size_of::<libc::pid_t>() + 64];
+        let bytes = (pids.len() * size_of::<libc::pid_t>()) as libc::c_int;
+        let filled = proc_listpids(PROC_UID_ONLY, uid, pids.as_mut_ptr().cast(), bytes);
+        (filled.max(0) as u64) / size_of::<libc::pid_t>() as u64
+    }
 }
 
 /// Every process on the machine.

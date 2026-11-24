@@ -129,6 +129,7 @@ async fn a_command_cannot_read_outside_its_workspace() {
                 format!("cp '{secret}' stolen.txt; cat stolen.txt"),
                 format!("ls '{dir}'"),
                 format!("ln -s '{secret}' link.txt; cat link.txt"),
+                format!("ln '{secret}' hard.txt; cat hard.txt"),
                 format!("ln -s '{dir}' linkdir; cat linkdir/secret.txt; ls linkdir/"),
                 format!("cd '{dir}' && cat secret.txt"),
                 format!("exec 3< '{secret}' && cat <&3"),
@@ -566,9 +567,11 @@ async fn commands_of_many_samples_run_at_once() {
 /// Not a proof: what the sandbox looks like from inside on this machine, for the test log.
 #[tokio::test(flavor = "multi_thread")]
 async fn report() {
+    let began = denial_log_start();
     let support = support();
     println!("support: {support:#?}");
     if !support.available {
+        print_denials(&began);
         return;
     }
     let workspace = workspace();
@@ -596,6 +599,10 @@ async fn report() {
         "echo 'int main(void){return 0;}' > t.c && cc t.c -o t && ./t && echo compiled-and-ran",
         "ps aux | head -n 5; echo; cat /proc/self/status 2>&1 | head -n 2",
         "date; ls -la /dev/null; df -h . | tail -n 1; ulimit -a",
+        "echo a > one; ln one two; echo \"hard link inside: $?\"; mkfifo p; echo \"mkfifo: $?\"; ls -l",
+        "echo x | tee /dev/stdout /dev/stderr > /dev/null; cat <(echo process-substitution)",
+        "sw_vers 2>&1; xcode-select -p 2>&1; sysctl -n hw.ncpu kern.hostname 2>&1; nproc 2>&1",
+        "tar --version | head -n 1; curl --version | head -n 1; node --version; ruby --version; java -version 2>&1 | head -n 2",
     ];
     for command in commands {
         let output = run(&workspace, command, &quick()).await;
@@ -608,5 +615,39 @@ async fn report() {
         let options = RunOptions { show_processes: true, ..quick() };
         let output = run(&workspace, "ps aux | wc -l; head -n 3 /proc/self/status", &options).await;
         println!("with show_processes:\n{}{}", output.stdout.text, output.stderr.text);
+    }
+    let output = run(&workspace, "curl -sS -m 10 -o /dev/null -w '%{http_code}\\n' https://example.com", &RunOptions { network: true, ..quick() }).await;
+    println!("with the network on, curl https://example.com: {}{}", output.stdout.text, output.stderr.text);
+    print_denials(&began);
+}
+
+/// macOS: the time, in the form `log show --start` takes.
+fn denial_log_start() -> String {
+    let now = std::process::Command::new("date").arg("+%Y-%m-%d %H:%M:%S").output();
+    now.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned()).unwrap_or_default()
+}
+
+/// macOS: what Seatbelt refused since `began`, from the system log, each kind once. This is how a
+/// rule missing from the profile shows.
+fn print_denials(began: &str) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let log = std::process::Command::new("/usr/bin/log")
+        .args(["show", "--start", began, "--style", "compact", "--predicate", "sender == \"Sandbox\""])
+        .output();
+    let Ok(log) = log else { return };
+    let text = String::from_utf8_lossy(&log.stdout);
+    let mut seen = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        // "... Sandbox: perl(1234) deny(1) file-read-data /path"
+        let Some((_, denial)) = line.split_once(" deny(") else { continue };
+        let program = line.split("Sandbox: ").nth(1).and_then(|s| s.split('(').next()).unwrap_or("?");
+        let what = denial.split_once(") ").map_or(denial, |(_, rest)| rest);
+        *seen.entry(format!("{program}: {what}")).or_insert(0u32) += 1;
+    }
+    println!("Seatbelt refusals in the system log since {began} ({} kinds):", seen.len());
+    for (denial, count) in seen.iter().take(400) {
+        println!("  {count:>4}x {denial}");
     }
 }

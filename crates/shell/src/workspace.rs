@@ -180,7 +180,7 @@ impl Workspaces {
                 max_bytes: options.max_bytes,
                 files: options.files.clone(),
                 measured: AtomicU64::new(0),
-                handle,
+                handle: Some(handle),
                 lock: Some(lock),
             };
             if let Some(template) = &template {
@@ -229,8 +229,9 @@ pub struct Workspace {
     pub(crate) files: FileLimits,
     /// The folder's size at the last measurement.
     pub(crate) measured: AtomicU64,
-    /// `dir`, opened once: the file helpers resolve every path beneath it.
-    pub(crate) handle: cap_std::fs::Dir,
+    /// `dir`, opened once: the file helpers resolve every path beneath it. `None` once the folder
+    /// is being deleted (Windows does not delete a folder that is open).
+    handle: Option<cap_std::fs::Dir>,
     lock: Option<File>,
 }
 
@@ -272,8 +273,14 @@ impl Workspace {
         self.remove()
     }
 
+    /// The open workspace folder that file paths are resolved beneath.
+    pub(crate) fn beneath(&self) -> &cap_std::fs::Dir {
+        self.handle.as_ref().expect("the workspace is open until it is dropped")
+    }
+
     fn remove(&mut self) -> Result<(), Error> {
         let Some(lock) = self.lock.take() else { return Ok(()) };
+        self.handle = None;
         let removed = remove_tree(&self.root).context(|| format!("Deleting the workspace {}", self.root.display()));
         // Released after the delete: a slot is never handed out while its old folder is going.
         drop(lock);

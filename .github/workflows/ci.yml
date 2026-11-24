@@ -1,6 +1,11 @@
 # Checks on every push and pull request: the Rust workspace passes its tests, and the API contract
 # tests pass against the Rust server and mock. The app (app/, its own Cargo workspace) is built,
 # tested and packaged by nsh.yml and release-nsh.yml.
+#
+# The shell sandbox (crates/shell) is proven on each system it has a mechanism for: its tests run
+# commands inside the sandbox that try to break each rule. Linux (Landlock and seccomp) runs with
+# the workspace's tests on ubuntu-latest; macOS (Seatbelt) and Windows (no sandbox: commands are
+# refused, the file helpers work) have the job below.
 
 name: CI
 
@@ -39,6 +44,10 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --locked
 
+      # For the log: which sandbox this runner has, and what a command sees inside it.
+      - name: Shell sandbox report
+        run: cargo test -p stellarator-shell --locked --test sandbox report -- --nocapture
+
       - name: Build the server and the mock for the contract tests
         run: cargo build --locked -p stellarator-server -p stellarator-mock
 
@@ -48,3 +57,35 @@ jobs:
         env:
           STELLARATOR_START: rust
         run: uv run --locked pytest -m "not v1"
+
+  shell-sandbox:
+    name: Shell sandbox (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The Intel runner, as in release-nsh.yml: in November 2026 jobs on the arm64 macOS
+          # runners (macos-latest, macos-26) sat queued until GitHub cancelled them.
+          - name: macOS
+            os: macos-26-intel
+            report: --test sandbox report
+          - name: Windows
+            os: windows-latest
+            report: --test workspace without_a_sandbox
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests of crates/shell
+        run: cargo test -p stellarator-shell --locked
+
+      # For the log: which sandbox this runner has, and what a command sees inside it.
+      - name: Shell sandbox report
+        if: always()
+        run: cargo test -p stellarator-shell --locked ${{ matrix.report }} -- --nocapture

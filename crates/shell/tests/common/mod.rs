@@ -117,7 +117,13 @@ pub fn variants() -> Vec<(&'static str, RunOptions)> {
 }
 
 pub async fn run(workspace: &Workspace, command: &str, options: &RunOptions) -> Output {
-    workspace.run(command, options).await.unwrap_or_else(|e| panic!("`{command}` did not run: {e}"))
+    // A run always returns soon after its timeout; one that does not is a failure, not a hang.
+    let limit = options.timeout + Duration::from_secs(60);
+    match tokio::time::timeout(limit, workspace.run(command, options)).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => panic!("`{command}` did not run: {e}"),
+        Err(_) => panic!("`{command}` did not return within {limit:?}"),
+    }
 }
 
 /// stdout and stderr together, for assertions and failure messages.

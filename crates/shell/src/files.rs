@@ -106,7 +106,7 @@ impl Workspace {
             }
         }
         if let Some(parent) = relative.parent().filter(|p| !p.as_os_str().is_empty()) {
-            match self.handle.create_dir_all(parent) {
+            match self.beneath().create_dir_all(parent) {
                 Ok(()) => {}
                 // Something is there that is not a folder inside the workspace (a symlink out of
                 // it, a file): opening the path below says which, and refuses it.
@@ -140,10 +140,10 @@ impl Workspace {
     pub fn list(&self, path: impl AsRef<Path>) -> Result<Listing, Error> {
         let path = path.as_ref();
         let relative = if path.as_os_str().is_empty() { PathBuf::from(".") } else { self.relative(path)? };
-        let read_dir = self.handle.read_dir(&relative).map_err(|e| {
+        let read_dir = self.beneath().read_dir(&relative).map_err(|e| {
             let error = self.file_error(path, e);
             match error {
-                Error::Io { .. } if self.handle.metadata(&relative).is_ok_and(|m| !m.is_dir()) => {
+                Error::Io { .. } if self.beneath().metadata(&relative).is_ok_and(|m| !m.is_dir()) => {
                     Error::WrongKind { path: path.to_path_buf(), expected: "a folder" }
                 }
                 other => other,
@@ -225,11 +225,11 @@ impl Workspace {
             // its other end forever.
             options.custom_flags(libc::O_NONBLOCK);
         }
-        let file = self.handle.open_with(relative, options).map_err(|e| {
+        let file = self.beneath().open_with(relative, options).map_err(|e| {
             let error = self.file_error(path, e);
             match error {
                 // Windows answers "access denied" for a folder opened as a file.
-                Error::Io { .. } if self.handle.metadata(relative).is_ok_and(|m| m.is_dir()) => {
+                Error::Io { .. } if self.beneath().metadata(relative).is_ok_and(|m| m.is_dir()) => {
                     Error::WrongKind { path: path.to_path_buf(), expected: "a file" }
                 }
                 other => other,
