@@ -39,6 +39,20 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # For the caller
+//!
+//! - Call [`support`] once at startup, on a blocking thread: the first call runs a command through
+//!   the sandbox to see that it works here (a few milliseconds on Linux, a few `sandbox-exec`
+//!   starts on macOS). [`Workspace::run`] calls it too, and would do that work on its own first
+//!   call.
+//! - Every command starts a new shell in the workspace: a `cd` or a variable set in one command is
+//!   gone in the next, and so is every process the command left running.
+//! - [`Workspace::run`] is async and holds one thread while its command runs. The file helpers
+//!   are blocking calls.
+//! - A command's output can hold the computer's host name (`uname -a`, `hostname`); the user's
+//!   name is kept out of it (`ls -l` shows a number). `docs/shell-sandbox.md`, "What is not
+//!   enforced".
 
 mod error;
 mod files;
