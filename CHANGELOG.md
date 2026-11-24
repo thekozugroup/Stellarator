@@ -29,6 +29,29 @@ Each version's section is copied into its GitHub release under "What's new".
 - The mock server serves an MCP server at `/mcp` and on stdio (`stellarator-mock mcp-stdio`), and
   tool-calling models (`mock-tools`, `mock-tools-loop`, `mock-no-tools`).
 
+### Code mode
+
+- A run with tools can use Code Mode as Cloudflare's `@cloudflare/codemode` 0.5.6 defines it
+  (`params.tools.mode: "code"`). The model gets one tool, `codemode`, whose description holds
+  TypeScript declarations of the MCP tools (one namespace per server, or all under `codemode`). It
+  writes a JavaScript async arrow function that calls them; the code runs in a QuickJS sandbox in
+  Stellarator, and only its result and console output go back to the model, in the format
+  Cloudflare's Code Mode sends through the AI SDK. See
+  [docs/tools.md](docs/tools.md#code-mode).
+- Cloudflare's own JavaScript generates the types, normalizes the code (with acorn) and truncates
+  results (6,000 tokens by default), run as published in QuickJS; tests compare them with the
+  package's output.
+- Per run: the tool's name and description template, the namespaces, the execution timeout (60 s),
+  the result budget and a memory limit (128 MB). Executions have no network or file access.
+- The trace keeps, for each execution, the code as run, every MCP call it made (arguments, result,
+  errors, latency), the console output and the error. The live view shows running code and the
+  tool calls in progress. Samples and runs count these inner calls (`inner_tool_calls`).
+- Exports carry what the model saw: messages and ShareGPT hold the code tool's definition, the
+  calls with their code and the results; raw also holds the inner calls.
+- MCP tool lists keep each tool's output schema, which code mode turns into the method's result type.
+- The mock tool model writes JavaScript when it is given a Code Mode tool (`code:loop`,
+  `code:catch`, `code:fence` and more in the prompt pick the shape).
+
 ## 0.4.0
 
 ### A native app

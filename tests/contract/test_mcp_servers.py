@@ -151,7 +151,8 @@ def test_run_with_tools_traces_and_exports(api, make_endpoint, make_prompt_set, 
     tools = {"servers": [{"server_id": server["id"], "tools": ["lookup", "add", "fail"]}], "max_rounds": 3, "tool_choice": "auto"}
     run = make_run(ep["id"], ps["id"], "mock-tools", tools=tools)
     check(run, RUN)
-    assert run["params"]["tools"] == {**tools, "tool_timeout_s": 60.0, "max_result_chars": 20000}
+    assert run["params"]["tools"] == {**tools, "tool_timeout_s": 60.0, "max_result_chars": 20000, "mode": "direct"}
+    assert run["tools"]["mode"] == "direct" and "code" not in run["tools"]
     check(run["tools"], TOOL_SNAPSHOT)
     assert [d["function"]["name"] for d in run["tools"]["definitions"]] == ["lookup", "add", "fail"]
     assert run["tools"]["servers"][0]["name"] == server["name"]
@@ -179,6 +180,54 @@ def test_run_with_tools_traces_and_exports(api, make_endpoint, make_prompt_set, 
     assert rec["tools"] == run["tools"]["definitions"]
     for fmt in ("alpaca", "prompt_completion"):
         assert_error(api.post(f"/api/runs/{run['id']}/export/preview", json={"format": fmt}), 422, field="format")
+
+
+def test_run_in_code_mode(api, make_endpoint, make_prompt_set, make_run, make_mcp, mock_mcp):
+    ep = make_endpoint()
+    server = make_mcp(transport="http", url=mock_mcp)
+    ps = make_prompt_set(text="Tides code:plain\nCheck code:catch\nTypo code:syntax", mapping={"split_mode": "line"})
+    tools = {"servers": [{"server_id": server["id"], "tools": ["lookup", "add", "fail"]}], "mode": "code"}
+    run = make_run(ep["id"], ps["id"], "mock-tools", tools=tools)
+    check(run, RUN)
+    assert run["params"]["tools"]["mode"] == "code"
+    snap = run["tools"]
+    check(snap, TOOL_SNAPSHOT)
+    assert snap["mode"] == "code"
+    assert [d["function"]["name"] for d in snap["definitions"]] == ["codemode"]
+    assert snap["definitions"][0]["function"]["parameters"]["required"] == ["code"]
+    namespace = snap["code"]["namespaces"][0]
+    assert [m["tool"] for m in namespace["methods"]] == ["lookup", "add", "fail"]
+    assert "declare const " + namespace["name"] + ": {" in snap["definitions"][0]["function"]["description"]
+    done = wait_run(api, run["id"])
+    assert done["done"] == 3 and done["failed"] == 0 and done["tool_calls"] == 3
+    summaries = list_samples(api, run["id"])
+    check(summaries, ListOf(SAMPLE_SUMMARY))
+    assert done["inner_tool_calls"] == sum(s["inner_tool_calls"] for s in summaries) == 3
+    results = {}
+    for item in summaries:
+        sample = api.get(f"/api/samples/{item['id']}").json()
+        check(sample, SAMPLE)
+        check_trace(sample["trace"])
+        assert [m["role"] for m in sample["trace"]] == ["assistant", "tool", "assistant"]
+        assert sample["trace"][0]["tool_calls"][0]["name"] == "codemode"
+        results[sample["prompt_idx"]] = sample["trace"][1]
+    assert results[0]["content"].startswith('{"result":"Catalog entry for ')
+    assert results[0]["code"]["status"] == "ok" and results[0]["code"]["calls"][0]["tool"] == "lookup"
+    assert results[1]["code"]["calls"][0]["is_error"] is True and results[1]["is_error"] is False
+    assert results[2]["content"].startswith("SyntaxError: ") and results[2]["code"]["status"] == "syntax_error"
+    # Messages: the code tool, the code, and the results the model saw; nothing from the sandbox.
+    r = api.get(f"/api/runs/{run['id']}/export", params={"format": "messages", "reasoning": "omit"})
+    assert r.status_code == 200
+    rec = json.loads(r.text.splitlines()[0])
+    assert rec["tools"] == snap["definitions"]
+    call = rec["messages"][1]["tool_calls"][0]
+    assert set(call["function"]["arguments"]) == {"code"}
+    assert rec["messages"][2] == {"role": "tool", "tool_call_id": call["id"], "name": "codemode", "content": results[0]["content"]}
+    raw = json.loads(api.get(f"/api/runs/{run['id']}/export", params={"format": "raw"}).text.splitlines()[0])
+    assert raw["trace"][1]["code"]["calls"][0]["method"].endswith(".lookup")
+    body = {"endpoint_id": ep["id"], "prompt_set_id": ps["id"], "model": "mock-tools",
+            "params": {"tools": {**tools, "code": {"memory_limit_mb": 1}}}}
+    assert_error(api.post("/api/runs", json=body), 422, field="params.tools.code.memory_limit_mb")
 
 
 def test_run_with_tools_validation(api, make_endpoint, make_prompt_set, make_mcp, mock_mcp):

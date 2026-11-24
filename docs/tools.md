@@ -10,6 +10,7 @@ it answers. Every step is stored with the sample and exported in the formats tra
 - [What happens during a run](#what-happens-during-a-run)
 - [Endpoint requirements](#endpoint-requirements)
 - [Exports](#exports)
+- [Code mode](#code-mode)
 - [Tools run for real](#tools-run-for-real)
 - [Stdio servers in server mode](#stdio-servers-in-server-mode)
 - [Try it with the mock](#try-it-with-the-mock)
@@ -231,6 +232,201 @@ values are JSON text, as for other formats.
 
 The Hugging Face push and the export preview use the same records. The dataset card lists the
 tools and their servers.
+
+## Code mode
+
+In code mode the model gets one tool instead of one per MCP tool. It writes JavaScript that calls
+the MCP tools through typed namespaces; Stellarator runs the code in a sandbox and sends back only
+what the code returns and logs. This is Code Mode as Cloudflare defines it in
+[`@cloudflare/codemode`](https://developers.cloudflare.com/agents/tools/codemode/) 0.5.6
+(github.com/cloudflare/agents, commit `4116a8bdf97660c8e79a923b6aec140256282a5d`), and the traces
+reproduce what a model sees and writes there, so a student trained on them works in that setup.
+
+### When it helps
+
+| Situation | Why code mode helps |
+| --- | --- |
+| Many tools (dozens of MCP tools) | The tools are one block of TypeScript declarations in one tool's description, which models read well |
+| Large intermediate results | A listing the code filters or counts stays in the sandbox; only the code's result reaches the model |
+| Chained calls (look up, then act on the result) | One execution makes every call; the model does not pay a request per round |
+| Loops and retries | The code loops over inputs or catches a failing call itself |
+
+For a run where each sample makes one or two small calls, direct mode is as good and simpler.
+
+### Turn it on
+
+In **New run** turn on **Tools**, pick servers, and choose code mode. In the API, set
+`params.tools.mode` to `"code"`. The other tool settings keep their meaning: `max_rounds` counts
+rounds of code tool calls, `tool_timeout_s` limits each MCP call the code makes, `tool_choice`
+applies to the code tool, and `max_result_chars` only caps the copy of each MCP result stored in
+the trace (the code always gets the whole result). The code mode settings, `params.tools.code`,
+default to Cloudflare's:
+
+| Setting | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `tool_name` | `codemode` | 1 to 64 letters, digits, `_`, `-` | The tool's name (Cloudflare's README registers it as `tools: { codemode }`) |
+| `description` | null: Cloudflare's | up to 100,000 characters | The description template; the first `{{types}}` is replaced by the generated declarations |
+| `namespaces` | `servers` | `servers`, `codemode` | `servers`: one global per server, named after it (`github.list_issues(...)`). `codemode`: every tool under `codemode` (`codemode.list_issues(...)`); tools of the same name on two servers become `<server>__<tool>` |
+| `timeout_s` | 60 | 1 to 3600 | Seconds one execution may take, its MCP calls included |
+| `max_result_tokens` | 6000 | 0, or 100 to 1,000,000 | The budget of the result and of the console output the model sees, at 4 characters per token; larger values are shrunk as Cloudflare's `truncateResult` does it. 0: no truncation |
+| `max_result_chars` | null | 1,000 to 4,000,000 | The same budget in characters; overrides `max_result_tokens * 4` |
+| `memory_limit_mb` | 128 | 8 to 1024 | Memory one execution may use (a Workers isolate's limit is 128 MB) |
+
+Names become JavaScript identifiers with Cloudflare's `sanitizeToolName`: `my-server` becomes
+`my_server`, `3d-render` becomes `_3d_render`, `delete` becomes `delete_`. A run is refused, with the
+names to change, when two servers or two tools of a server would get the same name, or when a
+server's name would hide a global the sandbox needs (`console`, `Promise`, `Object` and a few
+more); `namespaces: "codemode"` avoids both.
+
+The run stores the code tool as sent (`RunOut.tools.definitions`, one definition) and, in
+`RunOut.tools.code`, the generated types and which MCP tool each method calls.
+
+### What the model sees
+
+The request's `tools` holds one function, as the AI SDK sends `createCodeTool`'s tool:
+
+```json
+{"type": "function", "function": {
+  "name": "codemode",
+  "description": "Execute code to achieve a goal.\n\nAvailable:\ntype LookupInput = {\n    /** The term to look up. */\n    query: string;\n}\ntype LookupOutput = unknown\ntype AddInput = {\n    a: number;\n    b: number;\n}\ntype AddOutput = unknown\n\ndeclare const mock: {\n\t/**\n\t * Look up a term in the reference catalog and return what it says.\n\t * @param input.query - The term to look up.\n\t */\n\tlookup: (input: LookupInput) => Promise<LookupOutput>;\n\n\t/**\n\t * Add two numbers.\n\t */\n\tadd: (input: AddInput) => Promise<AddOutput>;\n}\n\nWrite an async arrow function in JavaScript that returns the result.\nDo NOT use TypeScript syntax — no type annotations, interfaces, or generics.\nDo NOT define named functions then call them — just write the arrow function body directly.\n\nExample: async () => { const r = await codemode.searchWeb({ query: \"test\" }); return r; }",
+  "parameters": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object",
+                 "properties": {"code": {"type": "string", "description": "JavaScript async arrow function to execute"}},
+                 "required": ["code"], "additionalProperties": false}}}
+```
+
+The types come from each tool's JSON Schema, by Cloudflare's `jsonSchemaToType`: property
+descriptions become `/** ... */` comments, optional properties get `?`, enums become unions of
+literals, arrays `T[]`, nested objects nested types, and schemas it does not handle `unknown`. A tool
+whose server declares an output schema gets a typed result instead of `unknown`. Each namespace is
+one block, in the order the servers were picked.
+
+The model calls the tool with its code, for example
+`{"code": "async () => {\n  const s = await mock.add({ a: 4, b: 5 });\n  console.log(\"sum\", s);\n  return s;\n}"}`.
+Before it runs, Cloudflare's `normalizeCode` strips a markdown fence and wraps code that is not one
+arrow function: `` ```js\nconst x = 1;\nx\n``` `` runs as `async () => {\nconst x = 1;\nreturn (x)\n}`.
+
+The tool message the model gets back, as `createCodeTool` returns it and the AI SDK sends it:
+
+| Outcome | Tool message content |
+| --- | --- |
+| The code returned | `{"result":9,"logs":["sum 9"]}`: `JSON.stringify` of `{result, logs}`; `logs` is left out when nothing was logged, and an undefined result leaves `{}` |
+| The code threw (also an MCP error it did not catch, or a ReferenceError) | `Error: Code execution failed: <message>`, then `\n\nConsole output:\n` and the logs when there are any |
+| Over the timeout | `Error: Code execution failed: Execution timed out` |
+| Over the memory limit | `Error: Code execution failed: out of memory` |
+| Not valid JavaScript | `SyntaxError: <message>` (the executor itself throws) |
+| The input is not `{"code": string}` | The AI SDK's error, such as `AI_InvalidToolInputError: Invalid input for tool codemode: AI_TypeValidationError: Type validation failed: ...` |
+| The model called another tool | `AI_NoSuchToolError: Model tried to call unavailable tool 'x'. Available tools: codemode.` |
+
+`console.log` lines are the arguments joined with spaces (`String(arg)`), `console.warn` lines
+start with `[warn] `, `console.error` lines with `[error] `; other console methods write nothing,
+as in Cloudflare's executor. A result over the budget is shrunk structurally (the largest values
+first, with `--- TRUNCATED ---` markers, still valid JSON), and a long text ends with
+`--- TRUNCATED ---\nResponse was ~N tokens (limit: 6,000). Narrow the request to reduce response size.`
+
+### What runs
+
+Each execution gets a fresh QuickJS context on its own thread: nothing is shared between
+executions or samples, and samples run their code at the same time. The code sees:
+
+- one global per namespace, with one async method per MCP tool. A call sends the first argument as
+  the tool's arguments and returns what Cloudflare's MCP integration returns: the result's
+  `structuredContent` when it has one; for text results, the text parsed as JSON when it is JSON,
+  otherwise the text; for images and other content, the whole MCP result object.
+- errors as exceptions the code can catch: a tool's error result throws `Error` with the error
+  text; a method the namespace does not have throws `Tool "name" not found`; an MCP protocol error
+  throws `MCP error <code>: <message>` and a call over `tool_timeout_s`
+  `MCP error -32001: Request timed out`, as the MCP TypeScript SDK words them.
+- `console`, `setTimeout`, `setInterval`, their `clear` functions and `queueMicrotask`; no `fetch`,
+  file system or other host access.
+
+At most 8 MCP calls of one execution run at once, and one execution makes at most 1,000. A call
+the code did not wait for is cancelled when the execution ends. When an MCP server cannot be
+reached even after a reconnect, the sample fails as in direct mode and **Retry failed** runs it again.
+
+### The trace
+
+The model's call is an ordinary tool call to `codemode` with `{"code": ...}`, and its tool message
+holds exactly what the model saw. For viewing and audit, the tool message also has `code`
+(`TraceTool.code`): the code as it ran (after `normalizeCode`), the status (`ok`, `error`,
+`syntax_error`, `timeout`, `memory_limit`), every MCP call the code made (`method` as the code called
+it, server, tool, arguments, result, `is_error`, latency), all console output, the returned value as
+JSON before truncation, and the error. `tool_calls` counts the code tool's calls;
+`inner_tool_calls` counts the MCP calls inside them, per sample and per run. While code runs, the
+in-flight list shows the sample as `code`, with the number of MCP calls made and the ones in progress.
+
+### Exports in code mode
+
+The exports carry what the model saw, nothing from inside the sandbox:
+
+| Format | In code mode |
+| --- | --- |
+| Chat messages | `tools` holds the code tool's definition; assistant turns call `codemode` with `{"code": ...}` as the arguments object; `tool` messages hold the results as sent |
+| ShareGPT | `function_call` turns with the code, `observation` turns with the results, `tools` with the code tool |
+| DPO, KTO (conversational) | Trajectories of code tool calls and results |
+| Raw | Everything above, plus `trace[].code` with the inner calls, logs and errors |
+
+A chat messages record (think tags, shortened):
+
+```json
+{"messages": [
+  {"role": "user", "content": "What is 4 + 5?"},
+  {"role": "assistant", "content": "<think>\nI'll add them in code.\n</think>\n\n",
+   "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "codemode",
+     "arguments": {"code": "async () => {\n  const s = await mock.add({ a: 4, b: 5 });\n  console.log(\"sum\", s);\n  return s;\n}"}}}]},
+  {"role": "tool", "tool_call_id": "call_1", "name": "codemode", "content": "{\"result\":9,\"logs\":[\"sum 9\"]}"},
+  {"role": "assistant", "content": "<think>\nThe code returned 9.\n</think>\n\n4 + 5 = 9."}
+ ],
+ "tools": [{"type": "function", "function": {"name": "codemode", "description": "Execute code to achieve a goal. ...", "parameters": {...}}}]}
+```
+
+### At inference
+
+A student trained on these traces expects Cloudflare's Code Mode: the same tool, the same
+declarations, and a runtime that runs its JavaScript and answers in the same format. Use
+`createCodeTool` from `@cloudflare/codemode/ai` with an executor (`DynamicWorkerExecutor` on
+Workers, or any implementation of its `Executor` interface), and match the run's settings:
+
+- the same tool name and description (the AI SDK's `tools: { codemode }`, Cloudflare's default
+  description unless the run changed it);
+- the same namespaces: one provider per server, named as the run named it
+  (`{ name: "github", tools: githubTools }`; the run's `tools.code.namespaces` lists them), or all
+  tools in one tool set for `namespaces: "codemode"`;
+- the MCP results unwrapped as Cloudflare's `McpConnector` and `codeMcpServer` do (structured
+  content, JSON text parsed, errors thrown), which is what the traces show the code getting;
+- with the default budget, `truncateResult` on the result and the logs (the `transformResult`
+  option of `createCodemodeRuntime` does this); with `max_result_tokens: 0`, nothing.
+
+Code mode does not train a model for other code-calling formats:
+
+| Format | How it differs |
+| --- | --- |
+| Goose's Code Mode extension | Also JavaScript, but the model gets three meta-tools to find tools, read their interfaces and run code, and the code runs in Deno. Its tool names, descriptions and results differ from Cloudflare's |
+| Anthropic's programmatic tool calling | The model writes Python that runs in the `code_execution` tool's container and calls the tools that allow it; results come back as tool results inside that container. Not JavaScript, and a different message format |
+
+The tool's name and description template can be changed per run, but the code's format (an async
+arrow function in JavaScript), the namespaces' declarations and the result format stay Cloudflare's.
+
+### What is not reproduced
+
+The formats come from Cloudflare's own JavaScript, run as published in QuickJS: `normalizeCode`
+(with acorn), the type generation, `sanitizeToolName`, `truncateResult` and the default
+description; the golden tests in `crates/codemode/tests` compare them with the package's output.
+The executor's harness, `runCode` and the AI SDK's messages are reproduced from their source and
+were checked against AI SDK 7.0.181 with its OpenAI-compatible provider. What differs:
+
+| Where | Cloudflare | Stellarator |
+| --- | --- | --- |
+| Engine | V8 in a Dynamic Worker | QuickJS-NG. Error messages of the engine itself differ: V8's `Cannot read properties of undefined (reading 'x')` is `cannot read property 'x' of undefined`. `x is not defined` is the same |
+| Syntax errors | The Worker fails to load; the exact text is the runtime's | `SyntaxError: <QuickJS message>`, as the error the executor throws |
+| Code that never yields (`while (true) {}`) | Ends at Workers' CPU limit | Interrupted at the timeout: `Execution timed out` |
+| Memory | Workers ends the isolate | QuickJS's `out of memory` error, which the code could catch |
+| Globals | Workers' APIs (`URL`, `TextEncoder`, `crypto`, `atob`; `fetch` throws) | Only `console`, timers and `queueMicrotask`; `fetch` is not defined |
+| Values | Workers RPC with Cloudflare's codec (also binary data) | JSON both ways |
+| Unawaited calls | Answered "late"; the host-side call still runs | Cancelled when the execution ends, and recorded with Cloudflare's late-call message |
+| Calls per execution | No limit | At most 1,000, 8 at a time |
+| Arguments | The AI SDK's `getAITools` validates them with zod first | Sent to the MCP server, which validates them |
+| Error text with long console output | Not truncated | The console output is cut to the budget |
+| The assistant message sent back | The AI SDK re-serializes the parsed input | The arguments as the model wrote them |
 
 ## Tools run for real
 

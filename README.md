@@ -189,9 +189,12 @@ in the formats trainers read, so a student model learns from the teacher's real 
 - Pick servers and tools per run, with a limit on rounds of calls, a timeout per call and a limit on
   result length.
 - The endpoint must support tool calling (vLLM: `--enable-auto-tool-choice --tool-call-parser`).
+- Code mode: instead of one tool per MCP tool, the model gets Cloudflare's Code Mode tool and writes
+  JavaScript that calls the MCP tools through typed namespaces. The code runs in a sandbox, and the
+  traces match what a model sees and writes in Cloudflare's Code Mode.
 
-[docs/tools.md](docs/tools.md) has the details: endpoint flags, export formats per trainer, and the
-server-mode rule for stdio servers.
+[docs/tools.md](docs/tools.md) has the details: endpoint flags, export formats per trainer, code
+mode, and the server-mode rule for stdio servers.
 
 ### Preference pairs
 
@@ -300,6 +303,7 @@ app/              The app: screens and components in Rust on nsh; installers in 
 crates/core       API contract, database, settings, endpoint presets
 crates/engine     Runs: worker pool, streaming, thinking-trace extraction, retries, metrics, the tool loop
 crates/mcp        MCP client (stdio and streamable HTTP), pasted-config import, tool names
+crates/codemode   Code mode: Cloudflare's code tool, types and normalizeCode, and a QuickJS sandbox
 crates/import     Hugging Face (Parquet range reads), file and pasted-text imports
 crates/export     Dataset formats, JSONL/JSON/Parquet/CSV writers, Hugging Face Hub push
 crates/server     HTTP routes and the embedded web UI; the stellarator-server binary
