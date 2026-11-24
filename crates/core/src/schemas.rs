@@ -197,6 +197,39 @@ pub fn check_run_tools(tools: &mut RunTools, prefix: &str, e: &mut FieldErrors) 
         e.add(&f("tool_timeout_s"), "Use a number of seconds from 1 to 3600.");
     }
     check_range_i(e, &f("max_result_chars"), tools.max_result_chars, 1000, 1_000_000);
+    if tools.mode == ToolMode::Code {
+        if let Some(code) = &mut tools.code {
+            check_code_options(code, &f("code."), e);
+        }
+    }
+}
+
+/// Code mode settings, under `prefix` ("params.tools.code.").
+pub fn check_code_options(code: &mut CodeModeOptions, prefix: &str, e: &mut FieldErrors) {
+    let f = |name: &str| format!("{prefix}{name}");
+    code.tool_name = code.tool_name.trim().to_string();
+    let name_ok = (1..=64).contains(&code.tool_name.len())
+        && code.tool_name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !name_ok {
+        e.add(&f("tool_name"), "Use 1 to 64 letters, digits, _ or -.");
+    }
+    // An empty description means Cloudflare's default.
+    if code.description.as_deref().is_some_and(|d| d.trim().is_empty()) {
+        code.description = None;
+    }
+    if code.description.as_deref().is_some_and(|d| d.chars().count() > 100_000) {
+        e.add(&f("description"), "At most 100,000 characters.");
+    }
+    if !(1.0..=3600.0).contains(&code.timeout_s) {
+        e.add(&f("timeout_s"), "Use a number of seconds from 1 to 3600.");
+    }
+    if code.max_result_tokens != 0 && !(100..=1_000_000).contains(&code.max_result_tokens) {
+        e.add(&f("max_result_tokens"), "Use 0 (no truncation) or a number from 100 to 1,000,000.");
+    }
+    if let Some(chars) = code.max_result_chars {
+        check_range_i(e, &f("max_result_chars"), chars, 1000, 4_000_000);
+    }
+    check_range_i(e, &f("memory_limit_mb"), code.memory_limit_mb, 8, 1024);
 }
 
 /// MCP server names: letters, digits, `_` and `-`, 1 to 64 characters. They prefix tool names when
@@ -381,6 +414,47 @@ mod tests {
             err.fields["base_url"],
             "Base URL must start with http:// or https://"
         );
+    }
+
+    #[test]
+    fn code_mode_options_are_checked() {
+        let mut tools: RunTools = serde_json::from_value(serde_json::json!({
+            "servers": [{"server_id": 1}], "mode": "code",
+            "code": {"tool_name": "run code", "description": "  ", "timeout_s": 0.5, "max_result_tokens": 50,
+                     "max_result_chars": 10, "memory_limit_mb": 4}
+        }))
+        .unwrap();
+        let mut e = FieldErrors::new();
+        check_run_tools(&mut tools, "params.tools.", &mut e);
+        let err = e.finish().unwrap_err();
+        let mut fields: Vec<&str> = err.fields.keys().map(String::as_str).collect();
+        fields.sort_unstable();
+        assert_eq!(
+            fields,
+            [
+                "params.tools.code.max_result_chars",
+                "params.tools.code.max_result_tokens",
+                "params.tools.code.memory_limit_mb",
+                "params.tools.code.timeout_s",
+                "params.tools.code.tool_name",
+            ]
+        );
+        assert_eq!(tools.code.unwrap().description, None);
+        // 0 tokens turns truncation off; direct mode ignores the code settings.
+        let mut ok: RunTools = serde_json::from_value(serde_json::json!({
+            "servers": [{"server_id": 1}], "mode": "code", "code": {"max_result_tokens": 0}
+        }))
+        .unwrap();
+        let mut e = FieldErrors::new();
+        check_run_tools(&mut ok, "params.tools.", &mut e);
+        assert!(e.finish().is_ok());
+        let mut direct: RunTools = serde_json::from_value(serde_json::json!({
+            "servers": [{"server_id": 1}], "code": {"memory_limit_mb": 1}
+        }))
+        .unwrap();
+        let mut e = FieldErrors::new();
+        check_run_tools(&mut direct, "params.tools.", &mut e);
+        assert!(e.finish().is_ok());
     }
 
     #[test]

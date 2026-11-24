@@ -386,7 +386,7 @@ async fn empty_parquet_is_valid() {
 
 /// A run with tools and a sample with two parallel calls, for the Parquet round trips.
 fn tool_fixture() -> (stellarator_export::records::RunInfo, stellarator_export::records::SampleRec) {
-    use stellarator_core::schemas::{ToolSnapshot, TraceMessage};
+    use stellarator_core::schemas::{ToolMode, ToolSnapshot, TraceMessage};
     use stellarator_export::records::{RunInfo, SampleRec};
     let defs = vec![json!({"type": "function", "function": {"name": "lookup", "description": "Look up.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}})];
@@ -397,7 +397,7 @@ fn tool_fixture() -> (stellarator_export::records::RunInfo, stellarator_export::
         model: "m".into(),
         prompt_set_id: 1,
         params: json!({}),
-        tools: Some(ToolSnapshot { servers: vec![], definitions: defs }),
+        tools: Some(ToolSnapshot { servers: vec![], definitions: defs, mode: ToolMode::Direct, code: None }),
     };
     let trace: Vec<TraceMessage> = serde_json::from_value(json!([
         {"role": "assistant", "reasoning": "why", "content": "", "finish_reason": "tool_calls", "prompt_tokens": 3,

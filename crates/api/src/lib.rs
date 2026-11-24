@@ -495,7 +495,7 @@ pub struct RunTools {
     /// How many rounds of tool calls one sample may make (1 to 32). A round runs every call of one
     /// answer, then sends the results back; the model gets at most `max_rounds + 1` requests. An
     /// answer that still calls tools after the last round ends the sample as truncated, with finish
-    /// reason `tool_rounds`.
+    /// reason `tool_rounds`. In code mode a round runs the answer's code tool calls.
     #[serde(default = "d_max_rounds")]
     pub max_rounds: i64,
     /// Seconds one tool call may take (1 to 3600). A call that takes longer returns an error result
@@ -503,10 +503,20 @@ pub struct RunTools {
     #[serde(default = "d_tool_timeout")]
     pub tool_timeout_s: f64,
     /// Longer tool results are cut to this many characters, with a marker (1000 to 1,000,000).
+    /// Code mode: the code gets whole results; this only caps the copy of each inner call's result
+    /// stored in the trace (the model's budget is `code.max_result_tokens`).
     #[serde(default = "d_max_result_chars")]
     pub max_result_chars: i64,
     #[serde(default)]
     pub tool_choice: ToolChoice,
+    /// How the model gets the tools: `direct` (one function per MCP tool) or `code` (Cloudflare's
+    /// Code Mode: one tool that runs JavaScript calling the MCP tools). Missing in runs made
+    /// before code mode existed, which are direct.
+    #[serde(default)]
+    pub mode: ToolMode,
+    /// Code mode settings; null (or absent) means Cloudflare's defaults. Ignored in direct mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<CodeModeOptions>,
 }
 
 impl Default for RunTools {
@@ -515,10 +525,109 @@ impl Default for RunTools {
     }
 }
 
+/// How a run gives the model its MCP tools (`params.tools.mode`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolMode {
+    /// One function tool per MCP tool; the model calls them and gets each result back.
+    #[default]
+    Direct,
+    /// Code Mode as Cloudflare's `@cloudflare/codemode` defines it: the model gets one tool whose
+    /// input is `{"code": string}`, a JavaScript async arrow function. The code calls the MCP tools
+    /// through generated typed namespaces in a sandbox, and only its result (and console output)
+    /// goes back to the model.
+    Code,
+}
+
+/// Where code mode puts the MCP tools (`params.tools.code.namespaces`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeNamespaces {
+    /// One namespace per server, named after it (`github.list_issues({...})`), as Cloudflare's
+    /// `McpConnector` and `createCodeTool` with one named provider per server do.
+    #[default]
+    Servers,
+    /// Every tool under `codemode` (`codemode.list_issues({...})`), as `createCodeTool` does with
+    /// one tool set. Tools of the same name on two servers become `<server>__<tool>`.
+    Codemode,
+}
+
+/// The code tool's default name. Cloudflare's README registers the tool as `tools: { codemode }`.
+pub const CODE_TOOL_NAME: &str = "codemode";
+
+/// Cloudflare's default description of the code tool (`DEFAULT_DESCRIPTION` in
+/// `packages/codemode/src/shared.ts`). `{{types}}` is replaced by the generated declarations
+/// (the first occurrence, with JavaScript's `String.replace` rules).
+pub const CODE_TOOL_DESCRIPTION: &str = "Execute code to achieve a goal.
+
+Available:
+{{types}}
+
+Write an async arrow function in JavaScript that returns the result.
+Do NOT use TypeScript syntax \u{2014} no type annotations, interfaces, or generics.
+Do NOT define named functions then call them \u{2014} just write the arrow function body directly.
+
+Example: async () => { const r = await codemode.searchWeb({ query: \"test\" }); return r; }";
+
+/// The Cloudflare release whose formats code mode reproduces.
+pub const CODE_MODE_FORMAT: &str = "@cloudflare/codemode 0.5.6";
+
+fn d_code_tool_name() -> String {
+    CODE_TOOL_NAME.into()
+}
+fn d_code_timeout() -> f64 {
+    60.0
+}
+fn d_code_result_tokens() -> i64 {
+    6000
+}
+fn d_code_memory_mb() -> i64 {
+    128
+}
+
+/// Code mode settings (`params.tools.code`). Every default is Cloudflare's, except the memory
+/// limit, which Cloudflare leaves to the Workers runtime (128 MB per isolate).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeModeOptions {
+    /// The code tool's name (1 to 64 letters, digits, `_` or `-`).
+    #[serde(default = "d_code_tool_name")]
+    pub tool_name: String,
+    /// The tool's description template, where `{{types}}` stands for the generated declarations.
+    /// Null: Cloudflare's default, [`CODE_TOOL_DESCRIPTION`].
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub namespaces: CodeNamespaces,
+    /// Seconds one execution may take, its tool calls included (1 to 3600; Cloudflare: 60). Each
+    /// tool call is also limited by `tool_timeout_s`.
+    #[serde(default = "d_code_timeout")]
+    pub timeout_s: f64,
+    /// The budget of the result and the console output the model sees, in tokens of 4 characters
+    /// (Cloudflare's `truncateResult`: 6000). Larger values are shrunk the way `truncateResult`
+    /// does it. 0: no truncation (what `createCodeTool` alone sends), else 100 to 1,000,000.
+    #[serde(default = "d_code_result_tokens")]
+    pub max_result_tokens: i64,
+    /// The same budget in characters; overrides `max_result_tokens * 4` when set (1,000 to
+    /// 4,000,000), as `truncateResult`'s `maxChars` does.
+    #[serde(default)]
+    pub max_result_chars: Option<i64>,
+    /// Memory one execution may use, in MB (8 to 1024).
+    #[serde(default = "d_code_memory_mb")]
+    pub memory_limit_mb: i64,
+}
+
+impl Default for CodeModeOptions {
+    fn default() -> Self {
+        serde_json::from_value(Value::Object(Default::default())).expect("defaults")
+    }
+}
+
 /// One tool as a run sends it: its name in the request and its name on the MCP server (they differ
 /// when two selected servers have a tool of the same name: both become `<server>__<tool>`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ToolSnapshotTool {
+    /// Direct mode: the function name sent. Code mode: how the code calls it,
+    /// `<namespace>.<method>`.
     pub name: String,
     pub server_tool: String,
 }
@@ -537,8 +646,52 @@ pub struct ToolSnapshotServer {
 pub struct ToolSnapshot {
     pub servers: Vec<ToolSnapshotServer>,
     /// Exactly the request's `tools` array: OpenAI function definitions,
-    /// `{"type": "function", "function": {"name", "description", "parameters"}}`.
+    /// `{"type": "function", "function": {"name", "description", "parameters"}}`. In code mode,
+    /// the one code tool, its description holding the generated types.
     pub definitions: Vec<Value>,
+    /// The mode the run uses (absent in snapshots made before code mode: direct).
+    #[serde(default)]
+    pub mode: ToolMode,
+    /// Code mode: the code tool and how its namespace methods map to MCP tools. Absent in direct
+    /// mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<CodeToolSnapshot>,
+}
+
+/// The code tool of a code mode run, as sent.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeToolSnapshot {
+    /// The tool's name (also `definitions[0].function.name`).
+    pub tool_name: String,
+    /// The generated TypeScript declarations that replaced `{{types}}` in the description: one
+    /// block per namespace (input and output types, then `declare const <namespace>: {...}`).
+    pub types: String,
+    /// The namespaces the code sees, in the order they are declared.
+    pub namespaces: Vec<CodeNamespace>,
+    /// The Cloudflare release whose formats were followed, [`CODE_MODE_FORMAT`].
+    pub format: String,
+}
+
+/// A global object of the sandbox, with one async method per MCP tool.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeNamespace {
+    /// The global's name, a JavaScript identifier: the server's name through Cloudflare's
+    /// `sanitizeToolName` (`my-server` becomes `my_server`), or `codemode`.
+    pub name: String,
+    pub methods: Vec<CodeMethod>,
+}
+
+/// `<namespace>.<name>(input)` calls `tool` on the MCP server `server`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeMethod {
+    /// The tool's name through `sanitizeToolName` (`list-issues` becomes `list_issues`, `delete`
+    /// becomes `delete_`).
+    pub name: String,
+    pub server_id: i64,
+    /// The server's name when the run was created.
+    pub server: String,
+    /// The tool's name on the MCP server.
+    pub tool: String,
 }
 
 impl Default for RunParams {
@@ -626,9 +779,14 @@ pub struct RunOut {
     /// tools.
     #[serde(default)]
     pub tools: Option<ToolSnapshot>,
-    /// Tool calls run so far, over all finished samples.
+    /// Tool calls run so far, over all finished samples. In code mode: the code tool's calls
+    /// (executions).
     #[serde(default)]
     pub tool_calls: i64,
+    /// Code mode: the MCP tool calls the executions made, over all finished samples. 0 in direct
+    /// mode.
+    #[serde(default)]
+    pub inner_tool_calls: i64,
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -640,6 +798,8 @@ pub enum Phase {
     Answering,
     /// Tools are running (`LiveSequence.tools` names them).
     Tool,
+    /// Code mode: the model's code is running (`LiveSequence.code` has its tool calls).
+    Code,
 }
 
 /// A request in flight, for the run screen.
@@ -660,9 +820,23 @@ pub struct LiveSequence {
     /// The request of the sample in flight: 1, then one more after each round of tool calls.
     #[serde(default = "d_one")]
     pub round: i64,
-    /// While `phase` is `tool`: the tools running (as the model named them), else empty.
+    /// While `phase` is `tool`: the tools running (as the model named them), else empty. While
+    /// `phase` is `code`: the code tool's name.
     #[serde(default)]
     pub tools: Vec<String>,
+    /// While `phase` is `code`, the executions' tool calls; else null.
+    #[serde(default)]
+    pub code: Option<LiveCode>,
+}
+
+/// The tool calls of the code running for a sample (all its executions of this round together,
+/// when the model called the code tool more than once in one answer).
+#[derive(Serialize, Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct LiveCode {
+    /// Tool calls the code started so far, finished or not.
+    pub calls: i64,
+    /// The tool calls in progress, as the code called them (`github.list_issues`), oldest first.
+    pub running: Vec<String>,
 }
 
 fn d_one() -> i64 {
@@ -749,9 +923,12 @@ pub struct SampleOut {
     /// assistant turn's. Null for runs without tools and for samples not finished.
     #[serde(default)]
     pub trace: Option<Vec<TraceMessage>>,
-    /// Tool calls run for this sample.
+    /// Tool calls run for this sample. In code mode: the code tool's calls (executions).
     #[serde(default)]
     pub tool_calls: i64,
+    /// Code mode: the MCP tool calls this sample's code made. 0 in direct mode.
+    #[serde(default)]
+    pub inner_tool_calls: i64,
 }
 
 /// A tool call the model made: `arguments` is the JSON text exactly as the model wrote it (it may
@@ -783,15 +960,83 @@ pub struct TraceTool {
     pub tool_call_id: String,
     /// The tool's name as the model called it.
     pub name: String,
-    /// The MCP server that ran it ("" when no server has a tool of that name).
+    /// The MCP server that ran it ("" when no server has a tool of that name, and for the code
+    /// tool).
     pub server: String,
     /// The text sent to the model: the tool's text parts joined, a placeholder for each image or
-    /// other part, or the error.
+    /// other part, or the error. Code mode: the code tool's result as Cloudflare's Code Mode sends
+    /// it through the AI SDK: `{"result": ..., "logs": [...]}` as JSON, or
+    /// `Error: Code execution failed: ...` (with the console output).
     pub content: String,
     /// The tool reported an error, the arguments were not valid JSON, the tool is unknown, or the
-    /// call timed out. The error text is still sent to the model.
+    /// call timed out. The error text is still sent to the model. Code mode: the execution failed
+    /// (or the input was not `{"code": string}`).
     pub is_error: bool,
-    /// The result was longer than the run's `max_result_chars` and was cut.
+    /// The result was longer than the run's `max_result_chars` and was cut. Code mode: the result
+    /// or the console output was over `code.max_result_tokens` and was shrunk.
+    pub truncated: bool,
+    pub latency_ms: i64,
+    /// Code mode: what happened inside the execution, for viewing and audit. The model saw only
+    /// `content`; exports other than raw leave this out. Absent in direct mode, and when no code
+    /// ran (the input was not `{"code": string}`, or the model called an unknown tool).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<CodeExecution>,
+}
+
+/// How a code execution ended.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CodeStatus {
+    /// The code returned (its value, possibly undefined, went back to the model).
+    Ok,
+    /// The code threw (an uncaught exception, also from a tool call).
+    Error,
+    /// The code is not valid JavaScript.
+    SyntaxError,
+    /// The execution ran past `code.timeout_s` (also in a tight loop: it is interrupted).
+    Timeout,
+    /// The execution ran out of its `code.memory_limit_mb`.
+    MemoryLimit,
+}
+
+/// One code execution: the code tool's call, from the model's code to what it returned.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CodeExecution {
+    /// The code as it ran: the model's `code` after Cloudflare's `normalizeCode` (fences stripped,
+    /// wrapped in an async arrow function when it was not one).
+    pub code: String,
+    pub status: CodeStatus,
+    /// The MCP tool calls the code made, in the order it made them.
+    pub calls: Vec<InnerToolCall>,
+    /// The console output, in full: `console.log` lines as is, `console.warn` with `[warn] `,
+    /// `console.error` with `[error] ` (as Cloudflare's executor captures them).
+    pub logs: Vec<String>,
+    /// The value the code returned, as JSON text, before any truncation; null when it returned
+    /// undefined or failed.
+    pub result: Option<String>,
+    /// Why it failed (the text after `Code execution failed: ` in what the model saw); null when
+    /// it returned.
+    pub error: Option<String>,
+    pub latency_ms: i64,
+}
+
+/// A tool call the model's code made inside an execution.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct InnerToolCall {
+    /// As the code called it: `<namespace>.<method>`.
+    pub method: String,
+    /// The MCP server and the tool's name there; both "" when the namespace has no such method.
+    pub server: String,
+    pub tool: String,
+    /// The first argument the code passed (the tool's arguments), as JSON; null when none.
+    pub arguments: Value,
+    /// What the code got back: a string as is, any other value as JSON text. For an error, the
+    /// message of the exception the call threw in the code.
+    pub result: String,
+    /// The call threw in the code: the tool reported an error, failed or timed out, the method does
+    /// not exist, or the execution ended before the call finished.
+    pub is_error: bool,
+    /// `result` is stored cut to the run's `max_result_chars` (the code got all of it).
     pub truncated: bool,
     pub latency_ms: i64,
 }
@@ -819,9 +1064,12 @@ pub struct SampleSummary {
     pub completion_tokens: Option<i64>,
     pub latency_ms: Option<i64>,
     pub error: Option<String>,
-    /// Tool calls run for this sample.
+    /// Tool calls run for this sample (code mode: executions).
     #[serde(default)]
     pub tool_calls: i64,
+    /// Code mode: the MCP tool calls this sample's code made.
+    #[serde(default)]
+    pub inner_tool_calls: i64,
 }
 
 // ------------------------------------------------------------------------------------ MCP servers
@@ -933,6 +1181,10 @@ pub struct McpTool {
     pub description: Option<String>,
     /// JSON Schema of the arguments.
     pub input_schema: Value,
+    /// JSON Schema of the structured result, when the server declares one (code mode types the
+    /// method's result with it). Absent otherwise, and in lists saved before code mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1183,9 +1435,12 @@ pub struct Candidate {
     pub finish_reason: Option<String>,
     pub completion_tokens: Option<i64>,
     pub reasoning_tokens: Option<i64>,
-    /// Tool calls run for this sample.
+    /// Tool calls run for this sample (code mode: executions).
     #[serde(default)]
     pub tool_calls: i64,
+    /// Code mode: the MCP tool calls this sample's code made.
+    #[serde(default)]
+    pub inner_tool_calls: i64,
     /// The sample's trace (runs with tools), as in `SampleOut.trace`.
     #[serde(default)]
     pub trace: Option<Vec<TraceMessage>>,
@@ -1248,4 +1503,34 @@ pub struct SettingsIn {
     /// None leaves it unchanged; "" removes it.
     #[serde(default)]
     pub hf_token: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tools_saved_before_code_mode_are_direct() {
+        let old: RunTools = serde_json::from_value(serde_json::json!({
+            "servers": [{"server_id": 1, "tools": null}], "max_rounds": 8, "tool_timeout_s": 60.0,
+            "max_result_chars": 20000, "tool_choice": "auto"
+        }))
+        .unwrap();
+        assert_eq!((old.mode, old.code.as_ref()), (ToolMode::Direct, None));
+        let saved = serde_json::to_value(&old).unwrap();
+        assert_eq!(saved["mode"], "direct");
+        assert!(saved.get("code").is_none());
+        let snap: ToolSnapshot = serde_json::from_value(serde_json::json!({"servers": [], "definitions": []})).unwrap();
+        assert_eq!((snap.mode, snap.code), (ToolMode::Direct, None));
+    }
+
+    #[test]
+    fn code_options_default_to_cloudflare() {
+        let o = CodeModeOptions::default();
+        assert_eq!(o.tool_name, "codemode");
+        assert_eq!((o.description.as_deref(), o.namespaces), (None, CodeNamespaces::Servers));
+        assert_eq!((o.timeout_s, o.max_result_tokens, o.max_result_chars, o.memory_limit_mb), (60.0, 6000, None, 128));
+        let t: RunTools = serde_json::from_value(serde_json::json!({"servers": [], "mode": "code"})).unwrap();
+        assert_eq!((t.mode, t.code), (ToolMode::Code, None));
+    }
 }

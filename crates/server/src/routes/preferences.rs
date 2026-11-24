@@ -250,6 +250,7 @@ struct SampleRow {
     completion_tokens: Option<i64>,
     reasoning_tokens: Option<i64>,
     tool_calls: i64,
+    inner_tool_calls: i64,
     trace: Option<String>,
 }
 
@@ -275,7 +276,7 @@ async fn build_items(ctx: &Ctx, runs: &[RunRow], rows: Vec<ItemRow>) -> Result<V
     let prompt_ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
     let samples = sqlx::query_as::<_, SampleRow>(&format!(
         "SELECT id, run_id, prompt_id, sample_idx, reasoning, response, finish_reason, completion_tokens, \
-         reasoning_tokens, tool_calls, trace FROM samples WHERE prompt_id IN ({}) AND run_id IN ({}) AND status = 'done'",
+         reasoning_tokens, tool_calls, inner_tool_calls, trace FROM samples WHERE prompt_id IN ({}) AND run_id IN ({}) AND status = 'done'",
         id_list(&prompt_ids),
         id_list(&run_ids)
     ))
@@ -306,6 +307,7 @@ async fn build_items(ctx: &Ctx, runs: &[RunRow], rows: Vec<ItemRow>) -> Result<V
                         completion_tokens: s.completion_tokens,
                         reasoning_tokens: s.reasoning_tokens,
                         tool_calls: s.tool_calls,
+                        inner_tool_calls: s.inner_tool_calls,
                         trace: s.trace.as_deref().and_then(|t| serde_json::from_str(t).ok()),
                     })
                 })

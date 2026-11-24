@@ -544,6 +544,7 @@ mod tests {
             completion_tokens: Some(3),
             reasoning_tokens: None,
             tool_calls: 0,
+            inner_tool_calls: 0,
             trace: None,
         }
     }

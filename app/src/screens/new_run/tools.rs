@@ -219,7 +219,7 @@ pub fn to_run_tools(form: &ToolsForm, servers: &[Server], max_rounds: i64, tool_
             Some(RunToolServer { server_id: server.id, tools: if all { None } else { Some(names) } })
         })
         .collect();
-    Some(RunTools { servers: picked, max_rounds, tool_timeout_s, max_result_chars, tool_choice: form.choice })
+    Some(RunTools { servers: picked, max_rounds, tool_timeout_s, max_result_chars, tool_choice: form.choice, ..RunTools::default() })
 }
 
 /// A copied run's tools against the servers there are now: the picks kept, and a note for each

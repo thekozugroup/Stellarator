@@ -88,6 +88,7 @@ struct FinishRow {
     /// The trace as JSON (runs with tools).
     trace: Option<String>,
     tool_calls: i64,
+    inner_tool_calls: i64,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -99,6 +100,7 @@ struct Deltas {
     completion_tokens: i64,
     reasoning_tokens: i64,
     tool_calls: i64,
+    inner_tool_calls: i64,
     active: f64,
 }
 
@@ -111,6 +113,7 @@ impl Deltas {
         self.completion_tokens += o.completion_tokens;
         self.reasoning_tokens += o.reasoning_tokens;
         self.tool_calls += o.tool_calls;
+        self.inner_tool_calls += o.inner_tool_calls;
         self.active += o.active;
     }
 }
@@ -271,7 +274,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE samples SET status = ?, reasoning = ?, response = ?, finish_reason = ?, prompt_tokens = ?, \
              completion_tokens = ?, reasoning_tokens = ?, latency_ms = ?, ttft_ms = ?, attempts = ?, error = ?, \
-             completed_at = ?, trace = ?, tool_calls = ? WHERE id = ?",
+             completed_at = ?, trace = ?, tool_calls = ?, inner_tool_calls = ? WHERE id = ?",
         )
         .bind(f.status)
         .bind(&f.reasoning)
@@ -287,6 +290,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         .bind(&f.completed_at)
         .bind(&f.trace)
         .bind(f.tool_calls)
+        .bind(f.inner_tool_calls)
         .bind(f.sample_id)
         .execute(&mut *tx)
         .await?;
@@ -303,8 +307,8 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE runs SET done = done + ?, failed = failed + ?, truncated = truncated + ?, \
              prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?, \
-             reasoning_tokens = reasoning_tokens + ?, tool_calls = tool_calls + ?, active_seconds = active_seconds + ? \
-             WHERE id = ?",
+             reasoning_tokens = reasoning_tokens + ?, tool_calls = tool_calls + ?, \
+             inner_tool_calls = inner_tool_calls + ?, active_seconds = active_seconds + ? WHERE id = ?",
         )
         .bind(d.done)
         .bind(d.failed)
@@ -313,6 +317,7 @@ async fn write(db: &SqlitePool, batch: &[&Op]) -> sqlx::Result<()> {
         .bind(d.completion_tokens)
         .bind(d.reasoning_tokens)
         .bind(d.tool_calls)
+        .bind(d.inner_tool_calls)
         .bind(d.active)
         .bind(run_id)
         .execute(&mut *tx)
@@ -968,7 +973,7 @@ impl RunTask {
                     &backoff,
                 )
                 .await
-                .map(|r| (r, None, 0)),
+                .map(|r| (r, None, 0, 0)),
                 Some(rt) => run_sample(
                     rt,
                     &self.client,
@@ -982,7 +987,7 @@ impl RunTask {
                     &backoff,
                 )
                 .await
-                .map(|o| (o.result, Some(o.trace), o.tool_calls)),
+                .map(|o| (o.result, Some(o.trace), o.tool_calls, o.inner_tool_calls)),
             }
         };
         let outcome = tokio::select! {
@@ -1008,8 +1013,8 @@ impl RunTask {
                 }
                 false
             }
-            Some(Ok((result, trace, tool_calls))) => {
-                self.finish_done(key, item.sample_id, result, trace, tool_calls).await;
+            Some(Ok((result, trace, tool_calls, inner_tool_calls))) => {
+                self.finish_done(key, item.sample_id, result, trace, tool_calls, inner_tool_calls).await;
                 true
             }
             Some(Err(GenerateError::Failed { message, attempts })) => {
@@ -1036,6 +1041,7 @@ impl RunTask {
         r: GenerationResult,
         trace: Option<Vec<TraceMessage>>,
         tool_calls: i64,
+        inner_tool_calls: i64,
     ) {
         let truncated = matches!(r.finish_reason.as_deref(), Some("length") | Some(TOOL_ROUNDS));
         let deltas = Deltas {
@@ -1045,6 +1051,7 @@ impl RunTask {
             completion_tokens: r.completion_tokens.unwrap_or(0),
             reasoning_tokens: r.reasoning_tokens.unwrap_or(0),
             tool_calls,
+            inner_tool_calls,
             ..Deltas::default()
         };
         {
@@ -1071,6 +1078,7 @@ impl RunTask {
             completed_at: time::now_db(),
             trace: trace.and_then(|t| serde_json::to_string(&t).ok()),
             tool_calls,
+            inner_tool_calls,
         };
         {
             let mut st = self.st.lock();
@@ -1119,6 +1127,7 @@ impl RunTask {
             completed_at: time::now_db(),
             trace: None,
             tool_calls: 0,
+            inner_tool_calls: 0,
         };
         let deltas = Deltas { failed: 1, ..Deltas::default() };
         self.writer.send(Op::Finish { run_id: self.run_id, task: self.clone(), row: Box::new(row), deltas }).await;
@@ -1214,6 +1223,7 @@ impl RunTask {
                     attempt: p.attempt,
                     round: p.round,
                     tools: p.tools.clone(),
+                    code: p.code.clone(),
                 }
             })
             .collect();
@@ -1271,6 +1281,7 @@ fn copy_progress(dst: &mut Progress, src: &Progress) {
     dst.round = src.round;
     dst.tail.clone_from(&src.tail);
     dst.tools.clone_from(&src.tools);
+    dst.code.clone_from(&src.code);
 }
 
 /// Waits before a retry, unless the run starts pausing: then the slot is given up.
@@ -1704,7 +1715,8 @@ async fn recount(tx: &mut sqlx::SqliteConnection, run_id: i64) -> sqlx::Result<(
          prompt_tokens = (SELECT COALESCE(SUM(prompt_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
          completion_tokens = (SELECT COALESCE(SUM(completion_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
          reasoning_tokens = (SELECT COALESCE(SUM(reasoning_tokens), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
-         tool_calls = (SELECT COALESCE(SUM(tool_calls), 0) FROM samples WHERE run_id = ?1 AND status = 'done') \
+         tool_calls = (SELECT COALESCE(SUM(tool_calls), 0) FROM samples WHERE run_id = ?1 AND status = 'done'), \
+         inner_tool_calls = (SELECT COALESCE(SUM(inner_tool_calls), 0) FROM samples WHERE run_id = ?1 AND status = 'done') \
          WHERE id = ?1",
     )
     .bind(run_id)
@@ -1718,7 +1730,7 @@ async fn reset_failed(db: &SqlitePool, run_id: i64) -> sqlx::Result<i64> {
     let n = sqlx::query(
         "UPDATE samples SET status = 'pending', reasoning = NULL, response = NULL, finish_reason = NULL, \
          prompt_tokens = NULL, completion_tokens = NULL, reasoning_tokens = NULL, latency_ms = NULL, ttft_ms = NULL, \
-         attempts = 0, error = NULL, completed_at = NULL, trace = NULL, tool_calls = 0 \
+         attempts = 0, error = NULL, completed_at = NULL, trace = NULL, tool_calls = 0, inner_tool_calls = 0 \
          WHERE run_id = ? AND status = 'failed'",
     )
     .bind(run_id)

@@ -21,7 +21,7 @@ use futures::StreamExt;
 use reqwest::header::HeaderMap;
 use serde_json::{Map, Value};
 use stellarator_core::openai;
-use stellarator_core::schemas::{Phase, RunParams, ToolCall};
+use stellarator_core::schemas::{LiveCode, Phase, RunParams, ToolCall};
 
 pub const RETRY_STATUSES: [u16; 8] = [408, 409, 425, 429, 500, 502, 503, 504];
 /// Characters of streamed text kept for the live view.
@@ -51,13 +51,15 @@ pub struct Progress {
     pub attempt: i64,
     /// The request of the sample: 1, then one more after each round of tool calls.
     pub round: i64,
-    /// The tools running, while `phase` is `Tool`.
+    /// The tools running, while `phase` is `Tool` (`Code`: the code tool).
     pub tools: Vec<String>,
+    /// Code mode, while `phase` is `Code`: the executions' tool calls.
+    pub code: Option<LiveCode>,
 }
 
 impl Default for Progress {
     fn default() -> Self {
-        Self { phase: Phase::Waiting, tokens: 0, tail: String::new(), attempt: 1, round: 1, tools: Vec::new() }
+        Self { phase: Phase::Waiting, tokens: 0, tail: String::new(), attempt: 1, round: 1, tools: Vec::new(), code: None }
     }
 }
 

@@ -43,6 +43,7 @@ fn example_call(id: &str, name: &str, arguments: &str, content: &str, error: boo
             is_error: error,
             truncated,
             latency_ms: 214,
+            code: None,
         }),
     }
 }

@@ -184,6 +184,12 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE samples ADD COLUMN trace JSON;
     ALTER TABLE samples ADD COLUMN tool_calls INTEGER NOT NULL DEFAULT 0;
     "#,
+    // v4: code mode. The MCP tool calls a sample's code made, and their sum per run (tool_calls
+    // counts the code tool's calls).
+    r#"
+    ALTER TABLE runs ADD COLUMN inner_tool_calls INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE samples ADD COLUMN inner_tool_calls INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 /// Indexes on foreign keys the Python schema left without one. Without them, every row removed by
@@ -305,6 +311,13 @@ mod tests {
         let (tools, run_calls): (Option<String>, i64) =
             sqlx::query_as("SELECT tools, tool_calls FROM runs WHERE id = 1").fetch_one(&pool).await.unwrap();
         assert_eq!((tools, run_calls), (None, 0));
+        let inner: (i64, i64) = sqlx::query_as(
+            "SELECT r.inner_tool_calls, s.inner_tool_calls FROM runs r JOIN samples s ON s.run_id = r.id WHERE r.id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(inner, (0, 0));
         // Server names are unique ignoring case.
         let insert = "INSERT INTO mcp_servers (name, transport, created_at, updated_at) VALUES (?, 'http', '', '')";
         sqlx::query(insert).bind("GitHub").execute(&pool).await.unwrap();

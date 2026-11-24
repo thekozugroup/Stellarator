@@ -495,6 +495,7 @@ mod tests {
             is_error: error,
             truncated: false,
             latency_ms: 120,
+            code: None,
         })
     }
 

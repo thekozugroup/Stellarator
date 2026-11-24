@@ -248,6 +248,7 @@ impl Connection {
                     name: t.name.to_string(),
                     description: t.description.map(|d| d.to_string()).filter(|d| !d.trim().is_empty()),
                     input_schema: schema,
+                    output_schema: t.output_schema.map(|s| Value::Object((*s).clone())),
                 }
             })
             .collect())

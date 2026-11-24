@@ -68,7 +68,7 @@ fn run_not_found() -> ApiError {
 const RUN_SELECT: &str = "SELECT r.id, r.name, r.endpoint_id, r.endpoint_name, r.model, r.prompt_set_id, r.params, \
     r.concurrency, r.status, r.status_reason, r.total, r.done, r.failed, r.truncated, r.prompt_tokens, \
     r.completion_tokens, r.reasoning_tokens, r.active_seconds, r.created_at, r.started_at, r.finished_at, \
-    r.tools, r.tool_calls, ps.name AS prompt_set_name FROM runs r LEFT JOIN prompt_sets ps ON ps.id = r.prompt_set_id";
+    r.tools, r.tool_calls, r.inner_tool_calls, ps.name AS prompt_set_name FROM runs r LEFT JOIN prompt_sets ps ON ps.id = r.prompt_set_id";
 
 #[derive(sqlx::FromRow)]
 struct RunRow {
@@ -95,6 +95,7 @@ struct RunRow {
     finished_at: Option<NaiveDateTime>,
     tools: Option<SqlJson<Value>>,
     tool_calls: i64,
+    inner_tool_calls: i64,
     prompt_set_name: Option<String>,
 }
 
@@ -131,6 +132,7 @@ fn run_out(engine: &Engine, r: RunRow) -> RunOut {
         finished_at: time::utc_opt(r.finished_at),
         tools: r.tools.and_then(|t| serde_json::from_value(t.0).ok()),
         tool_calls: r.tool_calls,
+        inner_tool_calls: r.inner_tool_calls,
     }
 }
 
@@ -510,7 +512,7 @@ async fn list_samples(
     let list_sql = format!(
         "SELECT s.id, s.prompt_idx, s.sample_idx, s.status, substr(s.response, 1, 400) AS response, \
          (s.reasoning IS NOT NULL AND length(s.reasoning) > 0) AS has_reasoning, s.finish_reason, \
-         s.completion_tokens, s.latency_ms, s.error, s.tool_calls, p.messages \
+         s.completion_tokens, s.latency_ms, s.error, s.tool_calls, s.inner_tool_calls, p.messages \
          FROM samples s JOIN prompts p ON p.id = s.prompt_id WHERE {where_sql} \
          ORDER BY s.prompt_idx, s.sample_idx, s.id LIMIT ? OFFSET ?"
     );
@@ -544,6 +546,7 @@ async fn list_samples(
             latency_ms: row.try_get("latency_ms")?,
             error: row.try_get("error")?,
             tool_calls: row.try_get("tool_calls")?,
+            inner_tool_calls: row.try_get("inner_tool_calls")?,
         });
     }
     Ok(Json(Page { items, total, offset, limit }))
@@ -570,6 +573,7 @@ struct SampleRow {
     completed_at: Option<NaiveDateTime>,
     trace: Option<String>,
     tool_calls: i64,
+    inner_tool_calls: i64,
     messages: Option<String>,
     params: Option<String>,
 }
@@ -578,7 +582,7 @@ async fn get_sample(State(engine): State<Arc<Engine>>, Id(sample_id): Id) -> Res
     let row: Option<SampleRow> = sqlx::query_as(
         "SELECT s.id, s.run_id, s.prompt_id, s.prompt_idx, s.sample_idx, s.status, s.reasoning, s.response, \
          s.finish_reason, s.prompt_tokens, s.completion_tokens, s.reasoning_tokens, s.latency_ms, s.ttft_ms, \
-         s.attempts, s.error, s.completed_at, s.trace, s.tool_calls, p.messages, r.params \
+         s.attempts, s.error, s.completed_at, s.trace, s.tool_calls, s.inner_tool_calls, p.messages, r.params \
          FROM samples s LEFT JOIN prompts p ON p.id = s.prompt_id LEFT JOIN runs r ON r.id = s.run_id WHERE s.id = ?",
     )
     .bind(sample_id)
@@ -611,6 +615,7 @@ async fn get_sample(State(engine): State<Arc<Engine>>, Id(sample_id): Id) -> Res
         messages: prepare_messages(&messages, &params),
         trace: s.trace.as_deref().and_then(|t| serde_json::from_str::<Vec<TraceMessage>>(t).ok()),
         tool_calls: s.tool_calls,
+        inner_tool_calls: s.inner_tool_calls,
     }))
 }
 

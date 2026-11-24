@@ -147,6 +147,7 @@ impl ToolRuntime {
             is_error,
             truncated,
             latency_ms: started.elapsed().as_millis() as i64,
+            code: None,
         })
     }
 }
@@ -184,8 +185,10 @@ pub struct SampleOutcome {
     /// out), with the token usage, attempts and latency of the whole sample.
     pub result: GenerationResult,
     pub trace: Vec<TraceMessage>,
-    /// Tool calls run.
+    /// Tool calls run (code mode: executions).
     pub tool_calls: i64,
+    /// Code mode: the MCP tool calls the code made.
+    pub inner_tool_calls: i64,
 }
 
 fn add_opt(a: Option<i64>, b: Option<i64>) -> Option<i64> {
@@ -261,7 +264,7 @@ pub async fn run_sample(
                 chunks,
                 ..r
             };
-            return Ok(SampleOutcome { result, trace, tool_calls: executed });
+            return Ok(SampleOutcome { result, trace, tool_calls: executed, inner_tool_calls: 0 });
         }
         convo.push(assistant_request_message(&r.response, &r.tool_calls));
         sink.on_reset(&Progress {

@@ -258,7 +258,7 @@ fn slugs_and_filenames() {
 // ------------------------------------------------------------------------------ runs with tools
 
 use stellarator_core::schemas::{
-    McpTransport, ToolCall, ToolSnapshot, ToolSnapshotServer, ToolSnapshotTool, TraceAssistant, TraceTool,
+    McpTransport, ToolCall, ToolMode, ToolSnapshot, ToolSnapshotServer, ToolSnapshotTool, TraceAssistant, TraceTool,
 };
 
 fn tool_defs() -> Vec<Value> {
@@ -283,6 +283,8 @@ fn tool_run() -> RunInfo {
                 ],
             }],
             definitions: tool_defs(),
+            mode: ToolMode::Direct,
+            code: None,
         }),
         ..run(json!({}))
     }
@@ -313,6 +315,7 @@ fn result(id: &str, name: &str, content: &str, is_error: bool) -> TraceMessage {
         is_error,
         truncated: false,
         latency_ms: 7,
+        code: None,
     })
 }
 

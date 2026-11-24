@@ -138,6 +138,18 @@ MESSAGE = Obj({"role": OneOf("system", "user", "assistant"), "content": str})
 
 MCP_TRANSPORT = OneOf("stdio", "http")
 
+CODE_MODE_OPTIONS = Obj(
+    {
+        "tool_name": str,
+        "description": Opt(str),
+        "namespaces": OneOf("servers", "codemode"),
+        "timeout_s": float,
+        "max_result_tokens": int,
+        "max_result_chars": Opt(int),
+        "memory_limit_mb": int,
+    }
+)
+
 RUN_TOOLS = Obj(
     {
         "servers": ListOf(Obj({"server_id": int, "tools": Opt(ListOf(str))})),
@@ -145,7 +157,9 @@ RUN_TOOLS = Obj(
         "tool_timeout_s": float,
         "max_result_chars": int,
         "tool_choice": OneOf("auto", "required"),
-    }
+        "mode": OneOf("direct", "code"),
+    },
+    optional={"code": CODE_MODE_OPTIONS},
 )
 
 TOOL_DEFINITION = Obj(
@@ -165,7 +179,25 @@ TOOL_SNAPSHOT = Obj(
             )
         ),
         "definitions": ListOf(TOOL_DEFINITION),
-    }
+        "mode": OneOf("direct", "code"),
+    },
+    optional={
+        "code": Obj(
+            {
+                "tool_name": str,
+                "types": str,
+                "namespaces": ListOf(
+                    Obj(
+                        {
+                            "name": str,
+                            "methods": ListOf(Obj({"name": str, "server_id": int, "server": str, "tool": str})),
+                        }
+                    )
+                ),
+                "format": str,
+            }
+        )
+    },
 )
 
 TOOL_CALL = Obj({"id": str, "name": str, "arguments": str})
@@ -184,6 +216,31 @@ TRACE_ASSISTANT = Obj(
     }
 )
 
+INNER_TOOL_CALL = Obj(
+    {
+        "method": str,
+        "server": str,
+        "tool": str,
+        "arguments": ANY,
+        "result": str,
+        "is_error": bool,
+        "truncated": bool,
+        "latency_ms": int,
+    }
+)
+
+CODE_EXECUTION = Obj(
+    {
+        "code": str,
+        "status": OneOf("ok", "error", "syntax_error", "timeout", "memory_limit"),
+        "calls": ListOf(INNER_TOOL_CALL),
+        "logs": ListOf(str),
+        "result": Opt(str),
+        "error": Opt(str),
+        "latency_ms": int,
+    }
+)
+
 TRACE_TOOL = Obj(
     {
         "role": OneOf("tool"),
@@ -194,7 +251,8 @@ TRACE_TOOL = Obj(
         "is_error": bool,
         "truncated": bool,
         "latency_ms": int,
-    }
+    },
+    optional={"code": CODE_EXECUTION},
 )
 
 
@@ -340,6 +398,7 @@ RUN = Obj(
         "finished_at": Opt(DT),
         "tools": Opt(TOOL_SNAPSHOT),
         "tool_calls": int,
+        "inner_tool_calls": int,
     }
 )
 
@@ -349,13 +408,14 @@ LIVE_SEQUENCE = Obj(
         "prompt_idx": int,
         "sample_idx": int,
         "prompt_preview": str,
-        "phase": OneOf("waiting", "thinking", "answering", "tool"),
+        "phase": OneOf("waiting", "thinking", "answering", "tool", "code"),
         "tokens": int,
         "tail": str,
         "elapsed_ms": int,
         "attempt": int,
         "round": int,
         "tools": ListOf(str),
+        "code": Opt(Obj({"calls": int, "running": ListOf(str)})),
     }
 )
 
@@ -407,6 +467,7 @@ SAMPLE = Obj(
         "messages": ListOf(MESSAGE),
         "trace": Opt(list),
         "tool_calls": int,
+        "inner_tool_calls": int,
     }
 )
 
@@ -424,6 +485,7 @@ SAMPLE_SUMMARY = Obj(
         "latency_ms": Opt(int),
         "error": Opt(str),
         "tool_calls": int,
+        "inner_tool_calls": int,
     }
 )
 
@@ -462,6 +524,7 @@ CANDIDATE = Obj(
         "completion_tokens": Opt(int),
         "reasoning_tokens": Opt(int),
         "tool_calls": int,
+        "inner_tool_calls": int,
         "trace": Opt(list),
     }
 )
@@ -493,7 +556,7 @@ SETTINGS = Obj(
 
 SECRET_HINT = Obj({"name": str, "hint": Opt(str)})
 
-MCP_TOOL = Obj({"name": str, "description": Opt(str), "input_schema": dict})
+MCP_TOOL = Obj({"name": str, "description": Opt(str), "input_schema": dict}, optional={"output_schema": dict})
 
 MCP_SERVER = Obj(
     {

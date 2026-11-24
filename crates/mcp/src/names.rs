@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Map, Value};
-use stellarator_core::schemas::{McpTool, McpTransport, ToolSnapshot, ToolSnapshotServer, ToolSnapshotTool};
+use stellarator_core::schemas::{McpTool, McpTransport, ToolMode, ToolSnapshot, ToolSnapshotServer, ToolSnapshotTool};
 
 /// One selected server and the tools picked from it, in the server's order.
 #[derive(Clone, Debug)]
@@ -98,7 +98,7 @@ pub fn snapshot(selected: &[Selected]) -> Result<ToolSnapshot, String> {
     if definitions.is_empty() {
         return Err("The selected servers offer no tools. Check them, or pick other servers.".into());
     }
-    Ok(ToolSnapshot { servers, definitions })
+    Ok(ToolSnapshot { servers, definitions, mode: ToolMode::Direct, code: None })
 }
 
 #[cfg(test)]
@@ -106,7 +106,7 @@ mod tests {
     use super::*;
 
     fn tool(name: &str) -> McpTool {
-        McpTool { name: name.into(), description: Some(format!("{name} things")), input_schema: json!({"type": "object", "properties": {"q": {"type": "string"}}}) }
+        McpTool { name: name.into(), description: Some(format!("{name} things")), input_schema: json!({"type": "object", "properties": {"q": {"type": "string"}}}), output_schema: None }
     }
 
     fn sel(id: i64, name: &str, tools: &[&str]) -> Selected {
@@ -143,9 +143,9 @@ mod tests {
 
     #[test]
     fn parameters_get_an_object_schema() {
-        let t = McpTool { name: "t".into(), description: None, input_schema: json!({}) };
+        let t = McpTool { name: "t".into(), description: None, input_schema: json!({}), output_schema: None };
         assert_eq!(definition("t", &t), json!({"type": "function", "function": {"name": "t", "parameters": {"type": "object", "properties": {}}}}));
-        let t = McpTool { name: "t".into(), description: Some(" ".into()), input_schema: json!({"properties": {"a": {"type": "integer"}}}) };
+        let t = McpTool { name: "t".into(), description: Some(" ".into()), input_schema: json!({"properties": {"a": {"type": "integer"}}}), output_schema: None };
         assert_eq!(definition("t", &t)["function"]["parameters"], json!({"type": "object", "properties": {"a": {"type": "integer"}}}));
     }
 }
