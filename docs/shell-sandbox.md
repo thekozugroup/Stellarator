@@ -168,7 +168,7 @@ that take microseconds on small files.
 
 | | Linux | macOS |
 | --- | --- | --- |
-| One `true`, start to result (median of 20, debug build) | 1.4 ms on GitHub's `ubuntu-latest`, 2.5 ms on a 4-core VM | 30 to 41 ms on `macos-26-intel`, most of it `sandbox-exec` reading the profile |
+| One `true`, start to result (median of 20, debug build) | 1.4 ms on GitHub's `ubuntu-latest`, 2.5 ms on a 4-core VM | 30 to 60 ms on `macos-26-intel` (the medians of four CI runs: 30, 41, 41 and 59 ms), most of it `sandbox-exec` reading the profile |
 | Held per running command | one thread (256 KiB stack), three descriptors | one thread, two descriptors |
 | While it runs | the supervisor answers `chmod`, `setsid` and process starts: about one round trip between two threads each | every half second: one pass over the process list |
 | Commands at once | no cap in the crate. 24 workspaces with 5 commands each, in parallel: 0.22 s in all on the 4-core VM | no cap; the same test passes |
