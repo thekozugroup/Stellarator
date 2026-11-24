@@ -223,13 +223,39 @@ pub fn check_code_options(code: &mut CodeModeOptions, prefix: &str, e: &mut Fiel
     if !(1.0..=3600.0).contains(&code.timeout_s) {
         e.add(&f("timeout_s"), "Use a number of seconds from 1 to 3600.");
     }
-    if code.max_result_tokens != 0 && !(100..=1_000_000).contains(&code.max_result_tokens) {
+    if code.max_result_tokens.is_some_and(|t| t != 0 && !(100..=1_000_000).contains(&t)) {
         e.add(&f("max_result_tokens"), "Use 0 (no truncation) or a number from 100 to 1,000,000.");
     }
     if let Some(chars) = code.max_result_chars {
         check_range_i(e, &f("max_result_chars"), chars, 1000, 4_000_000);
     }
     check_range_i(e, &f("memory_limit_mb"), code.memory_limit_mb, 8, 1024);
+    match code.format {
+        CodeFormat::CodeTool => {
+            // The runtime's settings mean nothing here: refuse them instead of dropping them.
+            if !code.connector_hints.is_empty() {
+                e.add(&f("connector_hints"), "Connector hints belong to the runtime format. Set format to \"runtime\", or leave them out.");
+            }
+        }
+        CodeFormat::Runtime => {
+            if code.namespaces == CodeNamespaces::Codemode {
+                e.add(
+                    &f("namespaces"),
+                    "The runtime format has one connector per server, and `codemode` is its own namespace. Use \"servers\".",
+                );
+            }
+            code.connector_hints = std::mem::take(&mut code.connector_hints)
+                .into_iter()
+                .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+                .filter(|(_, v)| !v.is_empty())
+                .collect();
+            if code.connector_hints.keys().any(String::is_empty) {
+                e.add(&f("connector_hints"), "Name the server each hint is for.");
+            } else if code.connector_hints.values().any(|v| v.chars().count() > 2000 || v.contains('\n')) {
+                e.add(&f("connector_hints"), "A hint is one line of at most 2,000 characters.");
+            }
+        }
+    }
 }
 
 /// MCP server names: letters, digits, `_` and `-`, 1 to 64 characters. They prefix tool names when
@@ -440,6 +466,26 @@ mod tests {
             ]
         );
         assert_eq!(tools.code.unwrap().description, None);
+        // The runtime format: one connector per server, hints of one line, trimmed, empty ones dropped.
+        let check = |code: serde_json::Value| {
+            let mut t: RunTools =
+                serde_json::from_value(serde_json::json!({"servers": [{"server_id": 1}], "mode": "code", "code": code})).unwrap();
+            let mut e = FieldErrors::new();
+            check_run_tools(&mut t, "params.tools.", &mut e);
+            (t, e.finish().err().map(|x| x.fields.keys().cloned().collect::<Vec<_>>()).unwrap_or_default())
+        };
+        let (t, errors) = check(serde_json::json!({"format": "runtime", "connector_hints": {" github ": " Issues. ", "docs": "  "}}));
+        assert!(errors.is_empty(), "{errors:?}");
+        let code = t.code.unwrap();
+        assert_eq!(code.format, CodeFormat::Runtime);
+        assert_eq!(code.connector_hints.into_iter().collect::<Vec<_>>(), [("github".to_string(), "Issues.".to_string())]);
+        assert_eq!(check(serde_json::json!({"format": "runtime", "namespaces": "codemode"})).1, ["params.tools.code.namespaces"]);
+        assert_eq!(
+            check(serde_json::json!({"format": "runtime", "connector_hints": {"github": "two\nlines"}})).1,
+            ["params.tools.code.connector_hints"]
+        );
+        assert_eq!(check(serde_json::json!({"connector_hints": {"github": "x"}})).1, ["params.tools.code.connector_hints"]);
+        assert!(serde_json::from_value::<RunTools>(serde_json::json!({"servers": [], "code": {"format": "durable"}})).is_err());
         // 0 tokens turns truncation off; direct mode ignores the code settings.
         let mut ok: RunTools = serde_json::from_value(serde_json::json!({
             "servers": [{"server_id": 1}], "mode": "code", "code": {"max_result_tokens": 0}

@@ -541,6 +541,7 @@ fn code_run() -> RunInfo {
                     methods: vec![CodeMethod { name: "add".into(), server_id: 3, server: "docs".into(), tool: "add".into() }],
                 }],
                 format: "@cloudflare/codemode 0.5.6".into(),
+                ..CodeToolSnapshot::default()
             }),
         }),
         ..run(json!({}))

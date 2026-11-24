@@ -514,7 +514,8 @@ pub struct RunTools {
     /// before code mode existed, which are direct.
     #[serde(default)]
     pub mode: ToolMode,
-    /// Code mode settings; null (or absent) means Cloudflare's defaults. Ignored in direct mode.
+    /// Code mode settings; null (or absent) means Cloudflare's defaults in the `code_tool` format.
+    /// Ignored in direct mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<CodeModeOptions>,
 }
@@ -539,6 +540,28 @@ pub enum ToolMode {
     Code,
 }
 
+/// Which of Cloudflare's two Code Mode setups a run reproduces (`params.tools.code.format`). They
+/// differ in what the model reads, what its code can call and what it gets back.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CodeFormat {
+    /// `createCodeTool({tools, executor})` from `@cloudflare/codemode/ai`
+    /// (developers.cloudflare.com/agents/tools/codemode/ai-sdk/). The tool's description holds
+    /// TypeScript declarations of every tool; the result is `{"result": ..., "logs": [...]}`, an
+    /// error `Error: Code execution failed: ...`.
+    #[default]
+    CodeTool,
+    /// `createCodemodeRuntime({ctx, executor, connectors}).tool()` with one `McpConnector` per
+    /// server (developers.cloudflare.com/agents/tools/codemode/mcp/ and durable-runtime/). The
+    /// description lists the connectors and a workflow; the code finds tools with
+    /// `codemode.search(query)` and reads their types with `codemode.describe(target)`, then calls
+    /// `<connector>.<method>(args)`; the result is
+    /// `{"status": "completed", "executionId": ..., "result": ..., "logs": [...]}`, an error
+    /// `{"status": "error", "executionId": ..., "error": ...}`. Approvals, saved snippets and
+    /// rollback are not configured: no call pauses, `codemode.run` finds no snippet.
+    Runtime,
+}
+
 /// Where code mode puts the MCP tools (`params.tools.code.namespaces`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -548,7 +571,8 @@ pub enum CodeNamespaces {
     #[default]
     Servers,
     /// Every tool under `codemode` (`codemode.list_issues({...})`), as `createCodeTool` does with
-    /// one tool set. Tools of the same name on two servers become `<server>__<tool>`.
+    /// one tool set. Tools of the same name on two servers become `<server>__<tool>`. Only in the
+    /// `code_tool` format: in the `runtime` format `codemode` is the platform's own namespace.
     Codemode,
 }
 
@@ -572,41 +596,56 @@ Example: async () => { const r = await codemode.searchWeb({ query: \"test\" }); 
 /// The Cloudflare release whose formats code mode reproduces.
 pub const CODE_MODE_FORMAT: &str = "@cloudflare/codemode 0.5.6";
 
+/// `truncateResult`'s default budget, in tokens of 4 characters: what `max_result_tokens: null`
+/// means in the `code_tool` format, and the budget of the console output in the `runtime` format.
+pub const CODE_RESULT_TOKENS: i64 = 6000;
+
 fn d_code_tool_name() -> String {
     CODE_TOOL_NAME.into()
 }
 fn d_code_timeout() -> f64 {
     60.0
 }
-fn d_code_result_tokens() -> i64 {
-    6000
-}
 fn d_code_memory_mb() -> i64 {
     128
 }
 
 /// Code mode settings (`params.tools.code`). Every default is Cloudflare's, except the memory
-/// limit, which Cloudflare leaves to the Workers runtime (128 MB per isolate).
+/// limit, which Cloudflare leaves to the Workers runtime (128 MB per isolate), and the result
+/// budget of the `code_tool` format (see `max_result_tokens`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct CodeModeOptions {
-    /// The code tool's name (1 to 64 letters, digits, `_` or `-`).
+    /// Which Cloudflare setup to reproduce: `code_tool` (the default) or `runtime`.
+    #[serde(default)]
+    pub format: CodeFormat,
+    /// The code tool's name (1 to 64 letters, digits, `_` or `-`). Cloudflare's docs register both
+    /// setups' tools as `codemode`.
     #[serde(default = "d_code_tool_name")]
     pub tool_name: String,
-    /// The tool's description template, where `{{types}}` stands for the generated declarations.
-    /// Null: Cloudflare's default, [`CODE_TOOL_DESCRIPTION`].
+    /// `code_tool`: the tool's description template, where `{{types}}` stands for the generated
+    /// declarations; null: Cloudflare's default, [`CODE_TOOL_DESCRIPTION`]. `runtime`: the whole
+    /// description, in place of the one the runtime writes (the `description` option of
+    /// `runtime.tool()`); null: the runtime's own, which lists the connectors.
     #[serde(default)]
     pub description: Option<String>,
+    /// `code_tool` only; the `runtime` format always has one connector per server (`servers`).
     #[serde(default)]
     pub namespaces: CodeNamespaces,
     /// Seconds one execution may take, its tool calls included (1 to 3600; Cloudflare: 60). Each
     /// tool call is also limited by `tool_timeout_s`.
     #[serde(default = "d_code_timeout")]
     pub timeout_s: f64,
-    /// The budget of the result and the console output the model sees, in tokens of 4 characters
-    /// (Cloudflare's `truncateResult`: 6000). Larger values are shrunk the way `truncateResult`
-    /// does it. 0: no truncation (what `createCodeTool` alone sends), else 100 to 1,000,000.
-    #[serde(default = "d_code_result_tokens")]
-    pub max_result_tokens: i64,
+    /// The budget of the result the model sees, in tokens of 4 characters; a larger result is
+    /// shrunk the way Cloudflare's `truncateResult` does it. 0: no truncation, else 100 to
+    /// 1,000,000. Null: the format's default.
+    ///
+    /// - `code_tool`: null means [`CODE_RESULT_TOKENS`] (6000), and the console output gets the
+    ///   same budget. `createCodeTool` itself never truncates: 0 is what it sends.
+    /// - `runtime`: null means no truncation, as the runtime without `transformResult`; a number
+    ///   is `transformResult: (r) => truncateResult(r, {maxTokens})`. The console output is always
+    ///   bounded by `truncateResult`'s default (6000 tokens), as the runtime's tool does it.
+    #[serde(default)]
+    pub max_result_tokens: Option<i64>,
     /// The same budget in characters; overrides `max_result_tokens * 4` when set (1,000 to
     /// 4,000,000), as `truncateResult`'s `maxChars` does.
     #[serde(default)]
@@ -614,6 +653,41 @@ pub struct CodeModeOptions {
     /// Memory one execution may use, in MB (8 to 1024).
     #[serde(default = "d_code_memory_mb")]
     pub memory_limit_mb: i64,
+    /// `runtime` only: a short hint per connector, shown next to its name in the tool's
+    /// description (`- \`github\` — <hint>`), as the `connectorHints` option of `runtime.tool()`.
+    /// Keys are the servers' names (as given or as their namespaces); at most 2,000 characters
+    /// each. Empty by default, as Cloudflare's.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub connector_hints: BTreeMap<String, String>,
+    /// `runtime` only: whether `codemode.describe("<connector>")` carries the `instructions` the
+    /// MCP server sent when the session was opened. True by default: Cloudflare's `McpConnector`
+    /// includes them whenever the MCP connection has them, which the Agents SDK's connections do.
+    #[serde(default = "d_true", skip_serializing_if = "is_true")]
+    pub server_instructions: bool,
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+impl CodeModeOptions {
+    /// `truncateResult`'s budget for the result, as (characters, tokens); None: no truncation.
+    pub fn result_budget(&self) -> Option<(i64, i64)> {
+        let tokens = match (self.max_result_tokens, self.format) {
+            (Some(t), _) => t,
+            (None, CodeFormat::CodeTool) => CODE_RESULT_TOKENS,
+            (None, CodeFormat::Runtime) => 0,
+        };
+        (tokens > 0).then(|| (self.max_result_chars.unwrap_or(tokens * 4), tokens))
+    }
+
+    /// `truncateResult`'s budget for the console output, as (characters, tokens).
+    pub fn logs_budget(&self) -> Option<(i64, i64)> {
+        match self.format {
+            CodeFormat::CodeTool => self.result_budget(),
+            CodeFormat::Runtime => Some((CODE_RESULT_TOKENS * 4, CODE_RESULT_TOKENS)),
+        }
+    }
 }
 
 impl Default for CodeModeOptions {
@@ -659,17 +733,55 @@ pub struct ToolSnapshot {
 }
 
 /// The code tool of a code mode run, as sent.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CodeToolSnapshot {
     /// The tool's name (also `definitions[0].function.name`).
     pub tool_name: String,
-    /// The generated TypeScript declarations that replaced `{{types}}` in the description: one
-    /// block per namespace (input and output types, then `declare const <namespace>: {...}`).
+    /// The generated TypeScript declarations, one block per namespace (input and output types,
+    /// then `declare const <namespace>: {...}`). `code_tool`: what replaced `{{types}}` in the
+    /// description. `runtime`: what `codemode.describe("<connector>")` returns for each connector,
+    /// joined by blank lines; the description does not hold them.
     pub types: String,
     /// The namespaces the code sees, in the order they are declared.
     pub namespaces: Vec<CodeNamespace>,
     /// The Cloudflare release whose formats were followed, [`CODE_MODE_FORMAT`].
     pub format: String,
+    /// Which setup the run reproduces (`params.tools.code.format`). Absent in snapshots made
+    /// before the `runtime` format: `code_tool`.
+    #[serde(default)]
+    pub kind: CodeFormat,
+    /// `runtime`: the connectors as the runtime describes them, in order; what
+    /// `codemode.search` and `codemode.describe` read. Absent in the `code_tool` format.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<CodeConnector>,
+}
+
+/// A connector of the `runtime` format: one MCP server as Cloudflare's `McpConnector` describes it
+/// (`connector.describe()`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeConnector {
+    /// The connector's name, the global the code calls (also its `CodeNamespace.name`).
+    pub name: String,
+    /// The MCP server's `instructions`, shown by `codemode.describe("<name>")`; null when the
+    /// server sent none or `server_instructions` is off.
+    pub instructions: Option<String>,
+    /// The hint shown next to the name in the description (`connector_hints`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// The methods, in the server's order.
+    pub tools: Vec<CodeConnectorTool>,
+}
+
+/// A method of a connector, as `codemode.search` and `codemode.describe` see it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CodeConnectorTool {
+    /// The method's name ([`CodeMethod::name`]).
+    pub name: String,
+    pub description: Option<String>,
+    /// JSON Schema of the arguments, as the MCP server declares it.
+    pub input_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
 }
 
 /// A global object of the sandbox, with one async method per MCP tool.
@@ -965,8 +1077,10 @@ pub struct TraceTool {
     pub server: String,
     /// The text sent to the model: the tool's text parts joined, a placeholder for each image or
     /// other part, or the error. Code mode: the code tool's result as Cloudflare's Code Mode sends
-    /// it through the AI SDK: `{"result": ..., "logs": [...]}` as JSON, or
-    /// `Error: Code execution failed: ...` (with the console output).
+    /// it through the AI SDK. `code_tool` format: `{"result": ..., "logs": [...]}` as JSON, or
+    /// `Error: Code execution failed: ...` (with the console output). `runtime` format:
+    /// `{"status": "completed", "executionId": ..., "result": ..., "logs": [...]}`, or
+    /// `{"status": "error", "executionId": ..., "error": ...}`.
     pub content: String,
     /// The tool reported an error, the arguments were not valid JSON, the tool is unknown, or the
     /// call timed out. The error text is still sent to the model. Code mode: the execution failed
@@ -1014,8 +1128,8 @@ pub struct CodeExecution {
     /// The value the code returned, as JSON text, before any truncation; null when it returned
     /// undefined or failed.
     pub result: Option<String>,
-    /// Why it failed (the text after `Code execution failed: ` in what the model saw); null when
-    /// it returned.
+    /// Why it failed: the error's message (in the `code_tool` format, the text after
+    /// `Code execution failed: ` in what the model saw); null when it returned.
     pub error: Option<String>,
     pub latency_ms: i64,
 }
@@ -1529,7 +1643,24 @@ mod tests {
         let o = CodeModeOptions::default();
         assert_eq!(o.tool_name, "codemode");
         assert_eq!((o.description.as_deref(), o.namespaces), (None, CodeNamespaces::Servers));
-        assert_eq!((o.timeout_s, o.max_result_tokens, o.max_result_chars, o.memory_limit_mb), (60.0, 6000, None, 128));
+        assert_eq!((o.format, o.max_result_tokens, o.server_instructions), (CodeFormat::CodeTool, None, true));
+        assert!(o.connector_hints.is_empty());
+        // The result budget follows the format: 6000 tokens for the code tool, none for the runtime.
+        assert_eq!((o.result_budget(), o.logs_budget()), (Some((24000, 6000)), Some((24000, 6000))));
+        let r: CodeModeOptions = serde_json::from_value(serde_json::json!({"format": "runtime"})).unwrap();
+        assert_eq!((r.format, r.result_budget(), r.logs_budget()), (CodeFormat::Runtime, None, Some((24000, 6000))));
+        let r: CodeModeOptions =
+            serde_json::from_value(serde_json::json!({"format": "runtime", "max_result_tokens": 500, "max_result_chars": 1000})).unwrap();
+        assert_eq!((r.result_budget(), r.logs_budget()), (Some((1000, 500)), Some((24000, 6000))));
+        let zero: CodeModeOptions = serde_json::from_value(serde_json::json!({"max_result_tokens": 0})).unwrap();
+        assert_eq!(zero.result_budget(), None);
+        // Defaults stay out of the stored settings; a snapshot made before the runtime format reads as code_tool.
+        let saved = serde_json::to_value(&o).unwrap();
+        assert!(saved.get("connector_hints").is_none() && saved.get("server_instructions").is_none());
+        let old: CodeToolSnapshot = serde_json::from_value(serde_json::json!({
+            "tool_name": "codemode", "types": "", "namespaces": [], "format": "@cloudflare/codemode 0.5.6"})).unwrap();
+        assert_eq!((old.kind, old.connectors.len()), (CodeFormat::CodeTool, 0));
+        assert_eq!((o.timeout_s, o.max_result_tokens, o.max_result_chars, o.memory_limit_mb), (60.0, None, None, 128));
         let t: RunTools = serde_json::from_value(serde_json::json!({"servers": [], "mode": "code"})).unwrap();
         assert_eq!((t.mode, t.code), (ToolMode::Code, None));
     }

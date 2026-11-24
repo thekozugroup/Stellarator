@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::tools::{ToolsForm, dropped_note, from_run_tools, to_run_tools};
 use crate::api::types::{
-    CODE_TOOL_DESCRIPTION, CODE_TOOL_NAME, CodeModeOptions, EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet,
+    CODE_RESULT_TOKENS, CODE_TOOL_DESCRIPTION, CODE_TOOL_NAME, CodeModeOptions, EndpointOut as Endpoint, MaxTokensField, McpServerOut as Server, PromptSetOut as PromptSet,
     PromptSetStatus, RunCreate, RunOut as Run, RunParams, RunTools, ToolMode,
 };
 use crate::format::{count, date_time, duration, int};
@@ -369,14 +369,17 @@ pub fn code_options(form: &Form) -> CodeModeOptions {
     let chars = form.get(Field::CodeResultChars).trim();
     let description = form.get(Field::CodeDescription);
     let custom = form.tools.custom_description && !description.trim().is_empty() && description != CODE_TOOL_DESCRIPTION;
+    // The API's null is the format's default budget: the code tool's 6,000 tokens.
+    let tokens = js_number(form.get(Field::CodeResultTokens)) as i64;
     CodeModeOptions {
         tool_name: form.get(Field::CodeToolName).trim().to_owned(),
         description: custom.then(|| description.to_owned()),
         namespaces: form.tools.namespaces,
         timeout_s: js_number(form.get(Field::CodeTimeout)),
-        max_result_tokens: js_number(form.get(Field::CodeResultTokens)) as i64,
+        max_result_tokens: (tokens != CODE_RESULT_TOKENS).then_some(tokens),
         max_result_chars: (!chars.is_empty()).then(|| js_number(chars) as i64),
         memory_limit_mb: js_number(form.get(Field::CodeMemory)) as i64,
+        ..CodeModeOptions::default()
     }
 }
 
@@ -498,7 +501,7 @@ fn from_run(run: &Run) -> Form {
         if let Some(c) = &t.code {
             f.set(Field::CodeToolName, c.tool_name.clone());
             f.set(Field::CodeTimeout, c.timeout_s.to_string());
-            f.set(Field::CodeResultTokens, c.max_result_tokens.to_string());
+            f.set(Field::CodeResultTokens, c.max_result_tokens.unwrap_or(CODE_RESULT_TOKENS).to_string());
             f.set(Field::CodeResultChars, c.max_result_chars.map(|n| n.to_string()).unwrap_or_default());
             f.set(Field::CodeMemory, c.memory_limit_mb.to_string());
             f.set(Field::CodeDescription, c.description.clone().unwrap_or_default());
@@ -1074,7 +1077,7 @@ mod tests {
         assert_eq!(code.description.as_deref(), Some("Run JS.\n{{types}}"));
         assert_eq!(
             (code.namespaces, code.timeout_s, code.max_result_tokens, code.max_result_chars, code.memory_limit_mb),
-            (CodeNamespaces::Codemode, 90.0, 0, Some(8000), 256)
+            (CodeNamespaces::Codemode, 90.0, Some(0), Some(8000), 256)
         );
         // Run again: the same run's params fill the same form.
         let source = run(1, "m", serde_json::to_value(&sent.params).unwrap());

@@ -218,6 +218,10 @@ async fn code_snapshot(
     selected: Vec<Selected>,
     options: stellarator_core::schemas::CodeModeOptions,
 ) -> Result<ToolSnapshot, ApiError> {
+    // The contract comes first; the engine's side of the runtime format follows.
+    if options.format == stellarator_core::schemas::CodeFormat::Runtime {
+        return Err(ApiError::field("params.tools.code.format", "The runtime format is not available in this build yet."));
+    }
     let servers: Vec<stellarator_codemode::SelectedServer> = selected
         .into_iter()
         .map(|s| stellarator_codemode::SelectedServer {

@@ -207,6 +207,7 @@ pub fn code_tool(servers: &[SelectedServer], options: &CodeModeOptions) -> Resul
             types,
             namespaces,
             format: CODE_MODE_FORMAT.to_string(),
+            ..CodeToolSnapshot::default()
         },
         servers: snapshot_servers,
     })

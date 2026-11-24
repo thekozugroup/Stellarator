@@ -156,8 +156,7 @@ impl ToolRuntime {
     ) -> Result<Vec<TraceTool>, String> {
         let Some(code) = self.snapshot.code.as_ref() else { return Ok(Vec::new()) };
         let options = self.settings.code.clone().unwrap_or_default();
-        let budget = (options.max_result_tokens > 0)
-            .then(|| (options.max_result_chars.unwrap_or(options.max_result_tokens * 4), options.max_result_tokens));
+        let budget = options.result_budget();
         let limits = Limits {
             timeout: Duration::from_secs_f64(options.timeout_s.max(0.001)),
             memory_bytes: (options.memory_limit_mb.max(1) as usize) << 20,
