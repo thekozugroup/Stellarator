@@ -358,6 +358,7 @@ pub(crate) fn probe() -> Support {
             network_blocked: true,
             signals_confined: true,
             process_tree_killed: true,
+            system_v_closed: true,
             cpu_time: true,
             memory: true,
             processes: true,

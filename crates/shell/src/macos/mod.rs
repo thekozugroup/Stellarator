@@ -4,15 +4,25 @@
 //! starts inherits it; nothing can take it off. Apple marks the tool deprecated, and it is what
 //! Claude Code's and Codex CLI's sandboxes use: there is no other way to confine a child process
 //! without an entitlement.
+//!
+//! Three parts of this module use what not every macOS release may have, so [`probe`] tries each
+//! on the machine and the sandbox works without the ones that fail:
+//!
+//! - the mark ([`Mark`]): how every process of a command is found when the command ends, whatever
+//!   session or process group it moved to;
+//! - [`NO_NEW_SESSION`]: the fallback when the mark cannot be read, which keeps processes in the
+//!   shell's session by refusing `setsid`;
+//! - [`NO_SYSTEM_V`]: System V shared memory, which the profile's "refuse everything" does not
+//!   cover.
 
-use std::ffi::OsString;
+use std::ffi::{CStr, CString, OsString};
 use std::io;
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::Error;
 use crate::run::{LimitHit, Limits, Spec};
@@ -50,16 +60,83 @@ const NETWORK: &str = r#"
 (allow file-read* (literal "/Library/Preferences/com.apple.networkd.plist"))
 "#;
 
-/// Refuses `setsid`, so that no process leaves the command's session and the kill at its end
-/// reaches all of them. The rule uses a part of the profile language that not every macOS release
-/// has; [`probe`] finds out.
+/// Refuses `setsid` ("Operation not permitted"), so that no process leaves the command's session
+/// and the kill at its end reaches all of them. Used only where the mark cannot be read. It does
+/// not cover a process started in a new session by `posix_spawn`.
 const NO_NEW_SESSION: &str = r#"
 ; ---- No process leaves the command's session ------------------------------------------------------
 (deny syscall-unix (syscall-number SYS_setsid))
 "#;
 
-/// Whether this macOS accepts [`NO_NEW_SESSION`].
+/// Refuses the System V shared memory, semaphore and message queue calls. Seatbelt lets them
+/// through under a profile that refuses everything else (a sandboxed `shmget` succeeded on macOS
+/// 26), and their objects are shared by number with every program of the user.
+const NO_SYSTEM_V: &str = r#"
+; ---- System V shared memory, semaphores and message queues ----------------------------------------
+(deny syscall-unix
+  (syscall-number
+    SYS_shmsys SYS_shmat SYS_shmctl SYS_shmdt SYS_shmget
+    SYS_semsys SYS_semctl SYS_semget SYS_semop
+    SYS_msgsys SYS_msgctl SYS_msgget SYS_msgsnd SYS_msgrcv))
+"#;
+
+/// What [`probe`] found this macOS to accept.
+static MARKS_WORK: AtomicBool = AtomicBool::new(false);
 static SESSIONS_HELD: AtomicBool = AtomicBool::new(false);
+static SYSTEM_V_CLOSED: AtomicBool = AtomicBool::new(false);
+
+// The sandbox library's query function, part of libSystem. It is not in Apple's public headers;
+// Chromium and WebKit call it the same way. `probe` checks that it answers as expected before
+// anything relies on it.
+extern "C" {
+    fn sandbox_check(pid: libc::pid_t, operation: *const libc::c_char, kind: libc::c_int, ...) -> libc::c_int;
+}
+/// `SANDBOX_FILTER_GLOBAL_NAME | SANDBOX_CHECK_NO_REPORT`: the argument is a Mach service name,
+/// and a refusal is not written to the log.
+const BY_SERVICE_NAME_QUIETLY: libc::c_int = 2 | 0x4000_0000;
+
+/// A name that only one command's profile allows: the profile's own fingerprint. A process is the
+/// command's when it is sandboxed, its sandbox would let it look up `allowed` (a Mach service
+/// that does not exist, so the rule gives it nothing), and would not let it look up `refused`.
+/// The second test leaves out processes under a profile that allows everything.
+struct Mark {
+    allowed: CString,
+    refused: CString,
+}
+
+impl Mark {
+    fn new() -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
+        let name = format!(
+            "stellarator.sandbox.{}.{}.{nanos}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        Self {
+            refused: CString::new(format!("{name}.not")).expect("no NUL in the name"),
+            allowed: CString::new(name).expect("no NUL in the name"),
+        }
+    }
+
+    fn rule(&self) -> String {
+        format!(
+            "\n; This command's processes are found by this name when it ends.\n\
+             (allow mach-lookup (global-name \"{}\"))\n",
+            self.allowed.to_string_lossy()
+        )
+    }
+
+    fn is_on(&self, pid: libc::pid_t) -> bool {
+        let may_look_up = |name: &CStr| {
+            // SAFETY: valid NUL-terminated strings; the function only reads them.
+            unsafe { sandbox_check(pid, c"mach-lookup".as_ptr(), BY_SERVICE_NAME_QUIETLY, name.as_ptr()) == 0 }
+        };
+        // SAFETY: a null operation asks whether the process is sandboxed at all.
+        let sandboxed = unsafe { sandbox_check(pid, std::ptr::null(), 0) } > 0;
+        sandboxed && may_look_up(&self.allowed) && !may_look_up(&self.refused)
+    }
+}
 
 /// Where the developer tools are: the folder `xcode-select` points at (Xcode, under whatever name
 /// it is installed, or the Command Line Tools). `/usr/bin/git`, `python3` and `cc` are stubs that
@@ -82,7 +159,7 @@ fn developer_folders() -> &'static [PathBuf] {
 }
 
 /// The profile for one command and the `-D` definitions it refers to.
-fn profile(spec: &Spec<'_>, hold_sessions: bool) -> Result<(String, Vec<OsString>), Error> {
+fn profile(spec: &Spec<'_>, mark: Option<&Mark>) -> Result<(String, Vec<OsString>), Error> {
     let mut text = String::from(PROFILE);
     let mut definitions = Vec::new();
     let mut define = |key: &str, path: &Path| -> Result<(), Error> {
@@ -107,26 +184,27 @@ fn profile(spec: &Spec<'_>, hold_sessions: bool) -> Result<(String, Vec<OsString
     if spec.options.network {
         text.push_str(NETWORK);
     }
-    if hold_sessions {
-        text.push_str(NO_NEW_SESSION);
+    if SYSTEM_V_CLOSED.load(Ordering::Relaxed) {
+        text.push_str(NO_SYSTEM_V);
     }
-    if let Some(extra) = &spec.options.seatbelt_extra {
-        text.push_str(extra);
+    match mark {
+        Some(mark) => text.push_str(&mark.rule()),
+        None if SESSIONS_HELD.load(Ordering::Relaxed) => text.push_str(NO_NEW_SESSION),
+        None => {}
     }
     Ok((text, definitions))
 }
 
-/// Nothing to hold between making the command and starting it.
-pub(crate) struct Prepared;
+/// What the parent holds between making the command and starting it.
+pub(crate) struct Prepared {
+    mark: Option<Mark>,
+}
 
 /// `sandbox-exec -p <profile> -D... -- <shell> -c <command>`, with the session and the resource
 /// limits set in the child before it starts.
 pub(crate) fn prepare(spec: &Spec<'_>) -> Result<(Command, Prepared), Error> {
-    prepare_with(spec, SESSIONS_HELD.load(Ordering::Relaxed))
-}
-
-fn prepare_with(spec: &Spec<'_>, hold_sessions: bool) -> Result<(Command, Prepared), Error> {
-    let (profile, definitions) = profile(spec, hold_sessions)?;
+    let mark = MARKS_WORK.load(Ordering::Relaxed).then(Mark::new);
+    let (profile, definitions) = profile(spec, mark.as_ref())?;
     // SAFETY: geteuid cannot fail.
     let uid = unsafe { libc::geteuid() };
     // The kernel's process limit counts every process of the user, so it cannot be the command's
@@ -147,12 +225,12 @@ fn prepare_with(spec: &Spec<'_>, hold_sessions: bool) -> Result<(Command, Prepar
             limits.apply().map_err(io::Error::from_raw_os_error)
         })
     };
-    Ok((command, Prepared))
+    Ok((command, Prepared { mark }))
 }
 
 impl Prepared {
     pub(crate) fn started(self, pid: u32, _folder: &Path) -> Result<Tracker, Error> {
-        Ok(Tracker { root: pid as i32 })
+        Ok(Tracker { root: pid as i32, mark: self.mark })
     }
 
     pub(crate) fn spawn_failed(self, error: io::Error) -> Error {
@@ -206,15 +284,22 @@ fn all_pids() -> Vec<libc::pid_t> {
     }
 }
 
-/// The processes of one command: those in the session its shell started.
+/// The processes of one command: those under its profile (by the mark), and those in the session
+/// its shell started.
 pub(crate) struct Tracker {
     root: i32,
+    mark: Option<Mark>,
 }
 
 impl Tracker {
     fn members(&self) -> Vec<libc::pid_t> {
-        // SAFETY: getsid reads one process's session number.
-        all_pids().into_iter().filter(|pid| *pid > 0 && unsafe { libc::getsid(*pid) } == self.root).collect()
+        let own = std::process::id() as libc::pid_t;
+        all_pids()
+            .into_iter()
+            .filter(|pid| *pid > 0 && *pid != own)
+            // SAFETY: getsid reads one process's session number.
+            .filter(|pid| unsafe { libc::getsid(*pid) } == self.root || self.mark.as_ref().is_some_and(|m| m.is_on(*pid)))
+            .collect()
     }
 
     /// Nothing to answer on macOS: Seatbelt decides in the kernel.
@@ -231,7 +316,7 @@ impl Tracker {
         self.members().is_empty()
     }
 
-    /// Kills every process in the command's session. Returns whether none is left.
+    /// Kills every process of the command. Returns whether none is left.
     pub(crate) fn kill(&self, root_running: bool) -> bool {
         if root_running {
             // SAFETY: the group is the shell's (it called setsid), and the shell is unreaped.
@@ -245,7 +330,7 @@ impl Tracker {
                 return true;
             }
             for pid in others {
-                // SAFETY: a signal to one process, found in the command's session a moment ago.
+                // SAFETY: a signal to one process, found to be the command's a moment ago.
                 unsafe { libc::kill(pid, libc::SIGKILL) };
             }
             std::thread::sleep(Duration::from_millis((1 + round).min(10)));
@@ -277,15 +362,17 @@ impl Tracker {
     }
 }
 
-/// Whether `sandbox-exec` accepts a profile, by running `/usr/bin/true` under it.
+fn sandbox_exec(extra: &str, program: &[&str]) -> Command {
+    let mut command = Command::new(SANDBOX_EXEC);
+    command.arg("-p").arg(format!("{PROFILE}{NETWORK}{extra}")).arg("-DFOLDER=/private/var/empty").arg("--").args(program);
+    command.env_clear().stdin(std::process::Stdio::null());
+    command
+}
+
+/// Whether `sandbox-exec` accepts the profile with `extra` added, by running `/usr/bin/true` under
+/// it.
 fn accepts(extra: &str) -> Result<(), String> {
-    let output = Command::new(SANDBOX_EXEC)
-        .arg("-p")
-        .arg(format!("{PROFILE}{NETWORK}{extra}"))
-        .arg("-DFOLDER=/private/var/empty")
-        .arg("--")
-        .arg("/usr/bin/true")
-        .env_clear()
+    let output = sandbox_exec(extra, &["/usr/bin/true"])
         .output()
         .map_err(|e| format!("{SANDBOX_EXEC} could not be started: {e}"))?;
     if output.status.success() {
@@ -293,6 +380,34 @@ fn accepts(extra: &str) -> Result<(), String> {
     } else {
         Err(format!("{SANDBOX_EXEC} refused the profile: {}", String::from_utf8_lossy(&output.stderr).trim()))
     }
+}
+
+/// Whether a command's processes can be told by their mark on this macOS: a process under a
+/// profile with a mark must show it, and must not show another mark; this process, which has no
+/// sandbox, must show none.
+fn marks_work() -> bool {
+    let (mark, other) = (Mark::new(), Mark::new());
+    let Ok(mut child) = sandbox_exec(&mark.rule(), &["/bin/sleep", "10"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let pid = child.id() as libc::pid_t;
+    // The profile is on once `sandbox-exec` has become `sleep`.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut shown = false;
+    while !shown && Instant::now() < deadline {
+        shown = mark.is_on(pid);
+        if !shown {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    let exact = !other.is_on(pid) && !mark.is_on(std::process::id() as libc::pid_t) && !mark.is_on(1);
+    let _ = child.kill();
+    let _ = child.wait();
+    shown && exact
 }
 
 /// What this machine has, before the self-test.
@@ -303,19 +418,27 @@ pub(crate) fn probe() -> Support {
     if let Err(reason) = accepts("") {
         return Support::none(reason);
     }
-    let sessions_held = accepts(NO_NEW_SESSION).is_ok();
+    let marks = marks_work();
+    let sessions_held = !marks && accepts(NO_NEW_SESSION).is_ok();
+    let system_v_closed = accepts(NO_SYSTEM_V).is_ok();
+    MARKS_WORK.store(marks, Ordering::Relaxed);
     SESSIONS_HELD.store(sessions_held, Ordering::Relaxed);
+    SYSTEM_V_CLOSED.store(system_v_closed, Ordering::Relaxed);
+
     let mut notes = vec![
         "Apple marks sandbox-exec deprecated; a macOS release without it would leave Stellarator without a sandbox.".to_string(),
-        "Memory is checked twice a second, not held by the kernel: a process can pass the limit for up to half a second.".to_string(),
-        "The number of processes is counted twice a second, not held by the kernel: a command can pass the limit for up to half a second.".to_string(),
+        "Memory and the number of processes are checked twice a second, not held by the kernel: a command can pass either limit for up to half a second.".to_string(),
         "Unix sockets are not available to commands, and with the network off no sockets at all.".to_string(),
     ];
-    if !sessions_held {
-        notes.push(
-            "This macOS does not let the profile refuse setsid: a process that starts its own session is not killed with its command."
-                .to_string(),
-        );
+    if !marks {
+        notes.push(if sessions_held {
+            "The processes of a command cannot be told by their sandbox on this macOS, so setsid is refused instead; a process started in a new session by posix_spawn is not killed with its command.".to_string()
+        } else {
+            "The processes of a command cannot be told by their sandbox on this macOS: a process that starts its own session is not killed with its command.".to_string()
+        });
+    }
+    if !system_v_closed {
+        notes.push("System V shared memory is not closed on this macOS: a command can attach a segment of another program of the user.".to_string());
     }
     Support {
         available: true,
@@ -326,7 +449,8 @@ pub(crate) fn probe() -> Support {
             reads_confined: true,
             network_blocked: true,
             signals_confined: true,
-            process_tree_killed: sessions_held,
+            process_tree_killed: marks,
+            system_v_closed,
             cpu_time: true,
             memory: true,
             processes: true,

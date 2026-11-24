@@ -197,6 +197,8 @@
 ; /private/etc is a list, not the folder. passwd and group hold system accounts only on macOS.
 (allow file-read* file-test-existence
   (literal "/Library/Preferences/.GlobalPreferences.plist")
+  ; Whether Xcode's license was accepted: without it every developer tool stops to say it was not.
+  (literal "/Library/Preferences/com.apple.dt.Xcode.plist")
   (literal "/private/etc/ssh/ssh_config")
   (subpath "/private/etc/ssh/ssh_config.d")
   (literal "/private/etc/ssh/crypto.conf")

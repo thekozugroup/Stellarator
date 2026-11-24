@@ -144,8 +144,8 @@ impl Workspaces {
             None => None,
         };
         for slot in 1..=MAX_SLOTS {
-            let Some(lock) = self.lock(slot)? else { continue };
             let root = self.base.join(slot.to_string());
+            let Some(lock) = self.lock_free_slot(slot, &root)? else { continue };
             // Left by a process that died: it held this lock, and we have it now.
             if root.symlink_metadata().is_ok() && remove_tree(&root).is_err() {
                 continue;
@@ -194,6 +194,25 @@ impl Workspaces {
             base: self.base.clone(),
             reason: format!("all {MAX_SLOTS} workspace slots are in use"),
         })
+    }
+
+    /// The lock of a slot that is free, or `None` for one in use.
+    ///
+    /// A slot in use has its folder. A lock that is held while the folder is not there is about to
+    /// be released: its workspace was just deleted, or a child process that was forked while the
+    /// lock file was open has not started its program yet (the copy of the descriptor it got
+    /// closes then). Such a slot is waited for briefly, so that the lowest free number is used.
+    fn lock_free_slot(&self, slot: u32, root: &Path) -> Result<Option<File>, Error> {
+        for _ in 0..100 {
+            if let Some(lock) = self.lock(slot)? {
+                return Ok(Some(lock));
+            }
+            if root.symlink_metadata().is_ok() {
+                return Ok(None);
+            }
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
+        Ok(None)
     }
 
     /// The slot's lock, or `None` when a live process (or another thread of this one) holds it.
@@ -261,8 +280,7 @@ impl Workspace {
         self.max_bytes
     }
 
-    /// Measures the sample's folder (workspace, home and tmp): for each file the larger of its
-    /// length and the space it takes on disk.
+    /// Measures the sample's folder (workspace, home and tmp): the bytes its files take on disk.
     pub fn measure(&self) -> u64 {
         let size = tree_size(&self.root);
         self.measured.store(size, Ordering::Relaxed);
@@ -371,7 +389,7 @@ fn check_owner(base: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The bytes the files under `path` take. Files that vanish while it walks are skipped.
+/// The bytes the files under `path` take on disk. Files that vanish while it walks are skipped.
 pub(crate) fn tree_size(path: &Path) -> u64 {
     let mut total = 0u64;
     let mut pending = vec![path.to_path_buf()];
@@ -392,10 +410,8 @@ fn disk_bytes(meta: &fs::Metadata) -> u64 {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt as _;
-        // The larger of the length and the blocks. Blocks count what small files really take; the
-        // length counts a file whose blocks the file system reports as fewer than its data (on
-        // macOS a file of zeros grew to 200 MB while its blocks stayed under the cap).
-        meta.blocks().saturating_mul(512).max(meta.len())
+        // Blocks, not length: a sparse file takes what it has written.
+        meta.blocks().saturating_mul(512)
     }
     #[cfg(not(unix))]
     {

@@ -306,14 +306,16 @@ async fn a_timeout_kills_the_whole_process_tree() {
     require_sandbox();
     let workspace = workspace();
     for (name, options) in variants() {
-        let marks: Vec<String> = (0..5).map(|_| marker()).collect();
-        // A background job, an orphan, a process in a session of its own, one under nohup, and the
-        // foreground.
+        let marks: Vec<String> = (0..6).map(|_| marker()).collect();
+        // A background job, an orphan, a process that starts a session of its own, one that is
+        // started in a new session (posix_spawn does that without the setsid call; python3 has
+        // it), one under nohup, and the foreground.
         let command = format!(
             "sleep {} &\n(sleep {} &)\n\
              perl -e 'use POSIX; if (fork() == 0) {{ POSIX::setsid(); exec \"sleep\", $ARGV[0]; }}' {}\n\
+             python3 -c 'import os, sys; os.posix_spawn(\"/bin/sleep\", [\"sleep\", sys.argv[1]], {{}}, setsid=True)' {}\n\
              nohup sleep {} >/dev/null 2>&1 &\necho started\nsleep {}",
-            marks[0], marks[1], marks[2], marks[3], marks[4]
+            marks[0], marks[1], marks[2], marks[3], marks[4], marks[5]
         );
         let started = Instant::now();
         let output = run(&workspace, &command, &RunOptions { timeout: Duration::from_secs(1), ..options.clone() }).await;
@@ -323,9 +325,9 @@ async fn a_timeout_kills_the_whole_process_tree() {
         assert!(started.elapsed() < Duration::from_secs(8), "{name}: took {:?}", started.elapsed());
         for (index, mark) in marks.iter().enumerate() {
             let left = survivors(mark).await;
-            // The one case a platform may not cover: its own session, where macOS cannot refuse
-            // setsid (support() says so).
-            if index == 2 && !support().enforces.process_tree_killed {
+            // The cases a macOS without the profile's mark does not cover (support() says so): a
+            // session of the process's own.
+            if (index == 2 || index == 3) && !support().enforces.process_tree_killed {
                 for pid in left {
                     // SAFETY: a signal to the stray `sleep` this test started.
                     unsafe { libc_kill(pid) };
@@ -574,6 +576,10 @@ async fn system_v_shared_memory_is_closed() {
     let workspace = workspace();
     let command = "perl -e 'use IPC::SysV qw(IPC_PRIVATE IPC_CREAT); \
                    defined(shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0600)) or die \"shmget: $!\\n\"; print \"made\\n\"'";
+    if !support().enforces.system_v_closed {
+        println!("System V shared memory is not closed here: {:?}", support().notes);
+        return;
+    }
     for (name, options) in variants() {
         let output = run(&workspace, command, &options).await;
         assert!(!output.stdout.text.contains("made") && output.stderr.text.contains("shmget"), "{name}: {}", text(&output));
@@ -686,7 +692,7 @@ async fn report() {
         "echo a > one; ln one two; echo \"hard link inside: $?\"; mkfifo p; echo \"mkfifo: $?\"; ls -l",
         "echo x | tee /dev/stdout /dev/stderr > /dev/null; cat <(echo process-substitution)",
         "perl -e 'use POSIX; if (fork() == 0) { my $r = POSIX::setsid(); print \"setsid in a child: $r $!\\n\"; exit } wait; print \"parent done\\n\"'",
-        "head -c 3000000 /dev/zero > zeros; head -c 3000000 /dev/urandom > random; ls -ls zeros random; du -k zeros random",
+        "echo 'int main(void){return 0;}' > x.c; /usr/bin/cc x.c -o x && ./x && echo cc-ok; /usr/bin/git --version; /usr/bin/make --version | head -n 1; /usr/bin/python3 --version",
         "sw_vers 2>&1; xcode-select -p 2>&1; sysctl -n hw.ncpu kern.hostname 2>&1; nproc 2>&1",
         "tar --version | head -n 1; curl --version | head -n 1; node --version; ruby --version; java -version 2>&1 | head -n 2",
     ];
@@ -702,59 +708,9 @@ async fn report() {
         let output = run(&workspace, "ps aux | wc -l; head -n 3 /proc/self/status", &options).await;
         println!("with show_processes:\n{}{}", output.stdout.text, output.stderr.text);
     }
-    if cfg!(target_os = "macos") {
-        macos_experiments(&workspace).await;
-    }
     let output = run(&workspace, "curl -sS -m 10 -o /dev/null -w '%{http_code}\\n' https://example.com", &RunOptions { network: true, ..quick() }).await;
     println!("with the network on, curl https://example.com: {}{}", output.stdout.text, output.stderr.text);
     print_denials(&began);
-}
-
-/// macOS: what the developer tools' stubs print under the profile and under candidates for it, and
-/// whether a process can leave the command's session without `setsid`. For the log only.
-async fn macos_experiments(workspace: &stellarator_shell::Workspace) {
-    let tools = "echo 'int main(void){return 0;}' > x.c; /usr/bin/cc x.c -o x && ./x && echo cc-ok; /usr/bin/git --version; \
-                 /usr/bin/make --version | head -n 1; /usr/bin/python3 --version; xcrun --find clang";
-    let directories = "(allow mach-lookup (global-name \"com.apple.bsd.dirhelper\") \
-                       (global-name \"com.apple.system.opendirectoryd.membership\"))\n\
-                       (allow file-read-metadata (subpath \"/private/var/folders\"))\n";
-    let no_cache = vec![("xcrun_nocache".to_string(), "1".to_string())];
-    let candidates = [
-        ("the profile as it is", None, Vec::new()),
-        ("with xcrun_nocache=1", None, no_cache.clone()),
-        ("with the folder helper allowed", Some(directories.to_string()), Vec::new()),
-        ("with the folder helper allowed and xcrun_nocache=1", Some(directories.to_string()), no_cache),
-    ];
-    for (name, seatbelt_extra, env) in candidates {
-        let output = run(workspace, tools, &RunOptions { seatbelt_extra, env, ..quick() }).await;
-        println!("developer tools, {name}:\n{}{}", output.stdout.text, output.stderr.text);
-    }
-
-    // posix_spawn can start a process in a new session without the setsid call.
-    let mark = marker();
-    let command = format!(
-        "python3 -c 'import os, sys; print(os.posix_spawn(\"/bin/sleep\", [\"sleep\", sys.argv[1]], {{}}, setsid=True))' {mark}; sleep 0.5"
-    );
-    let output = run(workspace, &command, &quick()).await;
-    let left = survivors(&mark).await;
-    println!("posix_spawn with a new session: {}{}left after the command: {left:?}", output.stdout.text, output.stderr.text);
-    for pid in left {
-        // SAFETY: a signal to the stray `sleep` this test started.
-        unsafe { libc_kill(pid) };
-    }
-
-    // The priority of a process outside the sandbox.
-    let mut victim = Victim::start();
-    let pid = victim.0.id();
-    let output = run(workspace, &format!("renice -n 5 -p {pid}; echo renice=$?"), &quick()).await;
-    let nice = std::process::Command::new("ps").args(["-o", "ni=", "-p", &pid.to_string()]).output().unwrap();
-    println!(
-        "renice of an outside process: {}{}its priority afterwards: {} (alive: {})",
-        output.stdout.text,
-        output.stderr.text,
-        String::from_utf8_lossy(&nice.stdout).trim(),
-        victim.alive()
-    );
 }
 
 /// macOS: the time, in the form `log show --start` takes.

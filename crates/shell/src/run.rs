@@ -69,9 +69,6 @@ pub struct RunOptions {
     /// For this crate's tests: use Landlock as a kernel with this ABI would.
     #[doc(hidden)]
     pub landlock_abi: Option<u32>,
-    /// For this crate's tests on macOS: rules added to the end of the profile.
-    #[doc(hidden)]
-    pub seatbelt_extra: Option<String>,
 }
 
 impl Default for RunOptions {
@@ -85,7 +82,6 @@ impl Default for RunOptions {
             limits: Limits::default(),
             show_processes: false,
             landlock_abi: None,
-            seatbelt_extra: None,
         }
     }
 }
@@ -373,9 +369,11 @@ mod imp {
             last_size = size;
             // A large folder takes a while to measure: at most a twentieth of the time goes there.
             next_check = Instant::now() + CHECK_EVERY.max(began.elapsed() * 20);
-            if let (Some(breach), Some(hit)) = (breach, hit.take()) {
+            if let Some(breach) = breach {
                 // The run does the killing: it knows whether the shell has been waited for.
-                let _ = hit.send(breach);
+                if let Some(hit) = hit.take() {
+                    let _ = hit.send(breach);
+                }
             }
         }
     }

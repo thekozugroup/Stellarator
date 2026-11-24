@@ -29,6 +29,9 @@ pub struct Enforced {
     /// When a command ends or times out, every process it started is killed, also one that
     /// started a session of its own.
     pub process_tree_killed: bool,
+    /// System V shared memory, semaphores and message queues, which every program of the user
+    /// shares by number, are refused.
+    pub system_v_closed: bool,
     /// The processor time of a process is limited.
     pub cpu_time: bool,
     /// The memory of a process is limited.
