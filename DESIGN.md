@@ -310,7 +310,7 @@ holds the answer. The sample viewer shows it in full, a preference card folded
   calls, so a long trace stays short to scroll.
 - **Arguments**: a well (8 px corners, 12 px by 10 px padding) of Roboto Mono 12 px on 19.5 px
   lines. In the sheet the card is the ground in light, so its wells take `--muted` there and the
-  ground in dark (`dialog_well`); the input schemas in the Tools sheet use the same well. Rendered shows the JSON pretty-printed (two spaces, keys in the model's order);
+  ground in dark (`dialog_well`); the input schemas in the Tools sheet use the same well, and the output schema under them when the server gave one (code mode types results with it). Rendered shows the JSON pretty-printed (two spaces, keys in the model's order);
   Raw shows it exactly as the model wrote it. Arguments that are not JSON show as written, with
   "Not valid JSON: shown as the model wrote it." in 12 px coral ink under the well.
 - **Result**: a 28 px row ("Result", 13 px at 600; its tags; its copy button), then a ground well
@@ -340,6 +340,79 @@ holds the answer. The sample viewer shows it in full, a preference card folded
 - **In flight**: while a sample's tools run its state word is `tool` in ink, and the line under
   the row says "calling lookup… · round 2" in mono ink; a later request that thinks or answers
   says "round 2" there in muted mono.
+
+### Code mode traces
+
+A run in code mode gives the model one tool (`codemode` by default). The model's call to it is
+JavaScript, and what matters is that code and the tool calls it made, so the sample viewer shows
+that call as a **code card** in place of the tool call card (`app/src/ui/code_trace.rs`). Calls of
+any other tool in the same trace keep the tool call card. The Rendered | Raw switch does not apply
+to the code: it is always highlighted.
+
+- **Code card**: the tool call card's frame (16 px corners, the sheet's `--muted`, 8 px padding,
+  no border; 8 px between its parts). Its 32 px header: a chevron, the tool's name in Roboto Mono
+  13 px at 500, "3 tool calls" in 13 px muted ("no tool calls" when the code made none), the
+  status tag, the execution's latency in muted mono, and the copy button (the code). Open by
+  default; folded when the request made more than four calls.
+- **Status tag**: none when the code returned. ERROR (it threw, also from a tool call), SYNTAX
+  ERROR, TIMEOUT and MEMORY LIMIT are data tags in the negative tint, as the tool call card's
+  ERROR is. The execution's own result says why, in the part "Error the model saw".
+- **Code**: a ground well (8 px corners, 12 px by 10 px padding, `dialog_well`) of JavaScript in
+  Roboto Mono 12 px on 19.5 px lines, highlighted by the text view with its own palette. Long
+  lines scroll sideways, as any code block does. A program over 20 lines or 2,000 characters shows
+  its start with "Show all 38 lines", as results do.
+- **Tool calls**: a 28 px line "Tool calls 3" (13 px at 600, the count in muted, "· 1 failed" after
+  it when some threw), then one compact 28 px row per call in the order the code made them: a
+  chevron, the method as the code wrote it (`lookup.search`, Roboto Mono 12 px at 500), the
+  server in 13 px muted ("no such method" in negative ink when the namespace has no such
+  method), the ERROR and TRUNCATED tags, and the latency in muted mono at the end. A row opens to
+  the call's arguments and its result, in the same wells and with the same Result row, error tint
+  and "Show all" as a tool call card's, indented 22 px to the method's name. Rows are closed by
+  default: the code says what was asked, and the result the model saw says what came of it.
+- **Console**: "Console 3 lines" with a chevron and copy button, then the lines in muted mono in a
+  well, as the code printed them (`[warn] ` and `[error] ` prefixes kept). Open when it has at
+  most 6 lines and 800 characters, else folded.
+- **Result the model saw**: the Result row and well of a tool call card, titled "Result the model
+  saw" ("Error the model saw" in the negative ink and tint when the execution failed). It is
+  exactly the tool message: `{"result": ..., "logs": [...]}` pretty-printed in Rendered, and the
+  text Cloudflare sends for a failure (`Error: Code execution failed: ...`). The TRUNCATED tag
+  says the budget cut it. What the code returned before that cut is not shown: the model never
+  saw it.
+- **Preference card**: the folded line says "2 code runs · 5 tool calls" (13 px muted, with "· 1
+  other call" when the model also called another tool), and an ERROR tag (ERRORS for several)
+  when a run failed or a tool call threw. Open, a row per run divided by hairlines: a 12 px muted
+  line "Run 1 · 3 tool calls" with the status tag and the latency at its end, the code's first 6
+  lines in 12 px mono, a line per tool call under it (`lookup.search(query: "rate limits")`, the server and latency at its end, negative ink
+  for a call that threw), and the first four lines of what the model saw in 12 px muted mono. A
+  rejected card's rows turn muted.
+- **The run**: the chip says "Code mode · 5 tools". Its popover (400 px wide) names the tool and
+  has a Types button at the end of that line. Closed to Types, it lists each namespace (Roboto Mono
+  at 500 with "2 methods") and its methods as the code calls them (`lookup.search`), each followed
+  in muted by the tool's own name when it differs (`list_issues`, from `list-issues`) and, when the
+  namespace holds tools of several servers (all under `codemode`), by the server. Types swaps the
+  list for the generated TypeScript declarations in a mono well with a copy button and the release
+  they follow, and the button then says Methods. The tiles show "Code runs" (executions) and "Tool
+  calls" (the calls the code made), each with "1.3 per sample"; the samples table's Tools column
+  counts the calls the code made.
+- **In flight**: the state word is `code` in ink and the line under the row says "running code ·
+  lookup.search…" (the calls in progress, two names and "+N" after them), then the calls made so
+  far ("3 calls") and the round, in mono: "running code · lookup.search… · 3 calls · round 2".
+- **Export**: a run's export says, above its options, that each record includes the code tool, the
+  code the model wrote and its results as the model saw them, and that the tool calls the code made
+  are not records of their own.
+
+#### Choosing code mode (New run)
+
+"Use tools" shows a row "Mode" with Direct tools | Code mode and one line under it: for code mode
+"The model writes JavaScript that calls the tools, and only the result goes back." Picking servers
+and tools is the same in both. The Tool settings group adds, under a "Code mode" heading in the
+group, the tool's name (mono field), the namespaces (One per server | All in codemode, with an
+example under it), the code timeout, the result limit in tokens (0 does not cut) and optionally in
+characters, the memory limit and the tool's description. The description is Cloudflare's text
+until "Customize…" is pressed: the text area then starts as that text, and "Reset to default"
+goes back to sending null. A description that is empty or still Cloudflare's text is sent as null.
+Each field shows the server's message under it when it is rejected; the group opens to show it.
+Run again copies the mode and every code setting.
 
 ## Data visualization
 

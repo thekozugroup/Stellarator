@@ -169,6 +169,7 @@ fn server_row(state: State, data: Data, id: i64) -> impl IntoElement {
         let n = state.tools.with(|t| t.pick(id).map(|p| offered(p, &s).len()));
         let total = s.tools.len();
         let words = match n {
+            Some(_) if total == 1 => "1 tool".to_owned(),
             Some(k) if k == total => format!("All {total} tools"),
             Some(k) => format!("{k} of {total} tools"),
             None => if total == 1 { "1 tool".to_owned() } else { format!("{total} tools") },
@@ -428,6 +429,8 @@ fn settings(state: State, submit: Rc<dyn Fn()>) -> impl IntoElement {
 fn code_rows(state: State, submit: &Rc<dyn Fn()>) -> Vec<AnyElement> {
     let name_submit = submit.clone();
     vec![
+        // Where code mode's own settings start.
+        form_item(body(text("Code mode")).font_weight(FontWeight::SEMIBOLD).text_color(muted_ink).role(AccessibilityRole::Header)).into_element(),
         form_row(
             "Code tool name",
             text_field(state.value(Field::CodeToolName))
@@ -548,9 +551,11 @@ fn description_row(state: State) -> AnyElement {
     form_row("Tool description", control)
         .stacked()
         .hint_element(move || {
-            Some(hint_with_code(
-                "`{{types}}` stands for the TypeScript declarations of the tools. Without it the model is not told what it can call.",
-            ))
+            Some(hint_with_code(if custom.get() {
+                "`{{types}}` stands for the TypeScript declarations of the tools. Without it the model is not told what it can call."
+            } else {
+                "Lists the tools as TypeScript declarations, where Cloudflare’s text has `{{types}}`."
+            }))
         })
         .error(state.error(Field::CodeDescription))
         .into_element()

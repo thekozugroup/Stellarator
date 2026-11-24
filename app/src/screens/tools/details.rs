@@ -181,13 +181,9 @@ fn tool_list(tools: Rc<Vec<McpTool>>) -> impl IntoElement {
         )
 }
 
-/// A tool: its name in mono at 500, its description (three lines, all once opened), and the input
-/// schema as pretty mono JSON that opens and closes.
-pub fn tool_row(tool: McpTool, index: usize) -> impl IntoElement {
-    let open = signal(false);
-    let schema = serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default();
-    let fields = schema_fields(&tool.input_schema);
-    let trigger = view()
+/// The line that opens and closes a schema: a chevron and its words ("Input · query, limit?").
+fn schema_trigger(open: Signal<bool>, words: String, label: String) -> View {
+    view()
         .flex_row()
         .items_center()
         .gap(px(4.0))
@@ -197,14 +193,38 @@ pub fn tool_row(tool: McpTool, index: usize) -> impl IntoElement {
         .min_h(px(24.0))
         .rounded(px(radius::XS))
         .role(AccessibilityRole::Button)
-        .label(format!("Input schema of {}", tool.name))
+        .label(label)
         .accessibility_state(move || AccessibilityState { expanded: Some(open.get()), ..AccessibilityState::default() })
         .focusable(true)
         .focus_visible(|s| s.ring(px(2.0)).ring_color(token("ring")))
         .cursor(Cursor::Pointer)
         .on_press(move || open.update(|o| *o = !*o))
         .child(icon(icon::CHEVRON_RIGHT, 14.0, move || theme().muted_foreground).rotate(move || if open.get() { 90.0_f32.to_radians() } else { 0.0 }))
-        .child(meta(text(if fields.is_empty() { "Input schema".to_owned() } else { format!("Input · {}", fields.join(", ")) })).number_of_lines(1));
+        .child(meta(text(words)).number_of_lines(1))
+}
+
+/// A tool: its name in mono at 500, its description (three lines, all once opened), and the input
+/// schema as pretty mono JSON that opens and closes; the output schema the same way when the
+/// server gave one (code mode types the result with it).
+pub fn tool_row(tool: McpTool, index: usize) -> impl IntoElement {
+    let open = signal(false);
+    let open_output = signal(false);
+    let schema = serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default();
+    let fields = schema_fields(&tool.input_schema);
+    let trigger = schema_trigger(
+        open,
+        if fields.is_empty() { "Input schema".to_owned() } else { format!("Input · {}", fields.join(", ")) },
+        format!("Input schema of {}", tool.name),
+    );
+    let output = tool.output_schema.as_ref().map(|o| {
+        let out_fields = schema_fields(o);
+        let words = if out_fields.is_empty() { "Output schema".to_owned() } else { format!("Output · {}", out_fields.join(", ")) };
+        (serde_json::to_string_pretty(o).unwrap_or_default(), schema_trigger(open_output, words, format!("Output schema of {}", tool.name)))
+    });
+    let (output_json, output_trigger) = match output {
+        Some((json, trigger)) => (Some(json), Some(trigger)),
+        None => (None, None),
+    };
     let description = tool.description.clone().filter(|d| !d.trim().is_empty());
     let name = tool.name.clone();
     view()
@@ -227,6 +247,8 @@ pub fn tool_row(tool: McpTool, index: usize) -> impl IntoElement {
         .child(when(move || open.get(), move || {
             json_well(schema.clone())
         }))
+        .child(output_trigger)
+        .child(output_json.map(|json| when(move || open_output.get(), move || json_well(json.clone()))))
         .child((index > 0).then(|| view().absolute().top(px(0.0)).left(px(8.0)).right(px(8.0)).h(px(1.0)).bg(move || theme().border)))
 }
 

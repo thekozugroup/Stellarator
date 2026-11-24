@@ -18,6 +18,7 @@ use crate::theme::text::{body, label, meta, mono};
 use crate::ui::button::{Size, Variant, button};
 use crate::ui::chip::chip;
 use crate::ui::material::{dialog_well, material_float, material_thick};
+use crate::ui::page::window_width;
 use crate::ui::tooltip::copy_button;
 
 /// How many tools the run sends.
@@ -51,7 +52,8 @@ pub fn tools_chip(snapshot: ToolSnapshot) -> impl IntoElement {
         Some(code) => code_content(code, types).into_element(),
         None => direct_content(&snapshot).into_element(),
     };
-    let width = if snapshot.mode == ToolMode::Code { 400.0 } else { 320.0 };
+    // 400 px in code mode (the declarations are wide), never wider than a phone with its margins.
+    let width = (if snapshot.mode == ToolMode::Code { 400.0 } else { 320.0_f32 }).min(window_width() - 32.0);
     let panel = material_float(material_thick(view().w(px(width)).max_h(px(420.0)).rounded(px(radius::LG)).overflow_hidden()))
         .role(AccessibilityRole::Dialog)
         .label("Tools this run sends")

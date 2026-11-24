@@ -516,10 +516,12 @@ fn compact_run(b: CallBlock, index: usize, muted: Rc<dyn Fn() -> bool>) -> impl 
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
-                .child(mono(text(code_start)).text_size(px(12.0)).line_height(px(18.0)).flex_1().min_w(px(0.0)).text_color(ink))
+                .child(meta(text(format!("Run {} · {}", int(index as i64 + 1), calls_words(&e)))).number_of_lines(1).flex_shrink(1.0).min_w(px(0.0)))
                 .child(tag.map(|t| data_tag(t, "negative-tint", "negative-ink")))
+                .child(view().flex_1())
                 .child(meta(text(duration(Some(e.latency_ms as f64)))).font_family(ROBOTO_MONO.family).flex_none()),
         )
+        .child(mono(text(code_start)).text_size(px(12.0)).line_height(px(18.0)).text_color(ink))
         .child((!lines.is_empty()).then(|| view().gap(px(2.0)).pl(px(12.0)).children(lines)))
         .child(
             meta(text(seen_start))
