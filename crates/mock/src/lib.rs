@@ -17,7 +17,9 @@
 //! | `mock-no-tools` | answers 400 to requests with `tools`, as vLLM without a tool parser |
 //!
 //! The same port also serves a small MCP server over streamable HTTP at `/mcp` ([`mcp`]), and
-//! `stellarator-mock mcp-stdio` serves it on stdin and stdout.
+//! `stellarator-mock mcp-stdio` serves it on stdin and stdout. A second MCP server, an issue
+//! tracker with server instructions, output schemas and structured results, is at `/tracker/mcp`
+//! ([`tracker`]).
 //!
 //! Speed: `tps` tokens per second per sequence. Failures and delays are random.
 //!
@@ -45,6 +47,7 @@ use tokio::time::Instant;
 pub mod mcp;
 pub mod codemodel;
 pub mod toolmodel;
+pub mod tracker;
 
 pub const MODELS: [&str; 10] = [
     "mock-reasoning-content",
@@ -72,7 +75,8 @@ struct MockState {
     tps: f64,
 }
 
-/// The mock's routes: `GET /v1/models`, `POST /v1/chat/completions`, and the MCP server at `/mcp`.
+/// The mock's routes: `GET /v1/models`, `POST /v1/chat/completions`, and the MCP servers at `/mcp`
+/// and `/tracker/mcp`.
 pub fn router(tps: f64) -> Router {
     let tps = if tps.is_finite() && tps > 0.0 { tps } else { 60.0 };
     Router::new()
@@ -80,6 +84,7 @@ pub fn router(tps: f64) -> Router {
         .route("/v1/chat/completions", post(chat))
         .with_state(Arc::new(MockState { tps }))
         .nest_service("/mcp", mcp::http_service())
+        .nest_service("/tracker/mcp", tracker::http_service())
 }
 
 /// The routes of [`router`] behind a key: a request without `Authorization: Bearer <api_key>` gets

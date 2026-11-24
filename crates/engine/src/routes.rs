@@ -156,7 +156,7 @@ async fn require_run(engine: &Engine, run_id: i64) -> Result<(), ApiError> {
 /// The tools a new run will send: each selected server is checked now (so the run takes the
 /// definitions the server offers today, and the cached list is refreshed), the picked tools must
 /// exist, and the names must fit (see `stellarator_mcp::names`).
-async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, ApiError> {
+pub async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, ApiError> {
     let ctx = engine.ctx();
     let mut rows = Vec::new();
     for (i, s) in t.servers.iter().enumerate() {
@@ -189,6 +189,7 @@ async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, Ap
                 format!("Couldn't reach the MCP server \"{}\": {}", row.name, e.0),
             )
         })?;
+        let instructions = checked.instructions.clone();
         let tools = match &picked.tools {
             None => checked.tools,
             Some(names) => {
@@ -204,7 +205,7 @@ async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, Ap
                 checked.tools.into_iter().filter(|t| names.contains(&t.name)).collect()
             }
         };
-        selected.push(Selected { server_id: row.id, name: row.name.clone(), transport: row.transport(), tools });
+        selected.push(Selected { server_id: row.id, name: row.name.clone(), transport: row.transport(), tools, instructions });
     }
     if t.mode == ToolMode::Code {
         return code_snapshot(selected, t.code.clone().unwrap_or_default()).await;
@@ -212,16 +213,14 @@ async fn tool_snapshot(engine: &Engine, t: &RunTools) -> Result<ToolSnapshot, Ap
     snapshot(&selected).map_err(|e| ApiError::field("params.tools", e))
 }
 
-/// Code mode: the one code tool, its description holding the types Cloudflare's generator writes
-/// for the picked tools (on a blocking thread: the generator runs in QuickJS).
+/// Code mode: the one code tool. In the `code_tool` format its description holds the types
+/// Cloudflare's generator writes for the picked tools; in the `runtime` format it lists the
+/// connectors, and the snapshot keeps their tools for `codemode.search` and `codemode.describe`
+/// (on a blocking thread: Cloudflare's code runs in QuickJS).
 async fn code_snapshot(
     selected: Vec<Selected>,
     options: stellarator_core::schemas::CodeModeOptions,
 ) -> Result<ToolSnapshot, ApiError> {
-    // The contract comes first; the engine's side of the runtime format follows.
-    if options.format == stellarator_core::schemas::CodeFormat::Runtime {
-        return Err(ApiError::field("params.tools.code.format", "The runtime format is not available in this build yet."));
-    }
     let servers: Vec<stellarator_codemode::SelectedServer> = selected
         .into_iter()
         .map(|s| stellarator_codemode::SelectedServer {
@@ -229,6 +228,7 @@ async fn code_snapshot(
             name: s.name,
             transport: s.transport,
             tools: s.tools,
+            instructions: s.instructions,
         })
         .collect();
     let built = tokio::task::spawn_blocking(move || stellarator_codemode::code_tool(&servers, &options))

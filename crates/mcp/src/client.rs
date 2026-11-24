@@ -105,6 +105,8 @@ pub struct Connection {
     stderr: Arc<Mutex<String>>,
     /// "name version" from the server's initialize answer.
     pub server_info: Option<String>,
+    /// The `instructions` of the server's initialize answer, when it sent any.
+    pub instructions: Option<String>,
 }
 
 fn client_config() -> ClientConfig {
@@ -259,12 +261,14 @@ impl Connection {
                 format!("{n} {v}")
             }
         });
+        let instructions = service.peer_info().and_then(|info| info.instructions.clone()).filter(|i| !i.is_empty());
         Connection {
             name: name.to_string(),
             peer: service.peer().clone(),
             service: tokio::sync::Mutex::new(Some(service)),
             stderr,
             server_info: server_info.filter(|s| !s.is_empty()),
+            instructions,
         }
     }
 

@@ -26,6 +26,8 @@ tracing = "0.1.44"
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+# The conformance test compares long tool messages by their SHA-256, as the fixtures store them.
+sha2 = "0.10.9"
 stellarator-mock = { path = "../mock" }
 tempfile = "3.27.0"
 tower = { version = "0.5", features = ["util"] }

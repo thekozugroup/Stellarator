@@ -138,16 +138,22 @@ MESSAGE = Obj({"role": OneOf("system", "user", "assistant"), "content": str})
 
 MCP_TRANSPORT = OneOf("stdio", "http")
 
+CODE_FORMAT = OneOf("code_tool", "runtime")
+
 CODE_MODE_OPTIONS = Obj(
     {
+        "format": CODE_FORMAT,
         "tool_name": str,
         "description": Opt(str),
         "namespaces": OneOf("servers", "codemode"),
         "timeout_s": float,
-        "max_result_tokens": int,
+        # null: the format's default (6000 for code_tool, no truncation for runtime).
+        "max_result_tokens": Opt(int),
         "max_result_chars": Opt(int),
         "memory_limit_mb": int,
-    }
+    },
+    # Left out at their defaults: no hints, the servers' instructions on.
+    optional={"connector_hints": MapOf(str), "server_instructions": bool},
 )
 
 RUN_TOOLS = Obj(
@@ -195,7 +201,26 @@ TOOL_SNAPSHOT = Obj(
                     )
                 ),
                 "format": str,
-            }
+                "kind": CODE_FORMAT,
+            },
+            # The runtime format's connectors, as codemode.search and codemode.describe read them.
+            optional={
+                "connectors": ListOf(
+                    Obj(
+                        {
+                            "name": str,
+                            "instructions": Opt(str),
+                            "tools": ListOf(
+                                Obj(
+                                    {"name": str, "description": Opt(str), "input_schema": dict},
+                                    optional={"output_schema": dict},
+                                )
+                            ),
+                        },
+                        optional={"hint": str},
+                    )
+                )
+            },
         )
     },
 )

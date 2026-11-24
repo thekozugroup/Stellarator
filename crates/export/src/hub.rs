@@ -7,7 +7,7 @@ use std::time::Duration;
 use base64::Engine;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use stellarator_core::schemas::{ExportOptions, PrefExportOptions};
+use stellarator_core::schemas::{CodeFormat, ExportOptions, PrefExportOptions};
 use stellarator_core::{ApiError, Ctx};
 use tokio::io::AsyncReadExt;
 use tokio_util::io::ReaderStream;
@@ -62,15 +62,19 @@ fn card(title: &str, split: &str, lines: &[String]) -> String {
     s
 }
 
-/// "Tools: lookup, add (MCP servers: docs)" for a run with tools; in code mode, the code tool and
-/// the methods its code calls.
+/// "Tools: lookup, add (MCP servers: docs)" for a run with tools; in code mode, the code tool, the
+/// Cloudflare setup it reproduces and the methods its code calls.
 pub fn tools_line(run: &RunInfo) -> Option<String> {
     let t = run.tools.as_ref()?;
     let names: Vec<String> = t.servers.iter().flat_map(|s| s.tools.iter().map(|x| x.name.clone())).collect();
     let servers: Vec<&str> = t.servers.iter().map(|s| s.name.as_str()).collect();
     if let Some(code) = &t.code {
+        let (setup, does) = match code.kind {
+            CodeFormat::CodeTool => (String::new(), "calls"),
+            CodeFormat::Runtime => (", durable runtime".to_string(), "discovers and calls"),
+        };
         return Some(format!(
-            "Tools: Code Mode ({}): one tool, `{}`, whose JavaScript calls {} (MCP servers: {})",
+            "Tools: Code Mode ({}{setup}): one tool, `{}`, whose JavaScript {does} {} (MCP servers: {})",
             code.format,
             code.tool_name,
             names.join(", "),

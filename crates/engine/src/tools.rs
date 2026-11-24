@@ -29,11 +29,11 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 use sqlx::SqlitePool;
-use stellarator_codemode::{execute, unknown_tool_message, unwrap_mcp_result, CallAnswer, Host, Limits};
+use stellarator_codemode::{execute, invalid_input, resend_arguments, unknown_tool_message, CallAnswer, Host, Limits};
 use stellarator_core::config::STDIO_MCP_BLOCKED;
 use stellarator_core::schemas::{
-    LiveCode, McpTransport, Phase, RunParams, RunTools, ToolCall, ToolChoice, ToolMode, ToolSnapshot, TraceAssistant,
-    TraceMessage, TraceTool,
+    CodeToolSnapshot, LiveCode, McpTransport, Phase, RunParams, RunTools, ToolCall, ToolChoice, ToolMode, ToolSnapshot,
+    TraceAssistant, TraceMessage, TraceTool,
 };
 use stellarator_mcp::result::truncate;
 use stellarator_mcp::store::CHECK_TIMEOUT;
@@ -156,14 +156,14 @@ impl ToolRuntime {
     ) -> Result<Vec<TraceTool>, String> {
         let Some(code) = self.snapshot.code.as_ref() else { return Ok(Vec::new()) };
         let options = self.settings.code.clone().unwrap_or_default();
-        let budget = options.result_budget();
         let limits = Limits {
             timeout: Duration::from_secs_f64(options.timeout_s.max(0.001)),
             memory_bytes: (options.memory_limit_mb.max(1) as usize) << 20,
-            budget,
+            budget: options.result_budget(),
+            logs_budget: options.logs_budget(),
             store_chars: self.settings.max_result_chars.max(1) as usize,
         };
-        let namespaces: Vec<String> = code.namespaces.iter().map(|n| n.name.clone()).collect();
+        let setup = stellarator_codemode::setup(code, limits);
         let host = CodeHost { rt: self };
         // Each execution's calls, summed for the live view.
         let live = Mutex::new(vec![LiveCode::default(); calls.len()]);
@@ -187,7 +187,7 @@ impl ToolRuntime {
             });
         };
         report(0, &LiveCode::default());
-        let (limits, namespaces, host, report) = (&limits, &namespaces, &host, &report);
+        let (setup, host, report) = (&setup, &host, &report);
         // Built first, as in run_sample: a closure inside the stream would not be Send.
         let runs: Vec<BoxFuture<'_, Result<TraceTool, String>>> = calls
             .iter()
@@ -208,7 +208,7 @@ impl ToolRuntime {
                         });
                     }
                     let progress = move |l: &LiveCode| report(i, l);
-                    let e = execute(&code.tool_name, &c.arguments, namespaces, limits, host, &progress).await?;
+                    let e = execute(setup, &c.arguments, host, &progress).await?;
                     Ok(TraceTool {
                         tool_call_id: c.id.clone(),
                         name: c.name.clone(),
@@ -262,9 +262,9 @@ impl ToolRuntime {
     }
 }
 
-/// The namespaces' side of code mode: each method calls its MCP tool on the run's session, and the
-/// code gets what Cloudflare's MCP integration gives it (`unwrapMcpResult`); failures throw with
-/// the MCP TypeScript SDK's messages (`MCP error <code>: <message>`).
+/// The namespaces' side of code mode: each method calls its MCP tool on the run's session. The
+/// sandbox unwraps the result as Cloudflare's MCP integration does (`unwrapMcpResult`); failures
+/// throw with the MCP TypeScript SDK's messages (`MCP error <code>: <message>`).
 pub struct CodeHost<'a> {
     rt: &'a ToolRuntime,
 }
@@ -287,10 +287,7 @@ impl Host for CodeHost<'_> {
             };
             match route.session.call_raw(&route.server_tool, arguments, self.rt.tool_timeout()).await {
                 Err(e) => CallAnswer::Fatal(e),
-                Ok(RawOutcome::Result(v)) => match unwrap_mcp_result(&v) {
-                    Ok(value) => CallAnswer::Value(value),
-                    Err(message) => CallAnswer::Thrown(message),
-                },
+                Ok(RawOutcome::Result(v)) => CallAnswer::Mcp(v),
                 Ok(RawOutcome::TimedOut(_)) => CallAnswer::Thrown("MCP error -32001: Request timed out".into()),
                 Ok(RawOutcome::ServerError { code, message }) => CallAnswer::Thrown(format!("MCP error {code}: {message}")),
                 Ok(RawOutcome::Failed(text)) => CallAnswer::Thrown(text),
@@ -323,6 +320,23 @@ pub fn assistant_request_message(content: &str, calls: &[ToolCall]) -> Value {
         .iter()
         .map(|c| json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}))
         .collect();
+    json!({"role": "assistant", "content": content, "tool_calls": calls})
+}
+
+/// Code mode's assistant message for the next request, as the AI SDK (which Cloudflare's Code Mode
+/// runs under) sends it back: `content` is null when the answer had no text, and each call's
+/// `arguments` are the input as the SDK kept it, written with `JSON.stringify`: `{"code": ...}`
+/// alone for a call the code tool accepted, the parsed input for one it refused when that is an
+/// object, an array or null, else `{}`. What the model wrote stays in the trace.
+pub fn code_assistant_request_message(snapshot: &CodeToolSnapshot, content: &str, calls: &[ToolCall]) -> Value {
+    let calls: Vec<Value> = calls
+        .iter()
+        .map(|c| {
+            let valid = c.name == snapshot.tool_name && invalid_input(snapshot.kind, &snapshot.tool_name, &c.arguments).is_none();
+            json!({"id": c.id, "type": "function", "function": {"name": c.name, "arguments": resend_arguments(valid, &c.arguments)}})
+        })
+        .collect();
+    let content = if content.is_empty() { Value::Null } else { json!(content) };
     json!({"role": "assistant", "content": content, "tool_calls": calls})
 }
 
@@ -415,7 +429,17 @@ pub async fn run_sample(
             };
             return Ok(SampleOutcome { result, trace, tool_calls: executed, inner_tool_calls: inner });
         }
-        convo.push(assistant_request_message(&r.response, &r.tool_calls));
+        match rt.snapshot.code.as_ref().filter(|_| rt.code_mode()) {
+            Some(code) => {
+                // Cloudflare's helpers run in QuickJS: off the async threads.
+                let (code, text, calls) = (code.clone(), r.response.clone(), r.tool_calls.clone());
+                let message = tokio::task::spawn_blocking(move || code_assistant_request_message(&code, &text, &calls))
+                    .await
+                    .unwrap_or_else(|_| assistant_request_message(&r.response, &r.tool_calls));
+                convo.push(message);
+            }
+            None => convo.push(assistant_request_message(&r.response, &r.tool_calls)),
+        }
         if rt.code_mode() {
             let results = rt
                 .run_code_calls(&r.tool_calls, round, sink)

@@ -7,7 +7,8 @@
 //!
 //! The same port serves a small MCP server at http://localhost:9100/mcp (streamable HTTP; behind
 //! the key too when one is set). `stellarator-mock mcp-stdio` serves its tools on stdin and stdout
-//! instead, as a stdio MCP server.
+//! instead, as a stdio MCP server. A second MCP server, an issue tracker, is at
+//! http://localhost:9100/tracker/mcp.
 
 use std::net::{IpAddr, SocketAddr};
 
@@ -66,7 +67,7 @@ fn main() {
             Ok((addr, join)) => {
                 let key = if keyed { ", requests need the API key" } else { "" };
                 eprintln!("Mock OpenAI-compatible server on http://{addr}/v1 ({tps} tokens/s per sequence{key})");
-                eprintln!("Mock MCP server on http://{addr}/mcp");
+                eprintln!("Mock MCP servers on http://{addr}/mcp and http://{addr}/tracker/mcp");
                 tokio::select! {
                     _ = join => {}
                     _ = tokio::signal::ctrl_c() => {}

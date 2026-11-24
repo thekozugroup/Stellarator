@@ -1,0 +1,212 @@
+{
+ "source": {
+  "@cloudflare/codemode": "0.5.6",
+  "workerd": "1.20261124.1",
+  "ai": "7.0.181",
+  "@ai-sdk/openai-compatible": "3.0.94",
+  "agents": "0.34.0",
+  "@modelcontextprotocol/sdk": "1.32.2",
+  "zod": "4.6.7",
+  "acorn": "8.19.0"
+ },
+ "format": "ai_tools",
+ "servers": {
+  "mock": {
+   "path": "/mcp"
+  },
+  "tracker": {
+   "path": "/tracker/mcp"
+  }
+ },
+ "definitions": {
+  "mock+tracker": [
+   {
+    "type": "function",
+    "function": {
+     "name": "codemode",
+     "description": "Execute code to achieve a goal.\n\nAvailable:\ntype ToolMockLookupInput = {\n    /** The term to look up. */\n    query: string;\n    [key: string]: unknown;\n}\ntype ToolMockLookupOutput = unknown\ntype ToolMockAddInput = {\n    a: number;\n    b: number;\n    [key: string]: unknown;\n}\ntype ToolMockAddOutput = unknown\ntype ToolMockFailInput = {\n    reason?: string;\n    [key: string]: unknown;\n}\ntype ToolMockFailOutput = unknown\ntype ToolMockSlowInput = {\n    /** Seconds to wait (default 2). */\n    seconds?: number;\n    [key: string]: unknown;\n}\ntype ToolMockSlowOutput = unknown\ntype ToolMockChartInput = {\n    [key: string]: unknown;\n}\ntype ToolMockChartOutput = unknown\ntype ToolMockRepeatInput = {\n    text: string;\n    times: number;\n    [key: string]: unknown;\n}\ntype ToolMockRepeatOutput = unknown\ntype ToolTrackerListIssuesInput = {\n    /** Which issues to list (default open). */\n    state?: \"open\" | \"closed\" | \"all\";\n    /** Only issues with this label. */\n    label?: string;\n    /** At most this many (default 20, at most 500). */\n    limit?: number;\n    [key: string]: unknown;\n}\ntype ToolTrackerListIssuesOutput = {\n    issues: {\n        id: number;\n        title: string;\n        state: \"open\" | \"closed\";\n        labels?: string[];\n        [key: string]: unknown;\n    }[];\n    /** How many issues match. */\n    total: number;\n    [key: string]: unknown;\n}\ntype ToolTrackerGetIssueInput = {\n    /** The issue's id. */\n    id: number;\n    [key: string]: unknown;\n}\ntype ToolTrackerGetIssueOutput = unknown\ntype ToolTrackerCreateIssueInput = {\n    title: string;\n    body?: string;\n    labels?: string[];\n    [key: string]: unknown;\n}\ntype ToolTrackerCreateIssueOutput = {\n    id: number;\n    title?: string;\n    url: string;\n    [key: string]: unknown;\n}\ntype ToolTrackerSearchInput = {\n    /** Words to look for in titles. */\n    query: string;\n    [key: string]: unknown;\n}\ntype ToolTrackerSearchOutput = unknown\ntype ToolTrackerDeleteInput = {\n    id: number;\n    [key: string]: unknown;\n}\ntype ToolTrackerDeleteOutput = unknown\n\ndeclare const codemode: {\n\t/**\n\t * Look up a term in the reference catalog and return what it says.\n\t * @param input.query - The term to look up.\n\t */\n\ttool_mock_lookup: (input: ToolMockLookupInput) => Promise<ToolMockLookupOutput>;\n\n\t/**\n\t * Add two numbers.\n\t */\n\ttool_mock_add: (input: ToolMockAddInput) => Promise<ToolMockAddOutput>;\n\n\t/**\n\t * Always fails, with an error result.\n\t */\n\ttool_mock_fail: (input: ToolMockFailInput) => Promise<ToolMockFailOutput>;\n\n\t/**\n\t * Waits some seconds before answering.\n\t * @param input.seconds - Seconds to wait (default 2).\n\t */\n\ttool_mock_slow: (input: ToolMockSlowInput) => Promise<ToolMockSlowOutput>;\n\n\t/**\n\t * Draws a chart of the data.\n\t */\n\ttool_mock_chart: (input: ToolMockChartInput) => Promise<ToolMockChartOutput>;\n\n\t/**\n\t * Repeats a text.\n\t */\n\ttool_mock_repeat: (input: ToolMockRepeatInput) => Promise<ToolMockRepeatOutput>;\n\n\t/**\n\t * List issues, newest first. Filter by state or label.\n\t * @param input.state - Which issues to list (default open).\n\t * @param input.label - Only issues with this label.\n\t * @param input.limit - At most this many (default 20, at most 500).\n\t */\n\ttool_tracker_list_issues: (input: ToolTrackerListIssuesInput) => Promise<ToolTrackerListIssuesOutput>;\n\n\t/**\n\t * Get one issue by id, with its body and comments.\n\t * @param input.id - The issue's id.\n\t */\n\ttool_tracker_get_issue: (input: ToolTrackerGetIssueInput) => Promise<ToolTrackerGetIssueOutput>;\n\n\t/**\n\t * Create an issue.\n\t */\n\ttool_tracker_create_issue: (input: ToolTrackerCreateIssueInput) => Promise<ToolTrackerCreateIssueOutput>;\n\n\t/**\n\t * Search issue titles.\n\t * @param input.query - Words to look for in titles.\n\t */\n\ttool_tracker_search: (input: ToolTrackerSearchInput) => Promise<ToolTrackerSearchOutput>;\n\n\t/**\n\t * Delete an issue.\n\t */\n\ttool_tracker_delete: (input: ToolTrackerDeleteInput) => Promise<ToolTrackerDeleteOutput>;\n}\n\nWrite an async arrow function in JavaScript that returns the result.\nDo NOT use TypeScript syntax — no type annotations, interfaces, or generics.\nDo NOT define named functions then call them — just write the arrow function body directly.\n\nExample: async () => { const r = await codemode.searchWeb({ query: \"test\" }); return r; }",
+     "parameters": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+       "code": {
+        "type": "string",
+        "description": "JavaScript async arrow function to execute"
+       }
+      },
+      "required": [
+       "code"
+      ],
+      "additionalProperties": false
+     }
+    }
+   }
+  ]
+ },
+ "cases": [
+  {
+   "id": "ai-tools-names",
+   "group": "ai_tools",
+   "setup": {
+    "servers": [
+     "mock",
+     "tracker"
+    ]
+   },
+   "definitions": "mock+tracker",
+   "steps": [
+    {
+     "calls": [
+      {
+       "arguments": "{\"code\":\"async () => { const sum = await codemode.tool_mock_add({ a: 4, b: 5 }); return sum; }\"}"
+      }
+     ]
+    }
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_1",
+       "type": "function",
+       "function": {
+        "name": "codemode",
+        "arguments": "{\"code\":\"async () => { const sum = await codemode.tool_mock_add({ a: 4, b: 5 }); return sum; }\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1",
+     "content": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"9\"}],\"isError\":false}}"
+    }
+   ]
+  },
+  {
+   "id": "ai-tools-structured",
+   "group": "ai_tools",
+   "setup": {
+    "servers": [
+     "mock",
+     "tracker"
+    ]
+   },
+   "definitions": "mock+tracker",
+   "steps": [
+    {
+     "calls": [
+      {
+       "arguments": "{\"code\":\"async () => codemode.tool_tracker_list_issues({ limit: 1 })\"}"
+      }
+     ]
+    }
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_1",
+       "type": "function",
+       "function": {
+        "name": "codemode",
+        "arguments": "{\"code\":\"async () => codemode.tool_tracker_list_issues({ limit: 1 })\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1",
+     "content": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"issues\\\":[{\\\"id\\\":500,\\\"title\\\":\\\"Generated issue 500 about imports\\\",\\\"state\\\":\\\"open\\\",\\\"labels\\\":[\\\"generated\\\",\\\"docs\\\"]}],\\\"total\\\":333}\"}],\"structuredContent\":{\"issues\":[{\"id\":500,\"title\":\"Generated issue 500 about imports\",\"state\":\"open\",\"labels\":[\"generated\",\"docs\"]}],\"total\":333},\"isError\":false}}"
+    }
+   ]
+  },
+  {
+   "id": "ai-tools-error",
+   "group": "ai_tools",
+   "setup": {
+    "servers": [
+     "mock",
+     "tracker"
+    ]
+   },
+   "definitions": "mock+tracker",
+   "steps": [
+    {
+     "calls": [
+      {
+       "arguments": "{\"code\":\"async () => codemode.tool_mock_fail({ reason: \\\"x\\\" })\"}"
+      }
+     ]
+    }
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_1",
+       "type": "function",
+       "function": {
+        "name": "codemode",
+        "arguments": "{\"code\":\"async () => codemode.tool_mock_fail({ reason: \\\"x\\\" })\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1",
+     "content": "Error: Code execution failed: The lookup failed: x."
+    }
+   ]
+  },
+  {
+   "id": "ai-tools-invalid-arguments",
+   "group": "ai_tools",
+   "setup": {
+    "servers": [
+     "mock",
+     "tracker"
+    ]
+   },
+   "definitions": "mock+tracker",
+   "steps": [
+    {
+     "calls": [
+      {
+       "arguments": "{\"code\":\"async () => codemode.tool_mock_add({ a: \\\"four\\\" })\"}"
+      }
+     ]
+    }
+   ],
+   "messages": [
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_1",
+       "type": "function",
+       "function": {
+        "name": "codemode",
+        "arguments": "{\"code\":\"async () => codemode.tool_mock_add({ a: \\\"four\\\" })\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1",
+     "content": "Error: Code execution failed: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"a\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"b\"\n    ],\n    \"message\": \"Invalid input: expected number, received undefined\"\n  }\n]"
+    }
+   ]
+  }
+ ]
+}

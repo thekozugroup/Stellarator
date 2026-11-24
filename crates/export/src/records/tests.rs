@@ -633,3 +633,114 @@ fn raw_in_code_mode_keeps_the_inner_calls() {
         "Tools: Code Mode (@cloudflare/codemode 0.5.6): one tool, `codemode`, whose JavaScript calls docs.add (MCP servers: docs)"
     );
 }
+
+// ------------------------------------------------------------------ code mode, the runtime format
+
+const RUNTIME_TOOL: &str = r#"{"type": "function", "function": {"name": "codemode", "description": "Execute JavaScript in a sandbox with access to connector SDKs.\n\n## Available connectors\n\n- `docs`", "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"], "additionalProperties": false}}}"#;
+const SEARCH_RESULT: &str = r#"{"status":"completed","executionId":"exec_0001795544688016_a207076e-e8af-49b3-bfc5-6197c98b3330","result":{"results":[{"path":"docs.add","connector":"docs","method":"add","description":"Add two numbers.","kind":"method","score":403}],"total":1,"truncated":false}}"#;
+const DESCRIBE_RESULT: &str = r#"{"status":"completed","executionId":"exec_0001795544688025_9d00c06d-4606-4232-b153-3c2f38ec216c","result":{"path":"docs.add","description":"Add two numbers.","types":"type AddInput = {\n    a: number;\n    b: number;\n}\ntype AddOutput = unknown","kind":"method"}}"#;
+const CALL_RESULT: &str = r#"{"status":"completed","executionId":"exec_0001795544688032_22ce4512-9ab8-40af-9a59-d2b20cbc05b8","result":4}"#;
+
+fn runtime_run() -> RunInfo {
+    let mut run = code_run();
+    let tools = run.tools.as_mut().unwrap();
+    tools.definitions = vec![serde_json::from_str(RUNTIME_TOOL).unwrap()];
+    let code = tools.code.as_mut().unwrap();
+    code.kind = stellarator_core::schemas::CodeFormat::Runtime;
+    run
+}
+
+/// Three executions, as the runtime's description tells a model to work: search, describe, call.
+fn runtime_sample() -> SampleRec {
+    let execution = |code: &str, calls: Vec<InnerToolCall>, result: &str| CodeExecution {
+        code: code.into(),
+        status: CodeStatus::Ok,
+        calls,
+        logs: Vec::new(),
+        result: Some(result.into()),
+        error: None,
+        latency_ms: 9,
+    };
+    let message = |id: &str, content: &str, e: CodeExecution| {
+        TraceMessage::Tool(TraceTool {
+            tool_call_id: id.into(),
+            name: "codemode".into(),
+            server: String::new(),
+            content: content.into(),
+            is_error: false,
+            truncated: false,
+            latency_ms: 12,
+            code: Some(e),
+        })
+    };
+    let steps = ["async () => codemode.search(\"add numbers\")", "async () => codemode.describe(\"docs.add\")", "async () => docs.add({ a: 2, b: 2 })"];
+    let arguments: Vec<String> = steps.iter().map(|code| serde_json::to_string(&json!({"code": code})).unwrap()).collect();
+    let add = InnerToolCall {
+        method: "docs.add".into(),
+        server: "docs".into(),
+        tool: "add".into(),
+        arguments: json!({"a": 2, "b": 2}),
+        result: "4".into(),
+        is_error: false,
+        truncated: false,
+        latency_ms: 3,
+    };
+    SampleRec {
+        reasoning: Some("It is 4.".into()),
+        response: Some("2+2 is 4.".into()),
+        trace: Some(vec![
+            turn(Some("I'll search first."), "", &[("call_1", "codemode", &arguments[0])]),
+            message("call_1", SEARCH_RESULT, execution(steps[0], Vec::new(), "{}")),
+            turn(None, "", &[("call_2", "codemode", &arguments[1])]),
+            message("call_2", DESCRIBE_RESULT, execution(steps[1], Vec::new(), "{}")),
+            turn(None, "", &[("call_3", "codemode", &arguments[2])]),
+            message("call_3", CALL_RESULT, execution(steps[2], vec![add], "4")),
+            turn(Some("It is 4."), "2+2 is 4.", &[]),
+        ]),
+        tool_calls: 3,
+        ..sample(None, "")
+    }
+}
+
+#[test]
+fn the_runtime_format_exports_what_the_model_saw() {
+    let record = |format: SftFormat| sft_record(&tool_opts(format, P::ThinkTags, "jsonl"), &runtime_run(), &runtime_sample(), &prompt(), None);
+    // Chat messages: the runtime's tool, three calls with their code as the arguments object, and the
+    // runtime's results as sent, execution ids included.
+    let rec = record(SftFormat::Messages);
+    assert_eq!(rec["tools"], json!([serde_json::from_str::<Value>(RUNTIME_TOOL).unwrap()]));
+    let messages = rec["messages"].as_array().unwrap();
+    let roles: Vec<&str> = messages.iter().map(|m| m["role"].as_str().unwrap()).collect();
+    assert_eq!(roles, ["system", "user", "assistant", "tool", "assistant", "tool", "assistant", "tool", "assistant"]);
+    assert_eq!(
+        crate::pyjson::to_string(&messages[2]),
+        r#"{"role": "assistant", "content": "<think>\nI'll search first.\n</think>\n\n", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "codemode", "arguments": {"code": "async () => codemode.search(\"add numbers\")"}}}]}"#
+    );
+    assert_eq!(messages[3], json!({"role": "tool", "tool_call_id": "call_1", "name": "codemode", "content": SEARCH_RESULT}));
+    assert_eq!(messages[4]["tool_calls"][0]["function"]["arguments"], json!({"code": "async () => codemode.describe(\"docs.add\")"}));
+    assert_eq!(messages[5]["content"], DESCRIBE_RESULT);
+    assert_eq!(messages[7], json!({"role": "tool", "tool_call_id": "call_3", "name": "codemode", "content": CALL_RESULT}));
+    assert_eq!(messages[8]["content"], "<think>\nIt is 4.\n</think>\n\n2+2 is 4.");
+
+    // ShareGPT: a function_call and an observation per execution.
+    let rec = record(SftFormat::Sharegpt);
+    let turns = rec["conversations"].as_array().unwrap();
+    let from: Vec<&str> = turns.iter().map(|t| t["from"].as_str().unwrap()).collect();
+    assert_eq!(from, ["system", "human", "function_call", "observation", "function_call", "observation", "function_call", "observation", "gpt"]);
+    assert_eq!(turns[4]["value"], r#"{"name": "codemode", "arguments": {"code": "async () => codemode.describe(\"docs.add\")"}}"#);
+    assert_eq!(turns[5]["value"], DESCRIBE_RESULT);
+    assert_eq!(turns[7]["value"], CALL_RESULT);
+    let tools: Value = serde_json::from_str(rec["tools"].as_str().unwrap()).unwrap();
+    assert_eq!(tools[0]["parameters"], json!({"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"], "additionalProperties": false}));
+
+    // Raw: the trace with each execution's record; search and describe made no MCP call.
+    let rec = record(SftFormat::Raw);
+    assert_eq!(rec["trace"][1]["code"]["calls"], json!([]));
+    assert_eq!(rec["trace"][1]["content"], SEARCH_RESULT);
+    assert_eq!(rec["trace"][5]["code"]["calls"][0]["method"], "docs.add");
+    // The dataset card names the setup.
+    assert_eq!(
+        crate::hub::tools_line(&runtime_run()).unwrap(),
+        "Tools: Code Mode (@cloudflare/codemode 0.5.6, durable runtime): one tool, `codemode`, whose JavaScript discovers and calls docs.add (MCP servers: docs)"
+    );
+}

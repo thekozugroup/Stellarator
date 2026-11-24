@@ -1,10 +1,13 @@
-//! One code execution: a fresh QuickJS runtime and context on a thread of its own, running
-//! Cloudflare's executor harness (`DynamicWorkerExecutor` in packages/codemode/src/executor.ts)
-//! around the model's normalized code, with the namespace proxies dispatching to the run's MCP
-//! tools through [`Host`]. Then what the model receives is rendered as Cloudflare's `runCode`
-//! returns it and the AI SDK sends it.
+//! One code execution: a fresh QuickJS runtime and context on a thread of its own, running the
+//! module Cloudflare's `DynamicWorkerExecutor` generates for the model's normalized code
+//! (`executor.js`, built by the package's own code in js/cloudflare-runtime.js), with the
+//! namespaces dispatching to the run's MCP tools through [`Host`]. Then what the model receives is
+//! rendered as Cloudflare's `runCode` or `runPass` returns it and the AI SDK sends it.
 //!
-//! Limits: the execution's timeout (the harness's own `setTimeout` race, as Cloudflare's, plus an
+//! Around the module stand js/workers-globals.js (the globals of a Worker that model code reaches
+//! for) and js/sandbox.js (what Workers RPC and the host Worker do in Cloudflare's setup).
+//!
+//! Limits: the execution's timeout (the module's own `setTimeout` race, as Cloudflare's, plus an
 //! interrupt shortly after for code that never yields, such as `while (true) {}`), a memory limit,
 //! a stack limit, at most [`MAX_CALLS`] tool calls, at most [`PARALLEL_CALLS`] of them at a time.
 
@@ -13,18 +16,40 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
 use futures::stream::{FuturesUnordered, StreamExt};
+use rquickjs::loader::{ImportAttributes, Loader, Resolver};
+use rquickjs::module::Declared;
 use rquickjs::promise::PromiseState;
-use rquickjs::{Coerced, Context, Ctx, Function, Object, Promise, Runtime, Value as JsValue};
+use rquickjs::{Context, Ctx, Function, Module, Object, Promise, Runtime, Value as JsValue};
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use stellarator_api::{CodeExecution, CodeStatus, InnerToolCall, LiveCode};
+use stellarator_api::{CodeExecution, CodeFormat, CodeStatus, InnerToolCall, LiveCode};
 
-use crate::util::{self, describe, CLOUDFLARE, HELPERS};
+use crate::mcp::unwrap_mcp_result;
+use crate::util::{self, describe};
 
-const SANDBOX: &str = include_str!("../js/sandbox.js");
+/// The prelude: one function of `host`, made of the package's runtime code (for the value codec,
+/// the MCP unwrapping and the durable log's size rule), V8's JSON messages, the Workers globals and
+/// the host side.
+const PRELUDE: &str = concat!(
+    "(function (host) {\n\"use strict\";\n",
+    include_str!("../js/cloudflare-runtime.js"),
+    "\n",
+    include_str!("../js/v8-json.js"),
+    "\n",
+    include_str!("../js/workers-globals.js"),
+    "\n",
+    include_str!("../js/sandbox.js"),
+    "\n})"
+);
+
+/// `cloudflare:workers`, as far as the executor module needs it: the base class it extends.
+const WORKERS_MODULE: &str = "export class WorkerEntrypoint { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }\n\
+    export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }\n\
+    export class RpcTarget {}\nexport const env = {};\n";
 
 /// Tool calls one execution may make.
 pub const MAX_CALLS: usize = 1000;
@@ -38,25 +63,45 @@ const GRACE: Duration = Duration::from_millis(250);
 /// The thread's stack and QuickJS's share of it.
 const THREAD_STACK: usize = 8 * 1024 * 1024;
 const JS_STACK: usize = 1024 * 1024;
-/// Extra memory for reading the logs and rendering the result after the code ran out.
+/// Extra memory for reading the outcome after the code ran out.
 const RENDER_MEMORY: usize = 256 * 1024 * 1024;
+/// workerd names a place in `executor.js` two lines below the module's own line, with the column
+/// counted from 1. QuickJS's line is one above the module's and its column one further right, so
+/// the same token is one line down and one column left of where QuickJS puts it.
+const WORKERD_LINE_OFFSET: u32 = 1;
 
 /// An execution's limits.
 #[derive(Clone, Debug)]
 pub struct Limits {
     pub timeout: Duration,
     pub memory_bytes: usize,
-    /// truncateResult's budget: Some((max_chars, max_tokens)); None for no truncation.
+    /// truncateResult's budget for the result: Some((max_chars, max_tokens)); None for no truncation.
     pub budget: Option<(i64, i64)>,
+    /// The same for the console output.
+    pub logs_budget: Option<(i64, i64)>,
     /// Inner call results are stored cut to this many characters.
     pub store_chars: usize,
+}
+
+/// What every execution of a run shares: the format, the code tool's name and the namespaces.
+#[derive(Clone, Debug)]
+pub struct Setup {
+    pub format: CodeFormat,
+    pub tool_name: String,
+    /// The globals the code calls tools through: providers (`code_tool`) or connectors (`runtime`).
+    pub namespaces: Vec<String>,
+    /// `runtime`: the connectors as `connector.describe()` returns them, as a JSON array, for
+    /// `codemode.search` and `codemode.describe`.
+    pub descriptions: Arc<str>,
+    pub limits: Limits,
 }
 
 /// The answer to one tool call of the code.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CallAnswer {
-    /// The value the code gets.
-    Value(Value),
+    /// The MCP server's `tools/call` result, as JSON. The code gets it unwrapped as Cloudflare's
+    /// `McpConnector` unwraps it; an error result throws.
+    Mcp(Value),
     /// The call throws this message in the code.
     Thrown(String),
     /// The call could not be made at all (the MCP server is gone): the execution stops and the
@@ -111,6 +156,16 @@ struct Outcome {
 /// A call waiting for a free slot: its index, the code's call id, namespace, method, arguments.
 type Queued = (usize, f64, String, String, Option<Map<String, Value>>);
 
+/// A reply on its way: the tool call's record index (None for a platform call), the code's call
+/// id, and the answer.
+type Pending<'a> = BoxFuture<'a, (Option<usize>, f64, Answered)>;
+
+enum Answered {
+    Tool(CallAnswer),
+    /// A platform call's dispatcher JSON, or why it failed.
+    Platform(Result<String, String>),
+}
+
 struct CancelOnDrop(Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
@@ -127,31 +182,41 @@ fn cut(text: String, max: usize) -> (String, bool) {
     (format!("{kept}\n[truncated: {} more characters]", count - max), true)
 }
 
+/// A new execution id, as the durable runtime writes them: `exec_<ms since 1970, 16 digits>_<uuid>`.
+pub fn execution_id() -> String {
+    let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let mut b = [0u8; 16];
+    let _ = getrandom::fill(&mut b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    format!("exec_{ms:016}_{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+}
+
 /// Run one call of the code tool: `arguments` is the JSON text the model wrote for
 /// `{"code": string}`. `progress` hears the tool calls as they start and finish. Err: the sample
 /// must fail (an MCP server could not be reached, or the sandbox could not start).
 pub async fn execute(
-    tool_name: &str,
+    setup: &Setup,
     arguments: &str,
-    namespaces: &[String],
-    limits: &Limits,
     host: &dyn Host,
     progress: &(dyn Fn(&LiveCode) + Sync),
 ) -> Result<Execution, String> {
     let started = Instant::now();
+    let limits = &setup.limits;
+    let runtime = setup.format == CodeFormat::Runtime;
     let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     let (reply_tx, reply_rx) = mpsc::channel::<Reply>();
     let (done_tx, mut done_rx) = tokio::sync::oneshot::channel::<Result<Outcome, String>>();
     let cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = CancelOnDrop(cancel.clone());
     {
-        let (tool_name, arguments, namespaces, limits, cancel) =
-            (tool_name.to_string(), arguments.to_string(), namespaces.to_vec(), limits.clone(), cancel.clone());
+        let (setup, arguments, cancel) = (setup.clone(), arguments.to_string(), cancel.clone());
         std::thread::Builder::new()
             .name("codemode".into())
             .stack_size(THREAD_STACK)
             .spawn(move || {
-                let out = run_thread(&tool_name, &arguments, &namespaces, &limits, ev_tx, reply_rx, cancel);
+                let out = run_thread(&setup, &arguments, ev_tx, reply_rx, cancel);
                 let _ = done_tx.send(out);
             })
             .map_err(|e| format!("Couldn't start the code sandbox: {e}."))?;
@@ -160,23 +225,36 @@ pub async fn execute(
     // Each call: its record, when it started, and whether it finished.
     let mut calls: Vec<(InnerToolCall, Instant, bool)> = Vec::new();
     let mut live = LiveCode::default();
-    let mut running = FuturesUnordered::<BoxFuture<'_, (usize, f64, CallAnswer)>>::new();
+    let mut running = FuturesUnordered::<Pending<'_>>::new();
+    let mut tools_running = 0usize;
     let mut queued: VecDeque<Queued> = VecDeque::new();
-    let start_call = |i: usize, id: f64, ns: String, name: String, args: Option<Map<String, Value>>| -> BoxFuture<'_, (usize, f64, CallAnswer)> {
-        Box::pin(async move { (i, id, host.call(ns, name, args).await) })
+    let start_call = |i: usize, id: f64, ns: String, name: String, args: Option<Map<String, Value>>| -> Pending<'_> {
+        Box::pin(async move { (Some(i), id, Answered::Tool(host.call(ns, name, args).await)) })
     };
-    let answer_json = |a: &Result<Value, String>| match a {
-        Ok(v) => json!({"result": v}).to_string(),
-        Err(e) => json!({"error": e}).to_string(),
+    let not_found = |namespace: &str, name: &str| {
+        if runtime {
+            format!("Tool \"{name}\" not found on {namespace}")
+        } else {
+            format!("Tool \"{name}\" not found")
+        }
     };
+    let error_json = |e: &str| json!({"error": e}).to_string();
     let outcome = loop {
         tokio::select! {
             biased;
             Some(Event::Call { id, namespace, name, args }) = ev_rx.recv() => {
+                if runtime && namespace == "codemode" {
+                    // codemode.search and codemode.describe: answered by the package's own code.
+                    let descriptions = setup.descriptions.clone();
+                    running.push(Box::pin(async move {
+                        let done = tokio::task::spawn_blocking(move || util::platform(&name, &descriptions, &args)).await;
+                        (None, id, Answered::Platform(done.unwrap_or_else(|e| Err(e.to_string()))))
+                    }));
+                    continue;
+                }
                 let i = calls.len();
                 let method = format!("{namespace}.{name}");
-                let parsed: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
-                let first = parsed.as_array().and_then(|a| a.first()).cloned().unwrap_or(Value::Null);
+                let first: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
                 let (server, tool) = host.route(&namespace, &name).unwrap_or_default();
                 calls.push((
                     InnerToolCall { method: method.clone(), server, tool, arguments: first.clone(), result: String::new(), is_error: false, truncated: false, latency_ms: 0 },
@@ -185,24 +263,24 @@ pub async fn execute(
                 ));
                 live.calls += 1;
                 // Answered at once: too many calls, an unknown method, arguments that are not an object.
-                let early: Option<Result<Value, String>> = if i >= MAX_CALLS {
-                    Some(Err(format!("Too many tool calls in one execution (the limit is {MAX_CALLS}).")))
+                let early: Option<String> = if i >= MAX_CALLS {
+                    Some(format!("Too many tool calls in one execution (the limit is {MAX_CALLS})."))
                 } else if host.route(&namespace, &name).is_none() {
-                    Some(Err(format!("Tool \"{name}\" not found")))
+                    Some(not_found(&namespace, &name))
                 } else {
                     match first {
-                        Value::Null => None,
-                        Value::Object(_) => None,
-                        _ => Some(Err(format!("The arguments of {method} must be an object of the tool's parameters."))),
+                        Value::Null | Value::Object(_) => None,
+                        _ => Some(format!("The arguments of {method} must be an object of the tool's parameters.")),
                     }
                 };
-                if let Some(answer) = early {
-                    finish(&mut calls[i], &answer, limits.store_chars);
-                    let _ = reply_tx.send(Reply { id, json: answer_json(&answer) });
+                if let Some(message) = early {
+                    finish(&mut calls[i], &Err(message.clone()), limits.store_chars);
+                    let _ = reply_tx.send(Reply { id, json: error_json(&message) });
                 } else {
                     let args = match first { Value::Object(m) => Some(m), _ => None };
                     live.running.push(method);
-                    if running.len() < PARALLEL_CALLS {
+                    if tools_running < PARALLEL_CALLS {
+                        tools_running += 1;
                         running.push(start_call(i, id, namespace, name, args));
                     } else {
                         queued.push_back((i, id, namespace, name, args));
@@ -211,20 +289,37 @@ pub async fn execute(
                 progress(&live);
             }
             Some((i, id, answer)) = running.next(), if !running.is_empty() => {
-                let answer = match answer {
-                    CallAnswer::Value(v) => Ok(v),
-                    CallAnswer::Thrown(e) => Err(e),
+                let (i, answer) = match (i, answer) {
+                    (_, Answered::Platform(done)) => {
+                        let json = match done {
+                            Ok(dispatcher) => json!({"json": dispatcher}).to_string(),
+                            Err(e) => json!({"json": error_json(&e)}).to_string(),
+                        };
+                        let _ = reply_tx.send(Reply { id, json });
+                        continue;
+                    }
+                    (Some(i), Answered::Tool(answer)) => (i, answer),
+                    (None, Answered::Tool(_)) => continue,
+                };
+                tools_running = tools_running.saturating_sub(1);
+                let (json, recorded) = match answer {
+                    CallAnswer::Mcp(raw) => {
+                        let recorded = unwrap_mcp_result(&raw);
+                        (json!({"raw": raw}).to_string(), recorded)
+                    }
+                    CallAnswer::Thrown(e) => (error_json(&e), Err(e)),
                     CallAnswer::Fatal(e) => {
                         cancel.store(true, Ordering::SeqCst);
                         return Err(e);
                     }
                 };
-                finish(&mut calls[i], &answer, limits.store_chars);
-                let _ = reply_tx.send(Reply { id, json: answer_json(&answer) });
+                finish(&mut calls[i], &recorded, limits.store_chars);
+                let _ = reply_tx.send(Reply { id, json });
                 if let Some(pos) = live.running.iter().position(|m| *m == calls[i].0.method) {
                     live.running.remove(pos);
                 }
                 if let Some((i, id, ns, name, args)) = queued.pop_front() {
+                    tools_running += 1;
                     running.push(start_call(i, id, ns, name, args));
                 }
                 progress(&live);
@@ -237,8 +332,10 @@ pub async fn execute(
     let outcome = outcome?;
     // Calls the code made but did not wait for.
     while let Ok(Event::Call { namespace, name, args, .. }) = ev_rx.try_recv() {
-        let parsed: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
-        let first = parsed.as_array().and_then(|a| a.first()).cloned().unwrap_or(Value::Null);
+        if runtime && namespace == "codemode" {
+            continue;
+        }
+        let first: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
         let (server, tool) = host.route(&namespace, &name).unwrap_or_default();
         calls.push((
             InnerToolCall { method: format!("{namespace}.{name}"), server, tool, arguments: first, result: String::new(), is_error: false, truncated: false, latency_ms: 0 },
@@ -290,53 +387,118 @@ fn finish(call: &mut (InnerToolCall, Instant, bool), answer: &Result<Value, Stri
 
 // ------------------------------------------------------------------------------ the thread
 
+/// An error with its name, as the AI SDK and the runtime read it.
+#[derive(Clone, Debug, Deserialize)]
+struct Thrown {
+    name: String,
+    message: String,
+}
+
+/// What js/sandbox.js's `outcome` reads from the module's answer.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Answer {
+    threw: Option<Thrown>,
+    error: Option<String>,
+    result_json: Option<String>,
+    #[serde(default)]
+    logs: Vec<String>,
+    unserializable: Option<String>,
+}
+
+/// The durable runtime's record of the execution (`runtime` format).
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
+struct Record {
+    status: String,
+    error: Option<String>,
+}
+
 /// How the code ended, before rendering.
 enum Ended {
-    /// The harness returned: `error` is its `err.message` as text when truthy.
-    Returned { result: Option<String>, error: Option<String> },
-    /// The executor threw (Cloudflare: `executor.execute` rejects): the error's `toString()`.
-    Threw(String),
+    /// `evaluate()` returned and its answer was read.
+    Answered(Answer),
+    /// The executor threw (Cloudflare: `executor.execute` rejects).
+    Threw(Thrown),
     TimedOut,
     Cancelled,
 }
 
+struct Modules;
+
+impl Resolver for Modules {
+    fn resolve<'js>(&mut self, _ctx: &Ctx<'js>, _base: &str, name: &str, _attributes: Option<ImportAttributes<'js>>) -> rquickjs::Result<String> {
+        Ok(name.to_string())
+    }
+}
+
+impl Loader for Modules {
+    fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str, _attributes: Option<ImportAttributes<'js>>) -> rquickjs::Result<Module<'js, Declared>> {
+        if name == "cloudflare:workers" {
+            return Module::declare(ctx.clone(), name, WORKERS_MODULE);
+        }
+        // workerd's answer to an import of a module the Worker does not have.
+        let message = Value::String(format!("No such module \"{name}\"."));
+        Module::declare(ctx.clone(), name.replace('\0', ""), format!("throw new Error({message});"))
+    }
+}
+
 fn run_thread(
-    tool_name: &str,
+    setup: &Setup,
     arguments: &str,
-    namespaces: &[String],
-    limits: &Limits,
     ev_tx: tokio::sync::mpsc::UnboundedSender<Event>,
     reply_rx: mpsc::Receiver<Reply>,
     cancel: Arc<AtomicBool>,
 ) -> Result<Outcome, String> {
-    if let Some(message) = util::invalid_input(tool_name, arguments) {
-        return Ok(Outcome {
-            normalized: None,
-            status: CodeStatus::Error,
-            content: message,
-            is_error: true,
-            truncated: false,
-            result: None,
-            error: None,
-            logs: Vec::new(),
-        });
+    let limits = &setup.limits;
+    let runtime_format = setup.format == CodeFormat::Runtime;
+    let refused = |content: String| Outcome {
+        normalized: None,
+        status: CodeStatus::Error,
+        content,
+        is_error: true,
+        truncated: false,
+        result: None,
+        error: None,
+        logs: Vec::new(),
+    };
+    if let Some(message) = util::invalid_input(setup.format, &setup.tool_name, arguments) {
+        return Ok(refused(message));
     }
     let code: Value = serde_json::from_str(if arguments.trim().is_empty() { "{}" } else { arguments }).unwrap_or(Value::Null);
     let code = code.get("code").and_then(Value::as_str).unwrap_or_default().to_string();
+    if runtime_format {
+        // createProxyTool refuses code the durable log could not hold, before anything runs.
+        let length = code.encode_utf16().count();
+        if length > 1_000_000 {
+            return Ok(refused(util::code_too_large(length)?));
+        }
+    }
     let normalized = util::normalize_code(&code);
+    let timeout_ms = limits.timeout.as_millis().min(u128::from(u32::MAX)) as u64;
+    let (providers, connectors): (Vec<String>, Vec<String>) = match setup.format {
+        CodeFormat::CodeTool => (setup.namespaces.clone(), Vec::new()),
+        CodeFormat::Runtime => (vec!["codemode".to_string()], setup.namespaces.clone()),
+    };
+    let built = util::executor_module(&json!({
+        "normalized": normalized, "timeoutMs": timeout_ms, "providers": providers, "connectors": connectors, "runtime": runtime_format,
+    }))?;
 
     let rt = Runtime::new().map_err(|e| format!("Couldn't start the code sandbox: {e}."))?;
     rt.set_memory_limit(limits.memory_bytes);
     rt.set_max_stack_size(JS_STACK);
+    rt.set_loader(Modules, Modules);
     let started = Instant::now();
     let hard_deadline = started + limits.timeout + GRACE;
     // Interrupts end code that never yields, after the deadline or when the sample is cancelled.
     let armed = Arc::new(AtomicBool::new(true));
     let interrupted = Arc::new(AtomicBool::new(false));
+    // `process.exit(code)` sets this and spins: the interrupt ends the code where it stands.
+    let exited = Arc::new(parking_lot::Mutex::new(None::<i64>));
     {
-        let (armed, interrupted, cancel) = (armed.clone(), interrupted.clone(), cancel.clone());
+        let (armed, interrupted, cancel, exited) = (armed.clone(), interrupted.clone(), cancel.clone(), exited.clone());
         rt.set_interrupt_handler(Some(Box::new(move || {
-            let stop = armed.load(Ordering::Relaxed) && (cancel.load(Ordering::Relaxed) || Instant::now() > hard_deadline);
+            let stop = armed.load(Ordering::Relaxed)
+                && (cancel.load(Ordering::Relaxed) || Instant::now() > hard_deadline || exited.lock().is_some());
             if stop {
                 interrupted.store(true, Ordering::SeqCst);
             }
@@ -344,121 +506,131 @@ fn run_thread(
         })));
     }
     let ctx = Context::full(&rt).map_err(|e| format!("Couldn't start the code sandbox: {e}."))?;
-    let (ended, logs) = ctx.with(|ctx| {
-        run_code(&ctx, &normalized, namespaces, limits, hard_deadline, &ev_tx, &reply_rx, &cancel, &armed, &interrupted)
-    });
+    let (ended, record) = match built {
+        // A name the executor refuses: it answers with the error before loading anything.
+        Err(error) => (Ended::Answered(Answer { error: Some(error), ..Answer::default() }), None),
+        Ok(module) => ctx.with(|ctx| {
+            run_code(&ctx, &module, &providers, &connectors, runtime_format, limits, started, hard_deadline, &ev_tx, &reply_rx, &cancel, &armed, &interrupted, &exited)
+        }),
+    };
     drop(ctx);
+    drop(rt);
     if matches!(ended, Ended::Cancelled) {
         return Err("The code execution was cancelled.".into());
     }
 
-    // Render in a fresh context, with room to work even when the code used all its memory.
-    rt.run_gc();
-    rt.set_memory_limit(limits.memory_bytes + RENDER_MEMORY);
-    armed.store(false, Ordering::SeqCst);
-    let (status, threw, error, result) = match ended {
-        Ended::Returned { result, error } => {
-            let status = match error.as_deref() {
-                None => CodeStatus::Ok,
-                Some("Execution timed out") => CodeStatus::Timeout,
-                Some(e) if e.contains("out of memory") => CodeStatus::MemoryLimit,
-                Some(_) => CodeStatus::Error,
-            };
-            (status, None, error, result)
-        }
-        Ended::TimedOut => (CodeStatus::Timeout, None, Some("Execution timed out".to_string()), None),
-        Ended::Threw(text) => {
-            let status = if text.contains("out of memory") {
-                CodeStatus::MemoryLimit
-            } else if text.starts_with("SyntaxError") {
-                CodeStatus::SyntaxError
-            } else {
-                CodeStatus::Error
-            };
-            (status, Some(text), None, None)
-        }
+    let answer = match ended {
+        Ended::Answered(a) => a,
+        Ended::Threw(t) => Answer { threw: Some(t), ..Answer::default() },
+        // Code that never yields: the module's own race could not fire.
+        Ended::TimedOut => Answer { error: Some("Execution timed out".into()), ..Answer::default() },
         Ended::Cancelled => unreachable!(),
     };
-    let render = Context::full(&rt).map_err(|e| format!("Couldn't start the code sandbox: {e}."))?;
-    let input = json!({
-        "threw": threw,
+    // The code tool's host cannot send a result JSON refuses (the AI SDK throws there, and the
+    // agent's turn fails): the model is told instead.
+    let (error, unserializable) = match (&answer.unserializable, setup.format) {
+        (Some(why), CodeFormat::CodeTool) => (Some(why.clone()), None),
+        (why, _) => (answer.error.clone(), why.clone()),
+    };
+    let budget = |b: Option<(i64, i64)>| b.map(|(chars, tokens)| json!({"maxChars": chars, "maxTokens": tokens}));
+    let mut input = json!({
+        "threw": answer.threw.as_ref().map(|t| json!({"name": t.name, "message": t.message})),
         "error": error,
-        "resultJson": result,
-        "logs": logs,
-        "maxChars": limits.budget.map(|b| b.0),
-        "maxTokens": limits.budget.map(|b| b.1).unwrap_or(6000),
+        "resultJson": answer.result_json,
+        "logs": answer.logs,
+        "resultBudget": budget(limits.budget),
+        "logsBudget": budget(limits.logs_budget),
     });
-    let rendered: Result<String, String> = render.with(|ctx| {
-        for src in [CLOUDFLARE, HELPERS] {
-            ctx.eval::<(), _>(src).map_err(|e| describe(&ctx, e))?;
+    let rendered = match setup.format {
+        CodeFormat::CodeTool => util::render("render", &input)?,
+        CodeFormat::Runtime => {
+            input["executionId"] = json!(execution_id());
+            input["connectors"] = json!(setup.namespaces);
+            input["execution"] = json!(record.unwrap_or(Record { status: "running".into(), error: None }));
+            input["unserializable"] = json!(unserializable);
+            util::render("renderRuntime", &input)?
         }
-        let helpers: Object = ctx.eval("__stellarator").map_err(|e| describe(&ctx, e))?;
-        let f: Function = helpers.get("render").map_err(|e| describe(&ctx, e))?;
-        f.call::<_, String>((input.to_string(),)).map_err(|e| describe(&ctx, e))
-    });
-    let rendered: Value = serde_json::from_str(&rendered?).map_err(|e| e.to_string())?;
-    let error_text = error.or_else(|| threw.clone());
+    };
+    let failed_record = rendered["error"].as_str().map(str::to_string);
+    let error_text = match setup.format {
+        CodeFormat::CodeTool => error.or_else(|| answer.threw.as_ref().map(|t| format!("{}: {}", t.name, t.message))),
+        CodeFormat::Runtime => failed_record,
+    };
+    let status = match (&answer.threw, error_text.as_deref()) {
+        (Some(t), _) if t.message.starts_with("Failed to start Worker:") => CodeStatus::SyntaxError,
+        (_, None) => CodeStatus::Ok,
+        (_, Some(e)) if e.contains("Execution timed out") => CodeStatus::Timeout,
+        (_, Some(e)) if e.contains("out of memory") => CodeStatus::MemoryLimit,
+        (_, Some(_)) => CodeStatus::Error,
+    };
     Ok(Outcome {
         normalized: Some(normalized),
         status,
         content: rendered["content"].as_str().unwrap_or_default().to_string(),
         is_error: rendered["isError"].as_bool().unwrap_or(true),
         truncated: rendered["truncated"].as_bool().unwrap_or(false),
-        result,
+        result: if error_text.is_none() { answer.result_json } else { None },
         error: error_text,
-        logs,
+        logs: answer.logs,
     })
-}
-
-/// Cloudflare's harness (the generated `executor.js` module's `evaluate`), as a function of the
-/// dispatchers, the log list and the codec functions.
-fn harness(code: &str, namespaces: &[String], timeout_ms: u64) -> String {
-    let mut lines: Vec<String> = vec![
-        "(async function evaluate(__dispatchers, __logs, __stringifyForCodemode, __parseForCodemode) {".into(),
-        "    console.log = (...a) => { __logs.push(a.map(String).join(\" \")); };".into(),
-        "    console.warn = (...a) => { __logs.push(\"[warn] \" + a.map(String).join(\" \")); };".into(),
-        "    console.error = (...a) => { __logs.push(\"[error] \" + a.map(String).join(\" \")); };".into(),
-    ];
-    for ns in namespaces {
-        lines.push(format!(
-            "    const {ns} = new Proxy({{}}, {{\n      get: (target, toolName) => {{\n        if (Object.prototype.hasOwnProperty.call(target, toolName)) return target[toolName];\n        if (typeof toolName !== \"string\") return undefined;\n        return async (...args) => {{\n          const resJson = await __dispatchers.{ns}.call(String(toolName), __stringifyForCodemode(args));\n          const data = __parseForCodemode(resJson);\n          if (data.error) throw new Error(data.error);\n          return data.result;\n        }};\n      }}\n    }});"
-        ));
-    }
-    lines.extend([
-        String::new(),
-        "    try {".into(),
-        "      const result = await Promise.race([".into(),
-        "        (".into(),
-        code.to_string(),
-        ")(),".into(),
-        format!("        new Promise((_, reject) => setTimeout(() => reject(new Error(\"Execution timed out\")), {timeout_ms}))"),
-        "      ]);".into(),
-        "      return { result, logs: __logs };".into(),
-        "    } catch (err) {".into(),
-        "      return { result: undefined, error: err.message, logs: __logs };".into(),
-        "    }".into(),
-        "})".into(),
-    ]);
-    lines.join("\n")
 }
 
 struct Timers {
     due: HashMap<u32, Instant>,
 }
 
+/// The message workerd gives a Worker that does not parse, from QuickJS's SyntaxError: its text
+/// and, when the engine names one, its place in `executor.js`.
+fn failed_to_start(ctx: &Ctx<'_>, error: rquickjs::Error) -> Thrown {
+    let mut message = error.to_string();
+    let mut at = String::new();
+    if matches!(error, rquickjs::Error::Exception) {
+        let exc = ctx.catch();
+        if let Some(s) = exc.as_string().and_then(|s| s.to_string().ok()) {
+            message = s;
+        }
+        if let Some(obj) = exc.as_object() {
+            let name: String = obj.get("name").unwrap_or_else(|_| "SyntaxError".to_string());
+            let text: String = obj.get("message").unwrap_or_default();
+            message = format!("{name}: {text}");
+            let line: Option<u32> = obj.get("lineNumber").ok();
+            let column: Option<u32> = obj.get("columnNumber").ok();
+            let stack: Option<String> = obj.get("stack").ok();
+            let place = match (line, column) {
+                (Some(l), Some(c)) => Some((l, c)),
+                // QuickJS names the place in the stack: "    at executor.js:82:24".
+                _ => stack.as_deref().and_then(|s| {
+                    let rest = s.lines().find_map(|l| l.trim().strip_prefix("at executor.js:"))?;
+                    let mut parts = rest.trim_end_matches(')').split(':');
+                    Some((parts.next()?.parse().ok()?, parts.next().and_then(|c| c.parse().ok()).unwrap_or(0)))
+                }),
+            };
+            if let Some((l, c)) = place {
+                let line = l + WORKERD_LINE_OFFSET;
+                at = if c > 1 { format!("\n  at executor.js:{line}:{}", c - 1) } else { format!("\n  at executor.js:{line}") };
+            }
+        }
+    }
+    Thrown { name: "Error".into(), message: format!("Failed to start Worker:\nUncaught {message}{at}") }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_code<'js>(
     ctx: &Ctx<'js>,
-    normalized: &str,
-    namespaces: &[String],
+    module: &str,
+    providers: &[String],
+    connectors: &[String],
+    runtime_format: bool,
     limits: &Limits,
+    started: Instant,
     hard_deadline: Instant,
     ev_tx: &tokio::sync::mpsc::UnboundedSender<Event>,
     reply_rx: &mpsc::Receiver<Reply>,
     cancel: &AtomicBool,
     armed: &AtomicBool,
     interrupted: &AtomicBool,
-) -> (Ended, Vec<String>) {
+    exited: &Arc<parking_lot::Mutex<Option<i64>>>,
+) -> (Ended, Option<Record>) {
     let timers = Rc::new(RefCell::new(Timers { due: HashMap::new() }));
     let setup = || -> rquickjs::Result<Object<'js>> {
         let host = Object::new(ctx.clone())?;
@@ -484,62 +656,100 @@ fn run_code<'js>(
                 t.borrow_mut().due.remove(&(id as u32));
             })?,
         )?;
-        host.set("namespaces", namespaces.to_vec())?;
-        let prelude: Function = ctx.eval(SANDBOX)?;
+        host.set("url", Function::new(ctx.clone(), crate::url::op)?)?;
+        host.set(
+            "random",
+            Function::new(ctx.clone(), |n: f64| {
+                let mut bytes = vec![0u8; (n.max(0.0) as usize).min(65536)];
+                let _ = getrandom::fill(&mut bytes);
+                bytes
+            })?,
+        )?;
+        host.set("now", Function::new(ctx.clone(), move || started.elapsed().as_secs_f64() * 1000.0)?)?;
+        let exit = exited.clone();
+        host.set(
+            "exit",
+            Function::new(ctx.clone(), move |code: f64| {
+                exit.lock().get_or_insert(code as i64);
+            })?,
+        )?;
+        let config = Object::new(ctx.clone())?;
+        config.set("runtime", runtime_format)?;
+        config.set("providers", providers.to_vec())?;
+        // Where the runtime's codemode.step calls its function (for the error it throws without one).
+        let step_line = module.lines().position(|l| l.trim() == "const value = await fn();").map_or(0, |i| i as u32 + 1);
+        config.set("stepLine", step_line)?;
+        config.set("connectors", connectors.to_vec())?;
+        host.set("config", config)?;
+        let prelude: Function = ctx.eval(PRELUDE)?;
         prelude.call((host,))
     };
     let helpers = match setup() {
         Ok(h) => h,
-        Err(e) => return (Ended::Threw(describe(ctx, e)), Vec::new()),
+        Err(e) => return (Ended::Threw(Thrown { name: "Error".into(), message: describe(ctx, e) }), None),
     };
-    let logs_of = |helpers: &Object<'js>| -> Vec<String> {
-        helpers
-            .get::<_, Vec<Coerced<String>>>("logs")
-            .map(|l| l.into_iter().map(|c| c.0).collect())
-            .unwrap_or_default()
-    };
-    let timeout_ms = limits.timeout.as_millis().min(u128::from(u32::MAX)) as u64;
-    let evaluate: Function = match ctx.eval(harness(normalized, namespaces, timeout_ms)) {
-        Ok(f) => f,
-        Err(e) => {
-            let text = describe(ctx, e);
-            armed.store(false, Ordering::SeqCst);
-            if interrupted.load(Ordering::SeqCst) {
-                return (if cancel.load(Ordering::SeqCst) { Ended::Cancelled } else { Ended::TimedOut }, Vec::new());
-            }
-            return (Ended::Threw(text), Vec::new());
+    let record_of = |helpers: &Object<'js>| -> Option<Record> {
+        if !runtime_format {
+            return None;
         }
+        let f: Function = helpers.get("execution").ok()?;
+        serde_json::from_str(&f.call::<_, String>(()).ok()?).ok()
     };
-    let get = |k: &str| helpers.get::<_, JsValue>(k).unwrap_or_else(|_| JsValue::new_undefined(ctx.clone()));
-    let promise: rquickjs::Result<Promise> =
-        evaluate.call((get("dispatchers"), get("logs"), get("stringify"), get("parse")));
     let stopped = |interrupted: &AtomicBool| -> Option<Ended> {
         if cancel.load(Ordering::SeqCst) {
             return Some(Ended::Cancelled);
+        }
+        if let Some(code) = *exited.lock() {
+            // workerd cancels the request: the executor's call fails with this.
+            let message = format!("The Node.js process.exit({code}) API was called. Canceling the request.");
+            return Some(Ended::Threw(Thrown { name: "Error".into(), message }));
         }
         if interrupted.load(Ordering::SeqCst) || Instant::now() > hard_deadline {
             return Some(Ended::TimedOut);
         }
         None
     };
-    let promise = match promise {
+    // Load the module (a SyntaxError is workerd's "Failed to start Worker"), then call
+    // `new CodeExecutor(ctx, env).evaluate(__dispatchers, __connectors)`.
+    let declared = match Module::declare(ctx.clone(), "executor.js", module) {
+        Ok(m) => m,
+        Err(e) => {
+            armed.store(false, Ordering::SeqCst);
+            if let Some(ended) = stopped(interrupted) {
+                return (ended, None);
+            }
+            return (Ended::Threw(failed_to_start(ctx, e)), None);
+        }
+    };
+    let start = || -> rquickjs::Result<Promise<'js>> {
+        let (evaluated, loaded) = declared.eval()?;
+        while ctx.execute_pending_job() {}
+        if let Some(Err(e)) = loaded.result::<JsValue>() {
+            return Err(e);
+        }
+        let class: JsValue = evaluated.get("default")?;
+        let run: Function = ctx.eval("(C, d, c) => new C({}, {}).evaluate(d, c)")?;
+        run.call((class, helpers.get::<_, JsValue>("dispatchers")?, helpers.get::<_, JsValue>("connectors")?))
+    };
+    let promise = match start() {
         Ok(p) => p,
         Err(e) => {
-            let text = describe(ctx, e);
+            let thrown = Thrown { name: "Error".into(), message: describe(ctx, e) };
             armed.store(false, Ordering::SeqCst);
-            let ended = stopped(interrupted).unwrap_or(Ended::Threw(text));
-            return (ended, logs_of(&helpers));
+            return (stopped(interrupted).unwrap_or(Ended::Threw(thrown)), record_of(&helpers));
         }
     };
     let deliver: Option<Function> = helpers.get("deliver").ok();
     let fire: Option<Function> = helpers.get("fire").ok();
+    let mut settled_at = None;
     let ended = loop {
         while ctx.execute_pending_job() {}
         if let Some(e) = stopped(interrupted) {
             break e;
         }
         if promise.state() != PromiseState::Pending {
-            break settled(ctx, &promise, &helpers);
+            settled_at = Some(());
+            break Ended::Answered(Answer::default());
         }
         let now = Instant::now();
         let next_timer = timers.borrow().due.values().min().copied();
@@ -569,30 +779,38 @@ fn run_code<'js>(
         }
     };
     armed.store(false, Ordering::SeqCst);
-    // The code may have used all its memory: make room to read the logs.
+    // The code may have used all its memory: make room to read the outcome.
     unsafe {
         let rt = rquickjs::qjs::JS_GetRuntime(ctx.as_raw().as_ptr());
         rquickjs::qjs::JS_SetMemoryLimit(rt, (limits.memory_bytes + RENDER_MEMORY) as _);
     }
-    let logs = logs_of(&helpers);
-    (ended, logs)
+    let record = record_of(&helpers);
+    let ended = if settled_at.is_some() { settled(ctx, &promise, &helpers) } else { ended };
+    (ended, record)
 }
 
-/// The harness's answer, `{result, error?, logs}`, or the executor's failure when it rejected.
+/// The module's answer as js/sandbox.js reads it, or the executor's failure when it rejected.
 fn settled<'js>(ctx: &Ctx<'js>, promise: &Promise<'js>, helpers: &Object<'js>) -> Ended {
+    let read = |name: &str, value: JsValue<'js>| -> Result<String, String> {
+        let f: Function = helpers.get(name).map_err(|e| describe(ctx, e))?;
+        f.call::<_, String>((value,)).map_err(|e| describe(ctx, e))
+    };
+    let failed = |message: String| Ended::Threw(Thrown { name: "Error".into(), message });
     match promise.result::<JsValue>() {
-        Some(Ok(answer)) => {
-            let read = || -> rquickjs::Result<(Option<String>, Option<String>)> {
-                let outcome: Function = helpers.get("outcome")?;
-                let o: Object = outcome.call((answer,))?;
-                Ok((o.get("result")?, o.get("error")?))
-            };
-            match read() {
-                Ok((result, error)) => Ended::Returned { result, error },
-                Err(e) => Ended::Threw(describe(ctx, e)),
+        Some(Ok(answer)) => match read("outcome", answer).and_then(|json| serde_json::from_str::<Answer>(&json).map_err(|e| e.to_string())) {
+            Ok(mut a) => match a.threw.take() {
+                Some(t) => Ended::Threw(t),
+                None => Ended::Answered(a),
+            },
+            Err(e) => failed(e),
+        },
+        Some(Err(_)) => {
+            let thrown = ctx.catch();
+            match read("rejection", thrown).and_then(|json| serde_json::from_str::<Thrown>(&json).map_err(|e| e.to_string())) {
+                Ok(t) => Ended::Threw(t),
+                Err(e) => failed(e),
             }
         }
-        Some(Err(e)) => Ended::Threw(describe(ctx, e)),
-        None => Ended::Threw("The execution did not finish.".into()),
+        None => failed("The execution did not finish.".into()),
     }
 }

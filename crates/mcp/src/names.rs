@@ -15,6 +15,8 @@ pub struct Selected {
     pub name: String,
     pub transport: McpTransport,
     pub tools: Vec<McpTool>,
+    /// The server's `instructions`, from the check that listed the tools.
+    pub instructions: Option<String>,
 }
 
 /// True when `name` can be sent as a function name.
@@ -110,7 +112,7 @@ mod tests {
     }
 
     fn sel(id: i64, name: &str, tools: &[&str]) -> Selected {
-        Selected { server_id: id, name: name.into(), transport: McpTransport::Http, tools: tools.iter().map(|t| tool(t)).collect() }
+        Selected { server_id: id, name: name.into(), transport: McpTransport::Http, tools: tools.iter().map(|t| tool(t)).collect(), instructions: None }
     }
 
     #[test]

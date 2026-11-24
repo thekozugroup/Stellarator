@@ -8,14 +8,19 @@ rust-version.workspace = true
 
 [dependencies]
 futures = "0.3.34"
+# The sandbox's crypto.getRandomValues and crypto.randomUUID, and the runtime format's execution ids.
+getrandom = "0.3.4"
 parking_lot = "0.12.5"
 # QuickJS-NG, embedded: no file system or network unless given; interrupt handler and memory limit.
-rquickjs = { version = "0.14.0", default-features = false, features = ["std"] }
+# `loader`: the executor module's import of cloudflare:workers, and the answer to import().
+rquickjs = { version = "0.14.0", default-features = false, features = ["std", "loader"] }
 serde = { version = "1.0.229", features = ["derive"] }
 # `preserve_order`: schemas reach the type generator with their properties in order.
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 stellarator-api = { version = "0.4.0", path = "../api" }
 tokio = { version = "1.53.3", features = ["sync", "time", "macros", "rt"] }
+# The WHATWG URL parser behind the sandbox's URL class.
+url = "2.5.8"
 
 [dev-dependencies]
 tokio = { version = "1.53.3", features = ["full"] }

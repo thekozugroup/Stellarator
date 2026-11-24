@@ -190,6 +190,17 @@ pub fn plan(model: &str, body: &Value, rng: &mut fastrand::Rng) -> Plan {
         None => Vec::new(),
     };
     let head: String = prompt.split_whitespace().take(12).collect::<Vec<_>>().join(" ");
+    // The durable runtime's tool: one execution per request (search, describe, call), then the answer.
+    if let Some(connectors) = crate::codemodel::runtime_connectors(&tools) {
+        if let Some((code, reasoning)) = crate::codemodel::write_runtime_code(&connectors, &prompt, &results, hash(&prompt), model == "mock-tools-loop") {
+            let arguments = if prompt.contains("badargs") && results.is_empty() {
+                "{\"code\": \"unterminated".to_string()
+            } else {
+                json!({ "code": code }).to_string()
+            };
+            return Plan::Calls { reasoning, calls: vec![Call { id: call_id(rng), name: tools[0].0.clone(), arguments }] };
+        }
+    }
     let wants_calls = !tools.is_empty() && (model == "mock-tools-loop" || results.is_empty());
     if !wants_calls {
         if results.is_empty() {

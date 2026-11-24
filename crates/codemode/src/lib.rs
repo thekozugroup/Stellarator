@@ -1,34 +1,41 @@
 //! Code mode as Cloudflare's `@cloudflare/codemode` 0.5.6 defines it (cloudflare/agents, commit
 //! 4116a8bdf97660c8e79a923b6aec140256282a5d): the model gets one tool whose input is
 //! `{"code": string}`; the code is a JavaScript async arrow function that calls the run's MCP tools
-//! through typed namespaces; it runs in a sandbox, and only its result goes back to the model.
+//! through namespaces; it runs in a sandbox, and only its result goes back to the model.
 //!
-//! - [`code_tool`]: the code tool's definition (`createCodeTool`'s description with the types
-//!   `generateTypes` writes) and the namespaces' methods mapped to MCP tools
-//! - [`execute`]: one execution in a fresh QuickJS context, with Cloudflare's executor harness,
-//!   rendered as the AI SDK sends it to the model
+//! Two formats, Cloudflare's two setups ([`CodeFormat`]): `code_tool` is `createCodeTool` (the
+//! tools' types in the description, `{result, logs}` back), `runtime` is
+//! `createCodemodeRuntime(...).tool()` with one `McpConnector` per server (discovery with
+//! `codemode.search` and `codemode.describe` in the sandbox, `{status, executionId, ...}` back).
+//!
+//! - [`code_tool`]: the code tool's definition and the namespaces' methods mapped to MCP tools
+//! - [`execute`]: one execution in a fresh QuickJS context, running the module Cloudflare's
+//!   executor generates, rendered as the AI SDK sends it to the model
 //! - [`normalize_code`], [`sanitize_tool_name`]: Cloudflare's helpers, run as published
-//! - [`unwrap_mcp_result`]: what the code gets from an MCP tool call
+//! - [`unwrap_mcp_result`]: what the code gets from an MCP tool call (the trace's copy)
+//! - [`resend_arguments`]: the arguments the AI SDK sends back with the next request
 //!
 //! Cloudflare's JavaScript (and acorn, which `normalizeCode` uses) runs as published in QuickJS
-//! (js/cloudflare-codemode.js, js/acorn.js; see js/NOTICE.md), so the formats come from their
-//! code, not from a rewrite.
+//! (js/cloudflare-codemode.js, js/cloudflare-runtime.js, js/acorn.js; see js/NOTICE.md), so the
+//! formats come from their code, not from a rewrite. tests/golden holds the published package's
+//! outputs, and the reference harness that runs it on workerd.
 
 mod mcp;
 mod sandbox;
+mod url;
 mod util;
 
 use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Value};
 use stellarator_api::{
-    CodeMethod, CodeModeOptions, CodeNamespace, CodeNamespaces, CodeToolSnapshot, McpTool, McpTransport,
-    ToolSnapshotServer, ToolSnapshotTool, CODE_MODE_FORMAT,
+    CodeConnector, CodeConnectorTool, CodeFormat, CodeMethod, CodeModeOptions, CodeNamespace, CodeNamespaces, CodeToolSnapshot,
+    McpTool, McpTransport, ToolSnapshotServer, ToolSnapshotTool, CODE_MODE_FORMAT,
 };
 
 pub use mcp::unwrap_mcp_result;
-pub use sandbox::{execute, CallAnswer, Execution, Host, Limits, LATE_CALL_MESSAGE, MAX_CALLS};
-pub use util::{invalid_input, normalize_code, sanitize_tool_name, truncate_result};
+pub use sandbox::{execute, execution_id, CallAnswer, Execution, Host, Limits, Setup, LATE_CALL_MESSAGE, MAX_CALLS};
+pub use util::{invalid_input, json_parse_error, normalize_code, resend_arguments, sanitize_tool_name, truncate_result};
 
 /// The code tool's input schema, as the AI SDK sends `z.object({ code: z.string().describe(...) })`.
 pub fn code_parameters() -> Value {
@@ -53,6 +60,8 @@ pub struct SelectedServer {
     pub name: String,
     pub transport: McpTransport,
     pub tools: Vec<McpTool>,
+    /// The `instructions` the server sent when the session was opened.
+    pub instructions: Option<String>,
 }
 
 /// The code tool of a run.
@@ -80,8 +89,171 @@ struct Entry<'a> {
     tool: &'a McpTool,
 }
 
-/// The code tool for `servers` with `options`. Err says which names cannot be used.
+/// What an execution needs from a run's snapshot (see [`execute`]): the format, the tool's name,
+/// the namespaces and, for the `runtime` format, the connectors' descriptions.
+pub fn setup(snapshot: &CodeToolSnapshot, limits: Limits) -> Setup {
+    let descriptions: Vec<Value> = snapshot
+        .connectors
+        .iter()
+        .map(|c| {
+            // As `connector.describe()` returns it: {name, instructions?, descriptors, annotations}.
+            let mut d = serde_json::Map::new();
+            d.insert("name".into(), json!(c.name));
+            if let Some(i) = &c.instructions {
+                d.insert("instructions".into(), json!(i));
+            }
+            let mut descriptors = serde_json::Map::new();
+            for t in &c.tools {
+                let mut one = serde_json::Map::new();
+                if let Some(desc) = &t.description {
+                    one.insert("description".into(), json!(desc));
+                }
+                one.insert("inputSchema".into(), t.input_schema.clone());
+                if let Some(out) = &t.output_schema {
+                    one.insert("outputSchema".into(), out.clone());
+                }
+                descriptors.insert(t.name.clone(), Value::Object(one));
+            }
+            d.insert("descriptors".into(), Value::Object(descriptors));
+            d.insert("annotations".into(), json!({}));
+            Value::Object(d)
+        })
+        .collect();
+    Setup {
+        format: snapshot.kind,
+        tool_name: snapshot.tool_name.clone(),
+        namespaces: snapshot.namespaces.iter().map(|n| n.name.clone()).collect(),
+        descriptions: Value::Array(descriptions).to_string().into(),
+        limits,
+    }
+}
+
+/// The code tool for `servers` with `options`, in the format the options name. Err says which
+/// names cannot be used.
 pub fn code_tool(servers: &[SelectedServer], options: &CodeModeOptions) -> Result<CodeTool, String> {
+    match options.format {
+        CodeFormat::CodeTool => code_tool_format(servers, options),
+        CodeFormat::Runtime => runtime_format(servers, options),
+    }
+}
+
+fn tool_descriptor(tool: &McpTool) -> Value {
+    let mut d = serde_json::Map::new();
+    if let Some(desc) = &tool.description {
+        d.insert("description".into(), json!(desc));
+    }
+    d.insert("inputSchema".into(), tool.input_schema.clone());
+    if let Some(out) = &tool.output_schema {
+        d.insert("outputSchema".into(), out.clone());
+    }
+    Value::Object(d)
+}
+
+/// The `runtime` format: `createCodemodeRuntime({connectors}).tool()` with one `McpConnector` per
+/// server. The description names the connectors; their tools are found in the sandbox.
+fn runtime_format(servers: &[SelectedServer], options: &CodeModeOptions) -> Result<CodeTool, String> {
+    let mut names: Vec<String> = Vec::new();
+    for s in servers {
+        let ns = sanitize_tool_name(&s.name);
+        if ns == "codemode" {
+            return Err(format!(
+                "The server \"{}\" can't be a connector in the runtime format: `codemode` is the runtime's own namespace. Rename \
+                 the server.",
+                s.name
+            ));
+        }
+        if RESERVED.contains(&ns.as_str()) {
+            return Err(format!(
+                "The server \"{}\" can't be a connector in code mode: `{ns}` is a name the sandbox needs. Rename the server.",
+                s.name
+            ));
+        }
+        if let Some(other) = servers.iter().zip(&names).find(|(_, n)| **n == ns).map(|(o, _)| &o.name) {
+            return Err(format!("The servers \"{other}\" and \"{}\" would both be the connector `{ns}`. Rename one.", s.name));
+        }
+        names.push(ns);
+    }
+    if servers.iter().all(|s| s.tools.is_empty()) {
+        return Err("The selected servers offer no tools. Check them, or pick other servers.".into());
+    }
+    // Hints are keyed by the servers' names, as given or as their connectors are named.
+    let mut hints = serde_json::Map::new();
+    for (key, hint) in &options.connector_hints {
+        let ns = sanitize_tool_name(key);
+        if !names.contains(&ns) {
+            return Err(format!(
+                "connector_hints names \"{key}\", which is not one of the run's servers ({}).",
+                servers.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        hints.insert(ns, json!(hint));
+    }
+    let spec = json!({
+        "description": options.description,
+        "hints": hints,
+        "connectors": servers.iter().zip(&names).map(|(s, ns)| json!({
+            "name": ns,
+            "instructions": if options.server_instructions { s.instructions.as_deref().filter(|i| !i.is_empty()) } else { None },
+            "tools": s.tools.iter().map(|t| json!([t.name, tool_descriptor(t)])).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    });
+    let built: Value = serde_json::from_str(&util::runtime_tool_json(spec.to_string())?).map_err(|e| e.to_string())?;
+    if let Some(clashes) = built["clashes"].as_array().filter(|c| !c.is_empty()) {
+        let list: Vec<&str> = clashes.iter().filter_map(Value::as_str).collect();
+        return Err(format!(
+            "These tools would have the same method name in code mode: {}. Leave one of each out.",
+            list.join("; ")
+        ));
+    }
+    let mut namespaces = Vec::new();
+    let mut connectors = Vec::new();
+    let mut snapshot_servers = Vec::new();
+    for ((s, ns), out) in servers.iter().zip(&names).zip(built["connectors"].as_array().into_iter().flatten()) {
+        let by_key: HashMap<&str, &McpTool> = s.tools.iter().map(|t| (t.name.as_str(), t)).collect();
+        let (mut methods, mut tools, mut listed) = (Vec::new(), Vec::new(), Vec::new());
+        for m in out["methods"].as_array().into_iter().flatten() {
+            let (key, name) = (m["key"].as_str().unwrap_or_default(), m["name"].as_str().unwrap_or_default().to_string());
+            let Some(tool) = by_key.get(key) else { continue };
+            let described = &out["description"]["descriptors"][&name];
+            tools.push(CodeConnectorTool {
+                name: name.clone(),
+                description: tool.description.clone(),
+                input_schema: described["inputSchema"].clone(),
+                output_schema: tool.output_schema.clone(),
+            });
+            listed.push(ToolSnapshotTool { name: format!("{ns}.{name}"), server_tool: tool.name.clone() });
+            methods.push(CodeMethod { name, server_id: s.server_id, server: s.name.clone(), tool: tool.name.clone() });
+        }
+        namespaces.push(CodeNamespace { name: ns.clone(), methods });
+        connectors.push(CodeConnector {
+            name: ns.clone(),
+            instructions: out["description"]["instructions"].as_str().map(str::to_string),
+            hint: hints.get(ns).and_then(Value::as_str).map(str::to_string),
+            tools,
+        });
+        snapshot_servers.push(ToolSnapshotServer { server_id: s.server_id, name: s.name.clone(), transport: s.transport, tools: listed });
+    }
+    let definition = json!({"type": "function", "function": {
+        "name": options.tool_name,
+        "description": built["description"],
+        "parameters": built["parameters"],
+    }});
+    Ok(CodeTool {
+        definition,
+        snapshot: CodeToolSnapshot {
+            tool_name: options.tool_name.clone(),
+            types: built["types"].as_str().unwrap_or_default().to_string(),
+            namespaces,
+            format: CODE_MODE_FORMAT.to_string(),
+            kind: CodeFormat::Runtime,
+            connectors,
+        },
+        servers: snapshot_servers,
+    })
+}
+
+/// The `code_tool` format: `createCodeTool`, the tools' types in the description.
+fn code_tool_format(servers: &[SelectedServer], options: &CodeModeOptions) -> Result<CodeTool, String> {
     // The namespaces and their tools, keyed as the tool records Cloudflare's generateTypes reads.
     let mut groups: Vec<(String, Vec<Entry>)> = Vec::new();
     match options.namespaces {
@@ -141,17 +313,7 @@ pub fn code_tool(servers: &[SelectedServer], options: &CodeModeOptions) -> Resul
         "description": options.description,
         "namespaces": groups.iter().map(|(ns, entries)| json!({
             "name": ns,
-            "tools": entries.iter().map(|e| {
-                let mut d = serde_json::Map::new();
-                if let Some(desc) = &e.tool.description {
-                    d.insert("description".into(), json!(desc));
-                }
-                d.insert("inputSchema".into(), e.tool.input_schema.clone());
-                if let Some(out) = &e.tool.output_schema {
-                    d.insert("outputSchema".into(), out.clone());
-                }
-                json!([e.key, Value::Object(d)])
-            }).collect::<Vec<_>>(),
+            "tools": entries.iter().map(|e| json!([e.key, tool_descriptor(e.tool)])).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     });
     let built: Value = serde_json::from_str(&util::code_tool_json(spec.to_string())?).map_err(|e| e.to_string())?;

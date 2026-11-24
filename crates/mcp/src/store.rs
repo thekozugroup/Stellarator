@@ -108,6 +108,8 @@ pub async fn names(db: &SqlitePool) -> sqlx::Result<Vec<String>> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checked {
     pub server_info: Option<String>,
+    /// The server's `instructions` (code mode's runtime format shows them with the connector).
+    pub instructions: Option<String>,
     pub tools: Vec<McpTool>,
 }
 
@@ -116,9 +118,9 @@ pub async fn check(config: &ServerConfig, timeout: Duration) -> Result<Checked, 
     let run = async {
         let conn = Connection::connect(config, timeout).await?;
         let tools = conn.list_tools(timeout).await;
-        let server_info = conn.server_info.clone();
+        let (server_info, instructions) = (conn.server_info.clone(), conn.instructions.clone());
         conn.close().await;
-        Ok(Checked { server_info, tools: tools? })
+        Ok(Checked { server_info, instructions, tools: tools? })
     };
     match tokio::time::timeout(timeout + Duration::from_secs(5), run).await {
         Ok(r) => r,

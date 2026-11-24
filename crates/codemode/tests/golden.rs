@@ -1,10 +1,16 @@
 //! Code mode's helpers against the outputs of Cloudflare's own package: tests/golden/cloudflare.json
 //! holds what @cloudflare/codemode 0.5.6 returns in Node (tests/golden/generate.mjs writes it) for
 //! normalizeCode, sanitizeToolName, the code tool's types and description, and truncateResult.
+//! tests/golden/v8-json.json holds V8's JSON.parse messages (tests/golden/v8-json.mjs).
+//!
+//! What the package does on workerd, tool calls included, is in tests/golden/fixtures and compared
+//! by crates/engine/tests/conformance.rs.
+
+use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
-use stellarator_api::{CodeModeOptions, CodeNamespaces, McpTool, McpTransport, CODE_TOOL_DESCRIPTION};
-use stellarator_codemode::{code_tool, normalize_code, sanitize_tool_name, truncate_result, SelectedServer};
+use stellarator_api::{CodeFormat, CodeModeOptions, CodeNamespaces, McpTool, McpTransport, CODE_TOOL_DESCRIPTION};
+use stellarator_codemode::{code_tool, json_parse_error, normalize_code, resend_arguments, sanitize_tool_name, truncate_result, SelectedServer};
 
 fn golden() -> Value {
     serde_json::from_str(include_str!("golden/cloudflare.json")).unwrap()
@@ -65,6 +71,7 @@ fn servers(spec: &Value) -> (Vec<SelectedServer>, CodeNamespaces) {
             name: name.replace("my_docs", "my-docs"),
             transport: McpTransport::Http,
             tools,
+            instructions: None,
         });
     }
     (out, mode)
@@ -155,6 +162,7 @@ fn names_that_clash_or_shadow_are_refused() {
         name: name.into(),
         transport: McpTransport::Http,
         tools: tools.iter().map(|t| tool(t)).collect(),
+        instructions: None,
     };
     let o = CodeModeOptions::default();
     let err = code_tool(&[server(1, "my-docs", &["a"]), server(2, "my_docs", &["b"])], &o).unwrap_err();
@@ -173,4 +181,109 @@ fn names_that_clash_or_shadow_are_refused() {
     let t = code_tool(&both, &o).unwrap();
     assert_eq!(t.snapshot.namespaces.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), ["github", "docs"]);
     assert!(code_tool(&[server(1, "a", &[])], &o).unwrap_err().contains("no tools"));
+}
+
+#[test]
+fn json_parse_errors_are_worded_as_v8_words_them() {
+    let g: Value = serde_json::from_str(include_str!("golden/v8-json.json")).unwrap();
+    let cases = g["cases"].as_array().unwrap();
+    assert!(cases.len() > 400);
+    for case in cases {
+        let text = case[0].as_str().unwrap();
+        assert_eq!(json_parse_error(text).as_deref(), case[1].as_str(), "JSON.parse({text:?})");
+    }
+    assert_eq!(json_parse_error("not json").as_deref(), Some("Unexpected token 'o', \"not json\" is not valid JSON"));
+    assert_eq!(json_parse_error("{\"a\": 1}"), None);
+}
+
+#[test]
+fn arguments_are_sent_back_as_the_ai_sdk_sends_them() {
+    // A call the code tool accepted: the validated input, `code` alone.
+    assert_eq!(resend_arguments(true, "{ \"code\" : \"async () => 3\", \"note\": \"x\" }"), r#"{"code":"async () => 3"}"#);
+    assert_eq!(resend_arguments(true, "{\"code\": \"a\", \"code\": \"b\"}"), r#"{"code":"b"}"#);
+    assert_eq!(resend_arguments(true, "{\"code\": \"\\u00e9 \\/\"}"), "{\"code\":\"é /\"}");
+    // A refused one: the parsed input when it is an object, an array or null; else {}.
+    assert_eq!(resend_arguments(false, "{\"code\": 5, \"n\": 1.0, \"big\": 12345678901234567890}"), r#"{"code":5,"n":1,"big":12345678901234567000}"#);
+    assert_eq!(resend_arguments(false, "[\"x\"]"), r#"["x"]"#);
+    assert_eq!(resend_arguments(false, "null"), "null");
+    for refused in ["\"a string\"", "42", "true", "{\"code\": \"cut", "", "  ", "not json"] {
+        assert_eq!(resend_arguments(false, refused), "{}", "{refused:?}");
+    }
+}
+
+fn runtime_servers() -> Vec<SelectedServer> {
+    let tool = |name: &str, description: &str, schema: Value, out: Option<Value>| McpTool {
+        name: name.into(),
+        description: Some(description.into()),
+        input_schema: schema,
+        output_schema: out,
+    };
+    vec![
+        SelectedServer {
+            server_id: 1,
+            name: "mock".into(),
+            transport: McpTransport::Http,
+            tools: vec![tool("add", "Add two numbers.", json!({"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}, "required": ["a", "b"]}), None)],
+            instructions: None,
+        },
+        SelectedServer {
+            server_id: 2,
+            name: "issue-tracker".into(),
+            transport: McpTransport::Http,
+            tools: vec![
+                tool("list-issues", "List issues.", json!({"type": "object", "properties": {"limit": {"type": "integer"}}}), Some(json!({"type": "object", "properties": {"total": {"type": "integer"}}}))),
+                tool("delete", "Delete an issue.", json!({}), None),
+            ],
+            instructions: Some("Issue ids are integers.".into()),
+        },
+    ]
+}
+
+#[test]
+fn the_runtime_format_lists_connectors_and_keeps_their_tools() {
+    let options = CodeModeOptions { format: CodeFormat::Runtime, ..CodeModeOptions::default() };
+    let tool = code_tool(&runtime_servers(), &options).unwrap();
+    let f = &tool.definition["function"];
+    // The input schema of the runtime's own tool: no $schema, no description.
+    assert_eq!(
+        tool.definition.to_string().split("\"parameters\":").nth(1).unwrap(),
+        r#"{"type":"object","properties":{"code":{"type":"string"}},"required":["code"],"additionalProperties":false}}}"#
+    );
+    let description = f["description"].as_str().unwrap();
+    assert!(description.starts_with("Execute JavaScript in a sandbox with access to connector SDKs.\n\n## Workflow\n\n1. `const matches = await codemode.search(\"short intent phrase\");`"), "{description}");
+    assert!(description.contains("- The ONLY globals are `mock`, `issue_tracker` and `codemode` (plus standard JavaScript)."), "{description}");
+    assert!(description.ends_with("## Available connectors\n\n- `mock`\n- `issue_tracker`"), "{description}");
+    // The snapshot: the connectors as the runtime describes them, and each method's MCP tool.
+    let s = &tool.snapshot;
+    assert_eq!((s.kind, s.tool_name.as_str()), (CodeFormat::Runtime, "codemode"));
+    assert_eq!(s.namespaces.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), ["mock", "issue_tracker"]);
+    let methods: Vec<(&str, &str)> = s.namespaces[1].methods.iter().map(|m| (m.name.as_str(), m.tool.as_str())).collect();
+    assert_eq!(methods, [("list_issues", "list-issues"), ("delete_", "delete")]);
+    assert_eq!(tool.servers[1].tools[1].name, "issue_tracker.delete_");
+    assert_eq!(s.connectors.len(), 2);
+    assert_eq!((s.connectors[0].instructions.as_deref(), s.connectors[1].instructions.as_deref()), (None, Some("Issue ids are integers.")));
+    // A schema without a type becomes an open object, as a connector's default.
+    assert_eq!(s.connectors[1].tools[1].input_schema, json!({"type": "object"}));
+    assert!(s.types.contains("declare const mock: {") && s.types.contains("Issue ids are integers.\n\ntype ListIssuesInput = {"), "{}", s.types);
+    assert!(s.types.contains("delete_: (input: Delete_Input) => Promise<Delete_Output>;"), "{}", s.types);
+
+    // Hints go next to the names; the servers' instructions can be left out; a description replaces the whole text.
+    let hints: BTreeMap<String, String> = [("issue-tracker".to_string(), "Issues of the project.".to_string())].into();
+    let hinted = code_tool(&runtime_servers(), &CodeModeOptions { connector_hints: hints, server_instructions: false, ..options.clone() }).unwrap();
+    assert!(hinted.definition["function"]["description"].as_str().unwrap().ends_with("- `mock`\n- `issue_tracker` — Issues of the project."));
+    assert_eq!(hinted.snapshot.connectors[1].hint.as_deref(), Some("Issues of the project."));
+    assert_eq!(hinted.snapshot.connectors[1].instructions, None);
+    let custom = code_tool(&runtime_servers(), &CodeModeOptions { description: Some("Run JavaScript.".into()), tool_name: "run_js".into(), ..options.clone() }).unwrap();
+    assert_eq!((custom.definition["function"]["description"].as_str(), custom.definition["function"]["name"].as_str()), (Some("Run JavaScript."), Some("run_js")));
+
+    // Names the runtime cannot take.
+    let unknown: BTreeMap<String, String> = [("github".to_string(), "x".to_string())].into();
+    let err = code_tool(&runtime_servers(), &CodeModeOptions { connector_hints: unknown, ..options.clone() }).unwrap_err();
+    assert!(err.contains("\"github\"") && err.contains("mock, issue-tracker"), "{err}");
+    let mut reserved = runtime_servers();
+    reserved[0].name = "codemode".into();
+    assert!(code_tool(&reserved, &options).unwrap_err().contains("`codemode` is the runtime's own namespace"));
+    let mut clash = runtime_servers();
+    clash[0].name = "issue_tracker".into();
+    assert!(code_tool(&clash, &options).unwrap_err().contains("both be the connector `issue_tracker`"));
 }

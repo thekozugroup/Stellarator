@@ -5,6 +5,7 @@ so stdio servers are refused."""
 from __future__ import annotations
 
 import json
+import re
 import time
 
 import pytest
@@ -214,7 +215,11 @@ def test_run_in_code_mode(api, make_endpoint, make_prompt_set, make_run, make_mc
     assert results[0]["content"].startswith('{"result":"Catalog entry for ')
     assert results[0]["code"]["status"] == "ok" and results[0]["code"]["calls"][0]["tool"] == "lookup"
     assert results[1]["code"]["calls"][0]["is_error"] is True and results[1]["is_error"] is False
-    assert results[2]["content"].startswith("SyntaxError: ") and results[2]["code"]["status"] == "syntax_error"
+    assert results[2]["content"].startswith("Error: Failed to start Worker:\nUncaught SyntaxError: ")
+    assert results[2]["code"]["status"] == "syntax_error" and results[2]["is_error"] is True
+    assert snap["code"]["kind"] == "code_tool" and "connectors" not in snap["code"]
+    # No code settings were sent, so none are stored: the defaults, Cloudflare's createCodeTool.
+    assert "code" not in run["params"]["tools"]
     # Messages: the code tool, the code, and the results the model saw; nothing from the sandbox.
     r = api.get(f"/api/runs/{run['id']}/export", params={"format": "messages", "reasoning": "omit"})
     assert r.status_code == 200
@@ -228,6 +233,93 @@ def test_run_in_code_mode(api, make_endpoint, make_prompt_set, make_run, make_mc
     body = {"endpoint_id": ep["id"], "prompt_set_id": ps["id"], "model": "mock-tools",
             "params": {"tools": {**tools, "code": {"memory_limit_mb": 1}}}}
     assert_error(api.post("/api/runs", json=body), 422, field="params.tools.code.memory_limit_mb")
+
+
+def test_run_in_code_mode_runtime_format(api, make_endpoint, make_prompt_set, make_run, make_mcp, mock_mcp, mock_root):
+    """The durable runtime's tool: the model searches, reads a method's types, then calls it."""
+    ep = make_endpoint()
+    mock = make_mcp(name="mock", transport="http", url=mock_mcp)
+    tracker = make_mcp(name="issue-tracker", transport="http", url=f"{mock_root}/tracker/mcp")
+    ps = make_prompt_set(text="list issues code:plain\nlook up tides code:throw", mapping={"split_mode": "line"})
+    tools = {"servers": [{"server_id": mock["id"]}, {"server_id": tracker["id"]}], "mode": "code",
+             "code": {"format": "runtime", "connector_hints": {"issue-tracker": "Issues of the project."}}}
+    run = make_run(ep["id"], ps["id"], "mock-tools", tools=tools)
+    check(run, RUN)
+    options = run["params"]["tools"]["code"]
+    assert options["format"] == "runtime" and options["max_result_tokens"] is None
+    assert options["connector_hints"] == {"issue-tracker": "Issues of the project."} and "server_instructions" not in options
+    snap = run["tools"]
+    check(snap, TOOL_SNAPSHOT)
+    function = snap["definitions"][0]["function"]
+    assert function["name"] == "codemode"
+    assert function["parameters"] == {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"],
+                                      "additionalProperties": False}
+    assert function["description"].startswith("Execute JavaScript in a sandbox with access to connector SDKs.")
+    assert function["description"].endswith("## Available connectors\n\n- `mock`\n- `issue_tracker` \u2014 Issues of the project.")
+    assert "declare const" not in function["description"]
+    code = snap["code"]
+    assert code["kind"] == "runtime" and [n["name"] for n in code["namespaces"]] == ["mock", "issue_tracker"]
+    connectors = code["connectors"]
+    assert [c["name"] for c in connectors] == ["mock", "issue_tracker"]
+    assert connectors[0]["instructions"] is None and "hint" not in connectors[0]
+    assert connectors[1]["instructions"].startswith("A mock issue tracker.") and connectors[1]["hint"] == "Issues of the project."
+    assert connectors[1]["tools"][0]["name"] == "list_issues" and "output_schema" in connectors[1]["tools"][0]
+
+    done = wait_run(api, run["id"])
+    # Three executions per sample; only the last one of each calls an MCP tool, and one of those fails before it does.
+    assert done["done"] == 2 and done["failed"] == 0 and done["tool_calls"] == 6 and done["inner_tool_calls"] == 2
+    traces = {}
+    for item in list_samples(api, run["id"]):
+        sample = api.get(f"/api/samples/{item['id']}").json()
+        check(sample, SAMPLE)
+        check_trace(sample["trace"])
+        assert [m["role"] for m in sample["trace"]] == ["assistant", "tool"] * 3 + ["assistant"]
+        traces[sample["prompt_idx"]] = sample["trace"]
+
+    def output(message):
+        value = json.loads(message["content"])
+        assert re.fullmatch(r"exec_\d{16}_[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", value.pop("executionId"))
+        return value
+
+    listed = traces[0]
+    assert json.loads(listed[0]["tool_calls"][0]["arguments"]) == {"code": 'async () => codemode.search("list issues")'}
+    found = output(listed[1])
+    assert found["status"] == "completed" and found["result"]["results"][0]["path"] == "issue_tracker.list_issues"
+    assert listed[1]["code"]["calls"] == []
+    assert json.loads(listed[2]["tool_calls"][0]["arguments"]) == {"code": 'async () => codemode.describe("issue_tracker.list_issues")'}
+    described = output(listed[3])["result"]
+    assert described["kind"] == "method" and described["types"].startswith("type ListIssuesInput = {")
+    result = output(listed[5])
+    assert result["status"] == "completed" and len(result["result"]["issues"]) == 3 and "logs" not in result
+    call = listed[5]["code"]["calls"][0]
+    assert (call["method"], call["server"], call["tool"], call["arguments"]) == ("issue_tracker.list_issues", "issue-tracker", "list-issues", {"limit": 3})
+    failed = traces[1][5]
+    assert output(failed) == {"status": "error", "error": 'Code execution failed: Tool "missing_tool" not found on mock'}
+    assert failed["is_error"] is True and failed["code"]["status"] == "error"
+
+    # Exports hold what the model saw: the runtime's tool, the code of each execution, the results as sent.
+    r = api.get(f"/api/runs/{run['id']}/export", params={"format": "messages", "reasoning": "omit"})
+    assert r.status_code == 200
+    rec = json.loads(r.text.splitlines()[0])
+    assert rec["tools"] == snap["definitions"]
+    assert [m["role"] for m in rec["messages"]] == ["user"] + ["assistant", "tool"] * 3 + ["assistant"]
+    assert rec["messages"][1]["tool_calls"][0]["function"]["arguments"] == {"code": 'async () => codemode.search("list issues")'}
+    assert rec["messages"][2]["content"] == listed[1]["content"]
+    share = json.loads(api.get(f"/api/runs/{run['id']}/export", params={"format": "sharegpt", "reasoning": "omit"}).text.splitlines()[0])
+    assert [t["from"] for t in share["conversations"]] == ["human"] + ["function_call", "observation"] * 3 + ["gpt"]
+    raw = json.loads(api.get(f"/api/runs/{run['id']}/export", params={"format": "raw"}).text.splitlines()[0])
+    assert raw["trace"][5]["code"]["calls"][0]["method"] == "issue_tracker.list_issues"
+
+    # Settings the runtime format refuses.
+    base = {"endpoint_id": ep["id"], "prompt_set_id": ps["id"], "model": "mock-tools"}
+
+    def post(code):
+        return api.post("/api/runs", json={**base, "params": {"tools": {**tools, "code": code}}})
+
+    assert_error(post({"format": "runtime", "namespaces": "codemode"}), 422, field="params.tools.code.namespaces")
+    assert_error(post({"format": "code_tool", "connector_hints": {"mock": "x"}}), 422, field="params.tools.code.connector_hints")
+    assert_error(post({"format": "runtime", "connector_hints": {"github": "x"}}), 422)
+    assert post({"format": "durable"}).status_code == 422
 
 
 def test_run_with_tools_validation(api, make_endpoint, make_prompt_set, make_mcp, mock_mcp):

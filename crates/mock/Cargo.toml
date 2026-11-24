@@ -19,7 +19,9 @@ fastrand = "2.5.0"
 futures = "0.3.34"
 # The official Rust MCP SDK, for the mock MCP server (streamable HTTP and stdio).
 rmcp = { version = "3.11.0", default-features = false, features = ["server", "transport-streamable-http-server", "transport-io"] }
-serde_json = "1.0.154"
+# `preserve_order`: the MCP servers' tool schemas list their properties in the order written here,
+# however the workspace is built (another crate turning the feature on must not change them).
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
 tokio = { version = "1.53.3", features = ["full"] }
 
 [dev-dependencies]

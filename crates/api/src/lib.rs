@@ -647,7 +647,8 @@ pub struct CodeModeOptions {
     #[serde(default)]
     pub max_result_tokens: Option<i64>,
     /// The same budget in characters; overrides `max_result_tokens * 4` when set (1,000 to
-    /// 4,000,000), as `truncateResult`'s `maxChars` does.
+    /// 4,000,000), as `truncateResult`'s `maxChars` does. In the `runtime` format, setting it
+    /// alone turns truncation on (`truncateResult(r, {maxChars})`).
     #[serde(default)]
     pub max_result_chars: Option<i64>,
     /// Memory one execution may use, in MB (8 to 1024).
@@ -676,6 +677,7 @@ impl CodeModeOptions {
         let tokens = match (self.max_result_tokens, self.format) {
             (Some(t), _) => t,
             (None, CodeFormat::CodeTool) => CODE_RESULT_TOKENS,
+            (None, CodeFormat::Runtime) if self.max_result_chars.is_some() => CODE_RESULT_TOKENS,
             (None, CodeFormat::Runtime) => 0,
         };
         (tokens > 0).then(|| (self.max_result_chars.unwrap_or(tokens * 4), tokens))
@@ -1128,8 +1130,9 @@ pub struct CodeExecution {
     /// The value the code returned, as JSON text, before any truncation; null when it returned
     /// undefined or failed.
     pub result: Option<String>,
-    /// Why it failed: the error's message (in the `code_tool` format, the text after
-    /// `Code execution failed: ` in what the model saw); null when it returned.
+    /// Why it failed; null when it returned. In the `code_tool` format, the error's message (the
+    /// text after `Code execution failed: ` in what the model saw); in the `runtime` format, the
+    /// result's `error` as the model saw it.
     pub error: Option<String>,
     pub latency_ms: i64,
 }
@@ -1654,6 +1657,8 @@ mod tests {
         assert_eq!((r.result_budget(), r.logs_budget()), (Some((1000, 500)), Some((24000, 6000))));
         let zero: CodeModeOptions = serde_json::from_value(serde_json::json!({"max_result_tokens": 0})).unwrap();
         assert_eq!(zero.result_budget(), None);
+        let chars: CodeModeOptions = serde_json::from_value(serde_json::json!({"format": "runtime", "max_result_chars": 2000})).unwrap();
+        assert_eq!(chars.result_budget(), Some((2000, 6000)));
         // Defaults stay out of the stored settings; a snapshot made before the runtime format reads as code_tool.
         let saved = serde_json::to_value(&o).unwrap();
         assert!(saved.get("connector_hints").is_none() && saved.get("server_instructions").is_none());
