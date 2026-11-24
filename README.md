@@ -308,9 +308,10 @@ crates/import     Hugging Face (Parquet range reads), file and pasted-text impor
 crates/export     Dataset formats, JSONL/JSON/Parquet/CSV writers, Hugging Face Hub push
 crates/server     HTTP routes and the embedded web UI; the stellarator-server binary
 crates/mock       A fake OpenAI-compatible server and MCP server, for trying it out and for tests
+crates/shell      Sandboxed shell commands and file edits in a per-sample workspace (not used by runs yet; docs/shell-sandbox.md)
 tests/contract/   Black-box HTTP tests for the API
 store/            Store listings, screenshots and the scripts that make them
-docs/             Desktop app, Docker, tools, images
+docs/             Desktop app, Docker, tools, the shell sandbox, images
 ```
 
 [PRODUCT.md](PRODUCT.md) says who the tool is for; [DESIGN.md](DESIGN.md) records its visual system.

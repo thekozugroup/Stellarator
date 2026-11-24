@@ -161,6 +161,7 @@
   (subpath "/System/Volumes/Preboot/Cryptexes")
   (subpath "/Library/Apple")
   (subpath "/Library/Developer/CommandLineTools")
+  (subpath "/Library/Developer/PrivateFrameworks")
   (subpath "/Applications/Xcode.app/Contents/Developer")
   (subpath "/Library/Frameworks")
   (subpath "/Library/Java")

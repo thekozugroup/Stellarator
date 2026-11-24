@@ -149,10 +149,10 @@ impl Tracker {
                 return;
             }
             if poll.revents & libc::POLLIN != 0 {
-                if let Some(request) = self.receive() {
-                    let answer = self.decide(&request);
-                    self.respond(request.id, answer);
-                }
+                // A call whose process was killed before it was received is gone: come back later.
+                let Some(request) = self.receive() else { return };
+                let answer = self.decide(&request);
+                self.respond(request.id, answer);
                 // More may be waiting; do not sleep again.
                 timeout = 0;
                 continue;

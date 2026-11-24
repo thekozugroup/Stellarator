@@ -691,6 +691,10 @@ async fn report() {
         "date; ls -la /dev/null; df -h . | tail -n 1; ulimit -a",
         "echo a > one; ln one two; echo \"hard link inside: $?\"; mkfifo p; echo \"mkfifo: $?\"; ls -l",
         "echo x | tee /dev/stdout /dev/stderr > /dev/null; cat <(echo process-substitution)",
+        // A process whose parent has exited (Linux with kernel.yama.ptrace_scope 1: the supervisor
+        // may not read its memory, so its chmod by path is refused).
+        "echo x > orphan.txt; ( (sleep 0.2; chmod 600 orphan.txt; echo \"chmod by an orphan: $?\" > orphan.rc) & ); \
+         sleep 0.6; cat orphan.rc; cat /proc/sys/kernel/yama/ptrace_scope 2>&1",
         "perl -e 'use POSIX; if (fork() == 0) { my $r = POSIX::setsid(); print \"setsid in a child: $r $!\\n\"; exit } wait; print \"parent done\\n\"'",
         "echo 'int main(void){return 0;}' > x.c; /usr/bin/cc x.c -o x && ./x && echo cc-ok; /usr/bin/git --version; /usr/bin/make --version | head -n 1; /usr/bin/python3 --version",
         "sw_vers 2>&1; xcode-select -p 2>&1; sysctl -n hw.ncpu kern.hostname 2>&1; nproc 2>&1",

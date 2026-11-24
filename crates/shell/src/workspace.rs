@@ -390,26 +390,40 @@ fn check_owner(base: &Path) -> Result<(), String> {
 }
 
 /// The bytes the files under `path` take on disk. Files that vanish while it walks are skipped.
+///
+/// It runs while a command does, so each folder is opened beneath its parent's open handle and a
+/// symlink is never followed: a command that swaps a folder for a link to `/` gets the link
+/// counted, not the disk.
 pub(crate) fn tree_size(path: &Path) -> u64 {
+    match cap_std::fs::Dir::open_ambient_dir(path, cap_std::ambient_authority()) {
+        Ok(dir) => folder_size(&dir, 0),
+        Err(_) => 0,
+    }
+}
+
+/// Folders nested deeper than this are not measured.
+const MAX_DEPTH: u32 = 128;
+
+fn folder_size(dir: &cap_std::fs::Dir, depth: u32) -> u64 {
+    let Ok(entries) = dir.entries() else { return 0 };
     let mut total = 0u64;
-    let mut pending = vec![path.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let Ok(meta) = entry.metadata() else { continue };
-            total = total.saturating_add(disk_bytes(&meta));
-            if meta.is_dir() {
-                pending.push(entry.path());
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        total = total.saturating_add(disk_bytes(&meta));
+        if meta.is_dir() && depth < MAX_DEPTH {
+            // One folder open per level, whatever the number of folders.
+            if let Ok(sub) = entry.open_dir() {
+                total = total.saturating_add(folder_size(&sub, depth + 1));
             }
         }
     }
     total
 }
 
-fn disk_bytes(meta: &fs::Metadata) -> u64 {
+fn disk_bytes(meta: &cap_std::fs::Metadata) -> u64 {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt as _;
+        use cap_std::fs::MetadataExt as _;
         // Blocks, not length: a sparse file takes what it has written.
         meta.blocks().saturating_mul(512)
     }

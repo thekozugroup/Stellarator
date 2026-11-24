@@ -22,7 +22,10 @@ The profile was modified:
   (`/Library/Developer/CommandLineTools`, Xcode's `Developer` folder), `/System/Cryptexes`,
   `/private/var/select`, and the sample's folder as the one writable place.
 - Added: `file-map-executable` for every readable file, `sudo`, `su` and other set-user-ID
-  programs refused, Unix socket pairs allowed.
+  programs refused, Unix socket pairs allowed, three settings every program reads at start
+  (`kern.bootargs`, `kern.iossupportversion`, `security.mac.lockdown_mode_state`), `/dev/tty`.
+- Added per command, from `src/macos/mod.rs`: a Mach service name that only this command's
+  profile allows, by which its processes are found; the System V calls refused by number.
 - The network rules allow IPv4 and IPv6 by address and the resolver's socket, not every Unix
   socket.
 
