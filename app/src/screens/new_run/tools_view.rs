@@ -561,26 +561,38 @@ fn description_row(state: State) -> AnyElement {
         .into_element()
 }
 
-/// The mode row: Direct tools or Code mode, and one line on what code mode does.
+/// The mode row: its label and Direct tools | Code mode on one line, and under them, across the
+/// row, one line on what the mode does (the control's own column is too narrow for it).
 fn mode_row(state: State) -> AnyElement {
-    form_row(
-        "Mode",
-        segmented_with_get(
-            vec![(ToolMode::Direct, "Direct tools"), (ToolMode::Code, "Code mode")],
-            move || state.tools.with(|t| t.mode),
-            move |v| {
-                state.tools.update(|t| t.mode = v);
-                // What a field of the other mode said no longer applies.
-                for f in Field::ALL.iter().filter(|f| f.in_code_settings()) {
-                    state.error(*f).set(None);
-                }
-            },
-            "Tool mode",
-            false,
-        ),
+    let control = segmented_with_get(
+        vec![(ToolMode::Direct, "Direct tools"), (ToolMode::Code, "Code mode")],
+        move || state.tools.with(|t| t.mode),
+        move |v| {
+            state.tools.update(|t| t.mode = v);
+            // What a field of the other mode said no longer applies.
+            for f in Field::ALL.iter().filter(|f| f.in_code_settings()) {
+                state.error(*f).set(None);
+            }
+        },
+        "Tool mode",
+        false,
+    );
+    form_item(
+        view()
+            .gap(px(6.0))
+            .child(
+                view()
+                    .flex_row()
+                    .flex_wrap()
+                    .items_center()
+                    .justify_between()
+                    .gap_x(px(16.0))
+                    .gap_y(px(6.0))
+                    .child(body(text("Mode")))
+                    .child(control),
+            )
+            .child(dynamic(move || meta(text(mode_hint(state.tools.with(|t| t.mode)))).text_color(muted_ink))),
     )
-    .align_end()
-    .hint_when(move || Some(mode_hint(state.tools.with(|t| t.mode)).into()))
     .into_element()
 }
 

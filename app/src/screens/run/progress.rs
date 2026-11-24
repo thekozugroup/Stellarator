@@ -179,13 +179,15 @@ pub fn run_progress(live: impl Fn() -> RunLive + 'static) -> impl IntoElement {
         let counter = |name: &'static str, total: i64, span: f32| {
             let per = (run.done > 0).then(|| format!("{} per sample", dec1(total as f64 / run.done as f64)));
             tile(
+                // "1.5 per sample" goes under a wide figure when it does not fit beside it.
                 view()
                     .flex_row()
+                    .flex_wrap()
                     .items_baseline()
-                    .gap(px(6.0))
+                    .gap_x(px(6.0))
                     .min_w(px(0.0))
                     .child(figure(int(total)))
-                    .child(per.map(|p| body(text(p)).tabular_nums().number_of_lines(1).text_color(muted_ink).flex_shrink(1.0)))
+                    .child(per.map(|p| body(text(p)).tabular_nums().number_of_lines(1).text_color(muted_ink)))
                     .into_element(),
                 label(name),
                 None,

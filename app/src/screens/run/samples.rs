@@ -697,4 +697,21 @@ mod tests {
         assert_eq!(response_text(&s), "Connection refused");
         assert_eq!(non_empty(&s.prompt_preview), DASH);
     }
+
+    fn summary(tool_calls: i64, inner: i64) -> SampleSummary {
+        serde_json::from_value(serde_json::json!({
+            "id": 1, "prompt_idx": 0, "sample_idx": 0, "status": "done", "prompt_preview": "",
+            "response_preview": null, "has_reasoning": false, "finish_reason": "stop", "completion_tokens": 5,
+            "latency_ms": 10, "error": null, "tool_calls": tool_calls, "inner_tool_calls": inner
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn the_tools_column_counts_what_the_runs_mode_calls_a_tool() {
+        // Direct: the model's calls. Code mode: 2 code runs made 5 tool calls, and 5 is the count.
+        let s = summary(2, 5);
+        assert_eq!(ToolCol::Direct.calls(&s), 2);
+        assert_eq!(ToolCol::Code.calls(&s), 5);
+    }
 }

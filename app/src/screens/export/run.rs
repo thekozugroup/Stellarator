@@ -66,13 +66,13 @@ pub fn off_with_tools(format: SftFormat) -> Option<&'static str> {
 
 /// The note above a run's options: what a record holds when the run used tools, `None` without
 /// tools. In code mode (`code`) the tool is the code tool, and its call and result are what the
-/// model wrote and saw: the tool calls the code made are not records of their own.
+/// model wrote and saw: the tool calls the code made are not records of their own (Raw keeps them).
 pub fn tools_note(with_tools: bool, code: bool) -> Option<&'static str> {
     match (with_tools, code) {
         (false, _) => None,
         (true, false) => Some("This run used tools: each record includes the tool definitions, the calls and their results."),
         (true, true) => Some(
-            "This run used code mode: each record includes the code tool, the code the model wrote and its results, as the model saw them. The tool calls the code made are not records of their own.",
+            "This run used code mode: each record includes the code tool, the code the model wrote and its results, as the model saw them. The tool calls the code made are not records of their own; Raw keeps them with the trace.",
         ),
     }
 }

@@ -399,7 +399,7 @@ to the code: it is always highlighted.
   far ("3 calls") and the round, in mono: "running code · lookup.search… · 3 calls · round 2".
 - **Export**: a run's export says, above its options, that each record includes the code tool, the
   code the model wrote and its results as the model saw them, and that the tool calls the code made
-  are not records of their own.
+  are not records of their own (Raw keeps them with the trace).
 
 #### Choosing code mode (New run)
 

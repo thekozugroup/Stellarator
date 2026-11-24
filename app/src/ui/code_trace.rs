@@ -155,7 +155,7 @@ pub fn fold_summary(c: &Counts) -> String {
     s
 }
 
-/// "Code 1 of 2" style words are not used; the header's count: "3 tool calls", "no tool calls".
+/// The count in a code card's header: "3 tool calls", "no tool calls".
 pub fn calls_words(e: &CodeExecution) -> String {
     match e.calls.len() {
         0 => "no tool calls".to_owned(),
