@@ -142,9 +142,41 @@ pub(crate) fn signal_calls() -> Vec<c_long> {
     ]
 }
 
+/// The calls that change how another process runs, named by number: its resource limits (a CPU
+/// limit of zero ends a process as surely as a signal), its priority, its processors. Landlock
+/// covers none of them, on any kernel.
+pub(crate) fn tuning_calls() -> Vec<c_long> {
+    vec![
+        libc::SYS_prlimit64,
+        libc::SYS_sched_setaffinity,
+        libc::SYS_sched_setscheduler,
+        libc::SYS_sched_setparam,
+        libc::SYS_sched_setattr,
+        libc::SYS_setpriority,
+        libc::SYS_ioprio_set,
+    ]
+}
+
+/// `PRIO_PROCESS` and `IOPRIO_WHO_PROCESS`: the `which` that makes `who` a process number.
+pub(crate) const PRIO_PROCESS: u32 = 0;
+pub(crate) const IOPRIO_WHO_PROCESS: u32 = 1;
+
+/// The calls that start a process. `clone` also starts threads; the filter lets those through.
+pub(crate) fn process_calls() -> Vec<c_long> {
+    #[allow(unused_mut)]
+    let mut calls = vec![libc::SYS_clone];
+    #[cfg(target_arch = "x86_64")]
+    calls.extend([libc::SYS_fork, libc::SYS_vfork]);
+    calls
+}
+
+/// `CLONE_THREAD`: the new task is a thread of the caller, not a process.
+const CLONE_THREAD: u32 = 0x0001_0000;
+
 /// The filter for one command. `network`: the caller turned the network on. `mediate_signals`:
-/// the kernel's Landlock cannot scope signals, so the supervisor answers them.
-pub(crate) fn program(network: bool, mediate_signals: bool) -> Vec<sock_filter> {
+/// the kernel's Landlock cannot scope signals, so the supervisor answers them. `count_processes`:
+/// the command has a process limit, so the supervisor is asked before each new process.
+pub(crate) fn program(network: bool, mediate_signals: bool, count_processes: bool) -> Vec<sock_filter> {
     let mut p = Program(Vec::with_capacity(256));
 
     // Only the native table: a filter written for it means nothing for another one, so a 32-bit
@@ -221,11 +253,26 @@ pub(crate) fn program(network: bool, mediate_signals: bool) -> Vec<sock_filter> 
         ],
         libc::ENOSYS,
     );
-    // New namespaces: a user namespace hands out capabilities inside it.
+    // New namespaces: a user namespace hands out capabilities inside it. A new thread is allowed;
+    // a new process is counted by the supervisor when the command has a process limit. The kernel's
+    // own limit (RLIMIT_NPROC) counts every process of the user, so one command's processes would
+    // use up another's allowance.
+    let new_process = if count_processes { stmt(RET, USER_NOTIF) } else { allow };
     p.block(
         libc::SYS_clone,
-        vec![stmt(LD_ABS, arg(0)), jump(JSET, CLONE_NAMESPACES, 0, 1), deny, allow],
+        vec![
+            stmt(LD_ABS, arg(0)),
+            jump(JSET, CLONE_NAMESPACES, 0, 1),
+            deny,
+            jump(JSET, CLONE_THREAD, 0, 1),
+            allow,
+            new_process,
+        ],
     );
+    #[cfg(target_arch = "x86_64")]
+    if count_processes {
+        p.notify(&[libc::SYS_fork, libc::SYS_vfork]);
+    }
     p.deny(
         &[
             libc::SYS_unshare,
@@ -292,10 +339,72 @@ pub(crate) fn program(network: bool, mediate_signals: bool) -> Vec<sock_filter> 
     );
     p.notify(&metadata_calls());
 
+    // ---- Memory and queues shared by name with every process of the user ----------------------
+    // System V shared memory, semaphores and message queues, and POSIX message queues: another
+    // program's (an X server's images, a database's buffers) could be attached.
+    p.deny(
+        &[
+            libc::SYS_shmget,
+            libc::SYS_shmat,
+            libc::SYS_shmctl,
+            libc::SYS_shmdt,
+            libc::SYS_semget,
+            libc::SYS_semop,
+            libc::SYS_semtimedop,
+            libc::SYS_semctl,
+            libc::SYS_msgget,
+            libc::SYS_msgsnd,
+            libc::SYS_msgrcv,
+            libc::SYS_msgctl,
+            libc::SYS_mq_open,
+            libc::SYS_mq_unlink,
+            libc::SYS_mq_notify,
+        ],
+        libc::ENOSYS,
+    );
+
     // ---- Processes --------------------------------------------------------------------------
     p.notify(&[libc::SYS_setsid]);
+    // On itself (process 0) a process may set what it likes; any other number is asked about.
+    let ask = stmt(RET, USER_NOTIF);
+    for nr in [
+        libc::SYS_prlimit64,
+        libc::SYS_sched_setaffinity,
+        libc::SYS_sched_setscheduler,
+        libc::SYS_sched_setparam,
+        libc::SYS_sched_setattr,
+    ] {
+        p.block(nr, vec![stmt(LD_ABS, arg(0)), jump(JEQ, 0, 1, 0), ask, allow]);
+    }
+    for (nr, own_process) in [(libc::SYS_setpriority, PRIO_PROCESS), (libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS)] {
+        p.block(
+            nr,
+            vec![
+                stmt(LD_ABS, arg(0)),
+                jump(JEQ, own_process, 0, 2),
+                stmt(LD_ABS, arg(1)),
+                jump(JEQ, 0, 1, 0),
+                ask,
+                allow,
+            ],
+        );
+    }
     if mediate_signals {
         p.notify(&signal_calls());
+        // A descriptor's owner gets a signal (any signal, with F_SETSIG) when the descriptor is
+        // ready: a signal to a process of the caller's choice. Landlock ABI 6 checks the owner.
+        const F_SETOWN: u32 = 8;
+        const F_SETOWN_EX: u32 = 15;
+        const FIOSETOWN: u32 = 0x8901;
+        const SIOCSPGRP: u32 = 0x8902;
+        p.block(
+            libc::SYS_fcntl,
+            vec![stmt(LD_ABS, arg(1)), jump(JEQ, F_SETOWN, 1, 0), jump(JEQ, F_SETOWN_EX, 0, 1), deny, allow],
+        );
+        p.block(
+            libc::SYS_ioctl,
+            vec![stmt(LD_ABS, arg(1)), jump(JEQ, FIOSETOWN, 1, 0), jump(JEQ, SIOCSPGRP, 0, 1), deny, allow],
+        );
     }
 
     p.0.push(allow);
@@ -309,8 +418,10 @@ mod tests {
     /// Every jump lands inside the program, and the program ends by returning.
     #[test]
     fn the_filter_is_well_formed() {
-        for (network, signals) in [(false, false), (false, true), (true, false), (true, true)] {
-            let program = program(network, signals);
+        for (network, signals, processes) in
+            [(false, false, true), (false, true, false), (true, false, false), (true, true, true)]
+        {
+            let program = program(network, signals, processes);
             assert!(program.len() < 4096);
             for (i, ins) in program.iter().enumerate() {
                 if ins.code & 0x07 == 0x05 {

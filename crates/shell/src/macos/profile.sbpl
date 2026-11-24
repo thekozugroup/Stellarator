@@ -70,6 +70,11 @@
   (sysctl-name "hw.tbfrequency_compat")
   (sysctl-name "hw.vectorunit")
   (sysctl-name "kern.argmax")
+  ; Every program asks for these three when it starts; a refusal is written to the system log
+  ; each time, which costs more than the answer tells.
+  (sysctl-name "kern.bootargs")
+  (sysctl-name "kern.iossupportversion")
+  (sysctl-name "security.mac.lockdown_mode_state")
   (sysctl-name "kern.hostname")
   (sysctl-name "kern.maxfilesperproc")
   (sysctl-name "kern.maxproc")
@@ -88,7 +93,8 @@
   (sysctl-name "kern.version")
   (sysctl-name "machdep.cpu.brand_string")
   (sysctl-name-prefix "machdep.cpu.")
-  (sysctl-name "sysctl.proc_cputype")
+  ; The names and types of settings, which the sysctl program looks up first.
+  (sysctl-name-prefix "sysctl.")
   (sysctl-name "vm.loadavg"))
 
 ; Java reads the processor type through a call that counts as a write.
@@ -180,8 +186,21 @@
   (subpath "/opt/homebrew/etc/ca-certificates")
   (subpath "/opt/homebrew/etc/gnutls"))
 
+; Settings of git as Homebrew installs it. A refused read is an error to git, unlike a missing
+; file.
+(allow file-read* file-test-existence
+  (literal "/usr/local/etc/gitconfig")
+  (literal "/usr/local/etc/gitattributes")
+  (literal "/opt/homebrew/etc/gitconfig")
+  (literal "/opt/homebrew/etc/gitattributes"))
+
 ; /private/etc is a list, not the folder. passwd and group hold system accounts only on macOS.
 (allow file-read* file-test-existence
+  (literal "/Library/Preferences/.GlobalPreferences.plist")
+  (literal "/private/etc/ssh/ssh_config")
+  (subpath "/private/etc/ssh/ssh_config.d")
+  (literal "/private/etc/ssh/crypto.conf")
+  (subpath "/private/etc/ssh/crypto")
   (literal "/private/etc/passwd")
   (literal "/private/etc/group")
   (literal "/private/etc/hosts")
@@ -200,9 +219,11 @@
   (literal "/private/var/run/resolv.conf"))
 
 ; The standard devices.
+; /dev/tty: a command has no terminal, so opening it fails, but bash tries at every start.
 (allow file-read* file-test-existence file-write-data file-ioctl
   (literal "/dev/null")
   (literal "/dev/zero")
+  (literal "/dev/tty")
   (literal "/dev/dtracehelper"))
 (allow file-read* file-test-existence
   (literal "/dev/random")

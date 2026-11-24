@@ -56,15 +56,3 @@ pub(crate) fn pidfd_target(tid: i32, fd: i32) -> Option<i32> {
     let line = info.lines().find(|l| l.starts_with("Pid:"))?;
     line[4..].trim().parse().ok()
 }
-
-/// How many tasks (threads) run as `uid`: what the kernel compares `RLIMIT_NPROC` with.
-pub(crate) fn user_tasks(uid: u32) -> u64 {
-    let mut tasks = 0;
-    for pid in pids() {
-        let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) else { continue };
-        if status_field(&status, "Uid:") == Some(u64::from(uid)) {
-            tasks += status_field(&status, "Threads:").unwrap_or(1);
-        }
-    }
-    tasks
-}

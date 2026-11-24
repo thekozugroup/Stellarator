@@ -35,9 +35,9 @@ pub(crate) struct Rlimits {
 }
 
 impl Rlimits {
-    /// `processes_now`: how many processes (Linux: threads) the user runs already, which
-    /// `RLIMIT_NPROC` counts; `None` when the kernel would not apply the limit (root on Linux).
-    pub(crate) fn new(limits: &Limits, processes_now: Option<u64>) -> Self {
+    /// `user_processes`: the value for `RLIMIT_NPROC`, which the kernel compares with the number
+    /// of processes of the whole user; `None` to leave it as it is.
+    pub(crate) fn new(limits: &Limits, user_processes: Option<u64>) -> Self {
         let mut list = Self { entries: [(0, 0, 0); 6], count: 0 };
         // A core file would be written into the workspace.
         list.push(libc::RLIMIT_CORE as libc::c_int, 0, 0);
@@ -52,8 +52,7 @@ impl Rlimits {
         if let Some(files) = limits.open_files {
             list.push(libc::RLIMIT_NOFILE as libc::c_int, files, files);
         }
-        if let (Some(extra), Some(now)) = (limits.processes, processes_now) {
-            let total = now.saturating_add(extra);
+        if let Some(total) = user_processes {
             list.push(libc::RLIMIT_NPROC as libc::c_int, total, total);
         }
         // macOS does not keep RLIMIT_DATA or RLIMIT_AS for memory that malloc maps; the monitor

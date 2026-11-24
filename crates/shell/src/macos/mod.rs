@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::error::Error;
-use crate::run::Spec;
+use crate::run::{LimitHit, Limits, Spec};
 use crate::support::{Enforced, Mechanism, Support};
 use crate::unix::{self, Rlimits};
 
@@ -47,6 +47,7 @@ const NETWORK: &str = r#"
   (global-name "com.apple.trustd.agent")
   (global-name "com.apple.TrustEvaluationAgent"))
 (allow sysctl-read (sysctl-name-prefix "net.routetable."))
+(allow file-read* (literal "/Library/Preferences/com.apple.networkd.plist"))
 "#;
 
 /// Refuses `setsid`, so that no process leaves the command's session and the kill at its end
@@ -62,16 +63,18 @@ static SESSIONS_HELD: AtomicBool = AtomicBool::new(false);
 
 /// Where the developer tools are: the folder `xcode-select` points at (Xcode, under whatever name
 /// it is installed, or the Command Line Tools). `/usr/bin/git`, `python3` and `cc` are stubs that
-/// run the programs in it.
+/// run the programs in it. For Xcode it is the whole application: its tools load frameworks from
+/// beside the `Developer` folder.
 fn developer_folders() -> &'static [PathBuf] {
     static FOLDERS: OnceLock<Vec<PathBuf>> = OnceLock::new();
     FOLDERS.get_or_init(|| {
         let mut folders = Vec::new();
         for candidate in ["/var/db/xcode_select_link", "/Applications/Xcode.app/Contents/Developer"] {
-            if let Ok(real) = std::fs::canonicalize(candidate) {
-                if real.is_dir() && !folders.contains(&real) {
-                    folders.push(real);
-                }
+            let Ok(real) = std::fs::canonicalize(candidate) else { continue };
+            let application = real.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"));
+            let folder = application.unwrap_or(&real).to_path_buf();
+            if folder.is_dir() && !folders.contains(&folder) {
+                folders.push(folder);
             }
         }
         folders
@@ -107,6 +110,9 @@ fn profile(spec: &Spec<'_>, hold_sessions: bool) -> Result<(String, Vec<OsString
     if hold_sessions {
         text.push_str(NO_NEW_SESSION);
     }
+    if let Some(extra) = &spec.options.seatbelt_extra {
+        text.push_str(extra);
+    }
     Ok((text, definitions))
 }
 
@@ -123,8 +129,12 @@ fn prepare_with(spec: &Spec<'_>, hold_sessions: bool) -> Result<(Command, Prepar
     let (profile, definitions) = profile(spec, hold_sessions)?;
     // SAFETY: geteuid cannot fail.
     let uid = unsafe { libc::geteuid() };
-    let processes_now = spec.options.limits.processes.map(|_| user_processes(uid));
-    let limits = Rlimits::new(&spec.options.limits, processes_now);
+    // The kernel's process limit counts every process of the user, so it cannot be the command's
+    // limit: the commands of other samples would use it up. It is set far above, as the bound on
+    // what a command can start in the half second between two counts of its own processes.
+    let backstop =
+        spec.options.limits.processes.map(|limit| user_processes(uid) + limit.saturating_mul(4).max(1024));
+    let limits = Rlimits::new(&spec.options.limits, backstop);
 
     let mut command = Command::new(SANDBOX_EXEC);
     command.arg("-p").arg(profile).args(definitions).arg("--").arg(unix::shell()).arg("-c").arg(spec.command);
@@ -243,9 +253,15 @@ impl Tracker {
         false
     }
 
-    /// Whether one process of the command uses more memory than `limit` bytes.
-    pub(crate) fn over_memory(&self, limit: u64) -> bool {
-        self.members().into_iter().any(|pid| {
+    /// The limits the kernel does not keep on macOS, checked from outside: the number of the
+    /// command's processes, and the memory of each.
+    pub(crate) fn over_limit(&self, limits: &Limits) -> Option<LimitHit> {
+        let members = self.members();
+        if limits.processes.is_some_and(|limit| members.len() as u64 > limit) {
+            return Some(LimitHit::Processes);
+        }
+        let limit = limits.memory_bytes?;
+        let over = members.into_iter().any(|pid| {
             // SAFETY: the kernel fills a zeroed rusage_info_v2 for flavor 2.
             let footprint = unsafe {
                 let mut usage: libc::rusage_info_v2 = std::mem::zeroed();
@@ -256,7 +272,8 @@ impl Tracker {
                 usage.ri_phys_footprint
             };
             footprint > limit
-        })
+        });
+        over.then_some(LimitHit::Memory)
     }
 }
 
@@ -291,7 +308,7 @@ pub(crate) fn probe() -> Support {
     let mut notes = vec![
         "Apple marks sandbox-exec deprecated; a macOS release without it would leave Stellarator without a sandbox.".to_string(),
         "Memory is checked twice a second, not held by the kernel: a process can pass the limit for up to half a second.".to_string(),
-        "The process limit counts every process of the user, not the command's alone.".to_string(),
+        "The number of processes is counted twice a second, not held by the kernel: a command can pass the limit for up to half a second.".to_string(),
         "Unix sockets are not available to commands, and with the network off no sockets at all.".to_string(),
     ];
     if !sessions_held {

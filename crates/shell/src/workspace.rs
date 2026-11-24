@@ -261,7 +261,8 @@ impl Workspace {
         self.max_bytes
     }
 
-    /// Measures the sample's folder (workspace, home and tmp): the bytes its files take on disk.
+    /// Measures the sample's folder (workspace, home and tmp): for each file the larger of its
+    /// length and the space it takes on disk.
     pub fn measure(&self) -> u64 {
         let size = tree_size(&self.root);
         self.measured.store(size, Ordering::Relaxed);
@@ -370,7 +371,7 @@ fn check_owner(base: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The bytes the files under `path` take on disk. Files that vanish while it walks are skipped.
+/// The bytes the files under `path` take. Files that vanish while it walks are skipped.
 pub(crate) fn tree_size(path: &Path) -> u64 {
     let mut total = 0u64;
     let mut pending = vec![path.to_path_buf()];
@@ -391,8 +392,10 @@ fn disk_bytes(meta: &fs::Metadata) -> u64 {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt as _;
-        // Blocks, not length: a sparse file takes what it has written.
-        meta.blocks().saturating_mul(512)
+        // The larger of the length and the blocks. Blocks count what small files really take; the
+        // length counts a file whose blocks the file system reports as fewer than its data (on
+        // macOS a file of zeros grew to 200 MB while its blocks stayed under the cap).
+        meta.blocks().saturating_mul(512).max(meta.len())
     }
     #[cfg(not(unix))]
     {

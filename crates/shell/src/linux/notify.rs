@@ -77,24 +77,58 @@ pub(crate) struct Tracker {
     sessions: Mutex<HashSet<i32>>,
     /// Stellarator runs as root: `chown` then needs the limits an unprivileged caller has.
     privileged: bool,
+    processes: Mutex<Processes>,
     empty: AtomicBool,
     /// Held while a thread reads the listener.
     reader: Mutex<()>,
 }
 
+/// The command's process limit.
+struct Processes {
+    limit: u64,
+    /// Processes the command may still start before they are counted again.
+    allowance: u64,
+}
+
 impl Tracker {
-    pub(crate) fn new(listener: OwnedFd, root: i32, folder: &std::path::Path) -> Self {
+    /// `processes`: how many processes the command may have at once, the shell included.
+    pub(crate) fn new(listener: OwnedFd, root: i32, folder: &std::path::Path, processes: Option<u64>) -> Self {
         use std::os::unix::ffi::OsStrExt as _;
+        let limit = processes.unwrap_or(u64::MAX);
         Self {
             listener,
             root,
             folder: folder.as_os_str().as_bytes().to_vec(),
             sessions: Mutex::new(HashSet::from([root])),
+            // The shell is the first process.
+            processes: Mutex::new(Processes { limit, allowance: limit.saturating_sub(1) }),
             // SAFETY: geteuid cannot fail.
             privileged: unsafe { libc::geteuid() } == 0,
             empty: AtomicBool::new(false),
             reader: Mutex::new(()),
         }
+    }
+
+    /// Whether the command may start one more process. Every start comes through here, so the
+    /// count is kept without looking: the processes are counted in `/proc` only when the
+    /// allowance since the last count is used up, and those that ended since then are found gone.
+    fn may_start_process(&self) -> bool {
+        let mut processes = self.processes.lock().unwrap_or_else(|e| e.into_inner());
+        if processes.allowance == 0 {
+            let sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            // Zombies count: they hold a process number until their parent waits for them.
+            let live = procfs::pids()
+                .into_iter()
+                .filter_map(procfs::stat)
+                .filter(|stat| stat.state != b'X' && sessions.contains(&stat.session))
+                .count() as u64;
+            processes.allowance = processes.limit.saturating_sub(live);
+            if processes.allowance == 0 {
+                return false;
+            }
+        }
+        processes.allowance -= 1;
+        true
     }
 
     /// Answers the calls that are waiting, for up to `wait`. Returns early once the command has no
@@ -222,8 +256,15 @@ impl Tracker {
             }
             return Answer::Continue;
         }
+        if seccomp::process_calls().contains(&nr) {
+            // What the kernel answers at its own process limit.
+            return if self.may_start_process() { Answer::Continue } else { Answer::Error(libc::EAGAIN) };
+        }
         if seccomp::signal_calls().contains(&nr) {
             return if self.may_signal(nr, tid, &args) { Answer::Continue } else { Answer::Error(libc::EPERM) };
+        }
+        if seccomp::tuning_calls().contains(&nr) {
+            return if self.may_tune(nr, &args) { Answer::Continue } else { Answer::Error(libc::EPERM) };
         }
         match metadata_call(nr, &args) {
             Some((target, change)) => match self.change(request.id, tid, target, change) {
@@ -275,6 +316,26 @@ impl Tracker {
             return procfs::pidfd_target(tid, first).is_some_and(|pid| self.in_command(pid));
         }
         // tkill, rt_sigqueueinfo
+        self.in_command(first)
+    }
+
+    /// Limits, priority and processors of a process named by number: the command's own only.
+    fn may_tune(&self, nr: c_long, args: &[u64; 6]) -> bool {
+        let (first, second) = (args[0] as i32, args[1] as i32);
+        // setpriority(which, who) and ioprio_set(which, who): a process, a process group, or
+        // every process of a user (never).
+        let by_kind = |process: u32, group: u32| match args[0] as u32 {
+            kind if kind == process => second == 0 || self.in_command(second),
+            kind if kind == group => second == 0 || (second > 0 && self.group_in_command(second)),
+            _ => false,
+        };
+        if nr == libc::SYS_setpriority {
+            return by_kind(seccomp::PRIO_PROCESS, 1);
+        }
+        if nr == libc::SYS_ioprio_set {
+            return by_kind(seccomp::IOPRIO_WHO_PROCESS, 2);
+        }
+        // prlimit64 and the sched_set* calls: the number is a process or one of its threads.
         self.in_command(first)
     }
 

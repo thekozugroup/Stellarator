@@ -8,10 +8,10 @@ use std::time::Duration;
 use crate::error::Error;
 use crate::workspace::Workspace;
 
-/// Limits the operating system keeps on a command's processes.
+/// Limits on a command's processes.
 ///
-/// `None` leaves a limit off. Each is per process except `processes`, which the kernel counts per
-/// user: see `docs/shell-sandbox.md`.
+/// `None` leaves a limit off. Each is per process except `processes`, which is for the whole
+/// command: see `docs/shell-sandbox.md`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Limits {
     /// Seconds of processor time one process may use; it is ended with SIGXCPU.
@@ -20,7 +20,9 @@ pub struct Limits {
     /// allocation past it fails. macOS: its footprint is checked twice a second and the command is
     /// stopped when one process is over.
     pub memory_bytes: Option<u64>,
-    /// Processes and threads the command may add to what its user already runs.
+    /// Processes the command may have at once, the shell included. Linux: starting one more fails
+    /// ("Resource temporarily unavailable"). macOS: the processes are counted twice a second and
+    /// the command is stopped when it has more.
     pub processes: Option<u64>,
     /// The largest file a process may write; a write past it fails with "File too large".
     pub file_bytes: Option<u64>,
@@ -67,6 +69,9 @@ pub struct RunOptions {
     /// For this crate's tests: use Landlock as a kernel with this ABI would.
     #[doc(hidden)]
     pub landlock_abi: Option<u32>,
+    /// For this crate's tests on macOS: rules added to the end of the profile.
+    #[doc(hidden)]
+    pub seatbelt_extra: Option<String>,
 }
 
 impl Default for RunOptions {
@@ -80,6 +85,7 @@ impl Default for RunOptions {
             limits: Limits::default(),
             show_processes: false,
             landlock_abi: None,
+            seatbelt_extra: None,
         }
     }
 }
@@ -111,6 +117,8 @@ pub enum LimitHit {
     WorkspaceSize,
     /// macOS: a process was over `memory_bytes`.
     Memory,
+    /// macOS: the command had more than `processes` processes.
+    Processes,
 }
 
 /// What a command did.
@@ -286,7 +294,7 @@ mod imp {
 
     use tokio::io::{AsyncRead, AsyncReadExt as _};
 
-    use super::{Capture, Captured, LimitHit, Output, RunOptions, Spec};
+    use super::{Capture, Captured, LimitHit, Limits, Output, RunOptions, Spec};
     use crate::error::Error;
     use crate::platform::{self, Tracker};
     use crate::workspace::{tree_size, Workspace};
@@ -343,7 +351,7 @@ mod imp {
         stop: Arc<AtomicBool>,
         folder: std::path::PathBuf,
         max_bytes: u64,
-        memory: Option<u64>,
+        limits: Limits,
         hit: tokio::sync::oneshot::Sender<LimitHit>,
     ) {
         let mut hit = Some(hit);
@@ -359,10 +367,8 @@ mod imp {
             // Over the cap and still growing: a command that deletes its way back is left alone.
             let breach = if size > max_bytes && size > last_size {
                 Some(LimitHit::WorkspaceSize)
-            } else if memory.is_some_and(|limit| tracker.over_memory(limit)) {
-                Some(LimitHit::Memory)
             } else {
-                None
+                tracker.over_limit(&limits)
             };
             last_size = size;
             // A large folder takes a while to measure: at most a twentieth of the time goes there.
@@ -408,11 +414,11 @@ mod imp {
         let (hit_sender, mut hit_receiver) = tokio::sync::oneshot::channel();
         {
             let (tracker, stop, folder) = (tracker.clone(), stop.clone(), workspace.root.clone());
-            let (max_bytes, memory) = (workspace.max_bytes, options.limits.memory_bytes);
+            let (max_bytes, limits) = (workspace.max_bytes, options.limits.clone());
             std::thread::Builder::new()
                 .name("shell-monitor".into())
                 .stack_size(256 * 1024)
-                .spawn(move || monitor(tracker, stop, folder, max_bytes, memory, hit_sender))
+                .spawn(move || monitor(tracker, stop, folder, max_bytes, limits, hit_sender))
                 .map_err(|e| Error::Sandbox(format!("could not start the monitor thread: {e}")))?;
         }
         let cap = options.max_output_bytes;

@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::error::Error;
-use crate::run::Spec;
+use crate::run::{LimitHit, Limits, Spec};
 use crate::support::{Enforced, Mechanism, Support};
 use crate::unix::{self, Rlimits};
 
@@ -26,9 +26,10 @@ impl Tracker {
         self.is_empty()
     }
 
-    /// Memory is limited by the kernel on Linux (`RLIMIT_DATA`).
-    pub(crate) fn over_memory(&self, _limit: u64) -> bool {
-        false
+    /// Nothing to watch from outside on Linux: the kernel keeps the memory limit
+    /// (`RLIMIT_DATA`) and the supervisor the process limit.
+    pub(crate) fn over_limit(&self, _limits: &Limits) -> Option<LimitHit> {
+        None
     }
 }
 
@@ -60,7 +61,7 @@ const READ: &[&str] = &[
     // System-wide settings of common tools.
     "/etc/gitconfig", "/etc/gitattributes", "/etc/mime.types", "/etc/mailcap", "/etc/magic", "/etc/terminfo",
     "/etc/inputrc", "/etc/shells", "/etc/pip.conf", "/etc/npmrc", "/etc/python3", "/etc/java", "/etc/maven",
-    "/etc/fonts", "/etc/perl", "/etc/krb5.conf", "/etc/xdg",
+    "/etc/fonts", "/etc/perl", "/etc/krb5.conf", "/etc/xdg", "/etc/ssh/ssh_config", "/etc/ssh/ssh_config.d",
     // The processors and the memory, as numbers.
     "/proc/cpuinfo", "/proc/meminfo", "/proc/stat", "/proc/uptime", "/proc/loadavg", "/proc/version",
     "/proc/filesystems", "/proc/sys",
@@ -152,8 +153,6 @@ impl ChildSetup {
         const ZERO: libc::c_ulong = 0;
         unix::detach()?;
         unix::close_inherited();
-        *step = 1;
-        self.limits.apply()?;
         *step = 2;
         if self.root {
             // Root keeps no capability: not in the bounding set, so no program can get one back.
@@ -194,6 +193,10 @@ impl ChildSetup {
         send_descriptor(self.socket, listener)?;
         // The command must not hold the listener: it could answer its own calls.
         libc::close(listener);
+        // Last: the limit on open files counts the descriptors inherited from Stellarator, which
+        // stay open until the shell starts, and the listener above needed a free number.
+        *step = 1;
+        self.limits.apply()?;
         libc::close(self.socket);
         Ok(())
     }
@@ -252,6 +255,7 @@ pub(crate) struct Prepared {
     _ruleset: landlock::Ruleset,
     parent_socket: OwnedFd,
     child_socket: OwnedFd,
+    processes: Option<u64>,
 }
 
 /// The shell command for `spec`, with the sandbox applied in the child before it starts.
@@ -267,24 +271,24 @@ pub(crate) fn prepare(spec: &Spec<'_>) -> Result<(Command, Prepared), Error> {
     // SAFETY: two descriptors we just made.
     let (parent_socket, child_socket) = unsafe { (OwnedFd::from_raw_fd(sockets[0]), OwnedFd::from_raw_fd(sockets[1])) };
 
-    // SAFETY: geteuid cannot fail.
-    let uid = unsafe { libc::geteuid() };
-    // The kernel does not apply RLIMIT_NPROC to root.
-    let processes_now = (uid != 0 && spec.options.limits.processes.is_some()).then(|| procfs::user_tasks(uid));
+    let processes = spec.options.limits.processes;
     let setup = ChildSetup {
-        limits: Rlimits::new(&spec.options.limits, processes_now),
+        // No RLIMIT_NPROC: the kernel counts every process of the user against it, so the
+        // commands of other samples would use up this one's allowance. The supervisor counts.
+        limits: Rlimits::new(&spec.options.limits, None),
         ruleset: ruleset.raw_fd(),
         // Before ABI 6 Landlock does not keep signals inside; the supervisor does.
-        filter: seccomp::program(spec.options.network, abi < 6),
+        filter: seccomp::program(spec.options.network, abi < 6, processes.is_some()),
         socket: child_socket.as_raw_fd(),
-        root: uid == 0,
+        // SAFETY: geteuid cannot fail.
+        root: unsafe { libc::geteuid() } == 0,
     };
 
     let mut command = Command::new(unix::shell());
     command.arg("-c").arg(spec.command).current_dir(spec.cwd).env_clear().envs(spec.env.iter().map(|(k, v)| (k, v)));
     // SAFETY: `ChildSetup::run` makes system calls only, on values that live in the closure.
     unsafe { command.pre_exec(move || setup.run()) };
-    Ok((command, Prepared { _ruleset: ruleset, parent_socket, child_socket }))
+    Ok((command, Prepared { _ruleset: ruleset, parent_socket, child_socket, processes }))
 }
 
 impl Prepared {
@@ -294,7 +298,7 @@ impl Prepared {
         drop(self.child_socket);
         let listener = receive_descriptor(&self.parent_socket)
             .map_err(|e| Error::Sandbox(format!("the seccomp listener did not arrive: {e}")))?;
-        Ok(Tracker::new(listener, pid as i32, folder))
+        Ok(Tracker::new(listener, pid as i32, folder, self.processes))
     }
 
     /// Why the child did not start: the step of the sandbox setup that failed, if it was one.
@@ -334,20 +338,15 @@ pub(crate) fn probe() -> Support {
         Ok(abi) => abi,
         Err(reason) => return unavailable(Mechanism::None, reason),
     };
-    // SAFETY: geteuid cannot fail.
-    let root = unsafe { libc::geteuid() } == 0;
     let mut notes = vec![
         "Unix sockets are not available to commands, and with the network off no sockets at all.".to_string(),
         "A command can see whether a path exists outside the workspace, and its size and dates, but cannot list or read it.".to_string(),
-        "The process limit counts every process of the user, not the command's alone.".to_string(),
+        "The process limit counts processes, not threads; threads are bounded by the memory limit.".to_string(),
     ];
     if abi < 6 {
         notes.push(format!(
             "Landlock version {abi}: signals are checked by Stellarator's supervisor instead of the kernel (Linux 6.12 does it in the kernel)."
         ));
-    }
-    if root {
-        notes.push("Stellarator runs as root: the kernel does not limit the number of processes for root.".to_string());
     }
     Support {
         available: true,
@@ -361,7 +360,7 @@ pub(crate) fn probe() -> Support {
             process_tree_killed: true,
             cpu_time: true,
             memory: true,
-            processes: !root,
+            processes: true,
             file_size: true,
             open_files: true,
         },

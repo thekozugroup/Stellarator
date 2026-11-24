@@ -265,6 +265,19 @@ async fn the_network_is_off_unless_the_caller_turns_it_on() {
         assert_eq!(received(&listener).as_deref(), Some("from-the-sandbox\n"), "{name}");
     }
 
+    // The same for a datagram, which needs no connection.
+    let udp = std::net::UdpSocket::bind(("127.0.0.1", port)).expect("a UDP socket");
+    udp.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+    let send = format!("echo datagram > /dev/udp/127.0.0.1/{port}");
+    let mut datagram = [0u8; 64];
+    for (name, options) in variants() {
+        run(&workspace, &send, &options).await;
+        assert!(udp.recv_from(&mut datagram).is_err(), "{name}: a datagram arrived with the network off");
+        run(&workspace, &send, &RunOptions { network: true, ..options.clone() }).await;
+        let (length, _) = udp.recv_from(&mut datagram).unwrap_or_else(|e| panic!("{name}: no datagram with the network on: {e}"));
+        assert_eq!(&datagram[..length], b"datagram\n", "{name}");
+    }
+
     // Unix sockets of the user's session (D-Bus, Docker, an SSH agent) are not reachable, network
     // on or off.
     let outside = Outside::new(false);
@@ -352,24 +365,43 @@ async fn processes_cannot_be_spawned_without_end() {
         let mark = marker();
         options.timeout = Duration::from_secs(3);
         options.limits = Limits { processes: Some(40), ..Limits::default() };
-        // One more process each turn, forever (the bound keeps a machine where the kernel does not
-        // limit root's processes usable).
+        // One more process each turn, 2,000 times.
         let command = format!("n=0; while [ $n -lt 2000 ]; do sleep {mark} & n=$((n+1)); echo $n > count; done; wait");
         let started = Instant::now();
         let output = run(&workspace, &command, &options).await;
-        assert!(output.timed_out, "{name}: {output:?}");
         assert!(started.elapsed() < Duration::from_secs(15), "{name}: took {:?}", started.elapsed());
         assert!(survivors(&mark).await.is_empty(), "{name}: processes outlived the command");
         assert!(output.all_processes_ended, "{name}");
         let count: u32 = std::fs::read_to_string(workspace.path().join("count")).unwrap().trim().parse().unwrap();
-        if support().enforces.processes {
-            // The kernel counts the user's processes, and other tests' commands come and go
-            // meanwhile: well under the 2,000 the loop asks for is the point.
-            assert!(count <= 150, "{name}: {count} processes started with a limit of 40");
-            assert!(output.stderr.text.contains("fork") || output.stderr.text.contains("Resource"), "{name}: {}", text(&output));
+        if cfg!(target_os = "linux") {
+            // The shell and 39 more, exactly: the fortieth start is refused, bash waits and tries
+            // again, and the timeout ends it.
+            assert_eq!(count, 39, "{name}: {}", text(&output));
+            assert!(output.timed_out, "{name}: {output:?}");
+            assert!(output.stderr.text.contains("Resource temporarily unavailable"), "{name}: {}", text(&output));
         } else {
-            println!("{name}: the process limit is not enforced here ({count} started): {:?}", support().notes);
+            // Counted twice a second: the command is stopped soon after it passes the limit.
+            assert_eq!(output.limit, Some(LimitHit::Processes), "{name}: {output:?}");
+            assert!(count < 1500, "{name}: {count} processes started with a limit of 40");
         }
+    }
+
+    // Many commands at once do not use up each other's allowance: each may have its 40 processes.
+    let workspaces = workspaces();
+    let limits = Limits { processes: Some(40), ..Limits::default() };
+    let mut tasks = Vec::new();
+    for _ in 0..12 {
+        let (workspaces, options) = (workspaces.clone(), RunOptions { limits: limits.clone(), ..quick() });
+        tasks.push(tokio::spawn(async move {
+            let workspace = workspaces.create(&WorkspaceOptions::default()).unwrap();
+            let command = "for i in $(seq 1 30); do sleep 2 & done; wait; echo all-started";
+            run(&workspace, command, &options).await
+        }));
+    }
+    for task in tasks {
+        let output = task.await.unwrap();
+        assert_eq!((output.stdout.text.as_str(), output.limit), ("all-started\n", None), "{}", text(&output));
+        assert_eq!(output.stderr.text, "", "{}", text(&output));
     }
 }
 
@@ -474,16 +506,33 @@ async fn a_command_signals_its_own_processes_only() {
     let workspace = workspace();
     for (name, options) in variants() {
         // A process of the same user outside the sandbox, in a process group of its own.
-        let mark = marker();
-        let mut victim = {
-            use std::os::unix::process::CommandExt as _;
-            std::process::Command::new("sleep").arg(&mark).process_group(0).spawn().expect("sleep starts")
-        };
-        let pid = victim.id();
+        let mut victim = Victim::start();
+        let pid = victim.0.id();
         let command = format!("kill -9 {pid}; echo one=$?; kill -9 -{pid}; echo group=$?; kill -0 {pid}; echo probe=$?");
         let output = run(&workspace, &command, &options).await;
         assert!(!output.stdout.text.contains("=0"), "{name}: {}", text(&output));
-        assert!(victim.try_wait().unwrap().is_none(), "{name}: the outside process was killed");
+        assert!(victim.alive(), "{name}: the outside process was killed");
+
+        // Linux: nor may it take the process's CPU time away (a limit of zero ends a process as a
+        // signal would), or change its priority or processors. Landlock covers none of these.
+        if cfg!(target_os = "linux") {
+            let command = format!(
+                "prlimit --pid {pid} --cpu=0; echo prlimit=$?; renice -n 5 -p {pid}; echo renice=$?; \
+                 taskset -p 1 {pid}; echo taskset=$?; chrt -i -p 0 {pid}; echo chrt=$?; ionice -c 3 -p {pid}; echo ionice=$?"
+            );
+            let output = run(&workspace, &command, &options).await;
+            assert!(!output.stdout.text.contains("=0"), "{name}: {}", text(&output));
+            tokio::time::sleep(Duration::from_millis(1200)).await;
+            assert!(victim.alive(), "{name}: the outside process was ended by a limit");
+            let nice = std::process::Command::new("ps").args(["-o", "ni=", "-p", &pid.to_string()]).output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&nice.stdout).trim(), "0", "{name}: the outside process was reniced");
+            // On its own processes all of these work.
+            let command = "sleep 300 & one=$!; prlimit --pid $one --nofile=32:32 && renice -n 5 -p $one >/dev/null && \
+                           taskset -p 1 $one >/dev/null && ionice -c 3 -p $one && prlimit --pid $$ --nofile=64:64 && \
+                           echo \"own: $(ulimit -n)\"; kill $one";
+            let output = run(&workspace, command, &options).await;
+            assert_eq!(output.stdout.text, "own: 64\n", "{name}: {}", text(&output));
+        }
 
         // Its own processes it may signal, by number and by group.
         let command = "sleep 300 & one=$!; kill -9 $one; wait $one; echo \"one=$?\"; \
@@ -491,8 +540,43 @@ async fn a_command_signals_its_own_processes_only() {
         let output = run(&workspace, command, &options).await;
         assert_eq!(output.stdout.text, "one=137\n", "{name}: {}", text(&output));
         assert_eq!(output.signal, Some(15), "{name}: {output:?}");
-        victim.kill().unwrap();
-        victim.wait().unwrap();
+        assert!(victim.alive(), "{name}: the outside process was killed");
+    }
+}
+
+/// A `sleep` outside the sandbox, as the same user and in a process group of its own, that ends
+/// with the test.
+struct Victim(std::process::Child);
+
+impl Victim {
+    fn start() -> Self {
+        use std::os::unix::process::CommandExt as _;
+        Self(std::process::Command::new("sleep").arg(marker()).process_group(0).spawn().expect("sleep starts"))
+    }
+
+    fn alive(&mut self) -> bool {
+        self.0.try_wait().expect("the process can be waited for").is_none()
+    }
+}
+
+impl Drop for Victim {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Memory shared by name with every program of the user (an X server's images, a database's
+/// buffers) is out of reach.
+#[tokio::test(flavor = "multi_thread")]
+async fn system_v_shared_memory_is_closed() {
+    require_sandbox();
+    let workspace = workspace();
+    let command = "perl -e 'use IPC::SysV qw(IPC_PRIVATE IPC_CREAT); \
+                   defined(shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0600)) or die \"shmget: $!\\n\"; print \"made\\n\"'";
+    for (name, options) in variants() {
+        let output = run(&workspace, command, &options).await;
+        assert!(!output.stdout.text.contains("made") && output.stderr.text.contains("shmget"), "{name}: {}", text(&output));
     }
 }
 
@@ -601,6 +685,8 @@ async fn report() {
         "date; ls -la /dev/null; df -h . | tail -n 1; ulimit -a",
         "echo a > one; ln one two; echo \"hard link inside: $?\"; mkfifo p; echo \"mkfifo: $?\"; ls -l",
         "echo x | tee /dev/stdout /dev/stderr > /dev/null; cat <(echo process-substitution)",
+        "perl -e 'use POSIX; if (fork() == 0) { my $r = POSIX::setsid(); print \"setsid in a child: $r $!\\n\"; exit } wait; print \"parent done\\n\"'",
+        "head -c 3000000 /dev/zero > zeros; head -c 3000000 /dev/urandom > random; ls -ls zeros random; du -k zeros random",
         "sw_vers 2>&1; xcode-select -p 2>&1; sysctl -n hw.ncpu kern.hostname 2>&1; nproc 2>&1",
         "tar --version | head -n 1; curl --version | head -n 1; node --version; ruby --version; java -version 2>&1 | head -n 2",
     ];
@@ -616,9 +702,59 @@ async fn report() {
         let output = run(&workspace, "ps aux | wc -l; head -n 3 /proc/self/status", &options).await;
         println!("with show_processes:\n{}{}", output.stdout.text, output.stderr.text);
     }
+    if cfg!(target_os = "macos") {
+        macos_experiments(&workspace).await;
+    }
     let output = run(&workspace, "curl -sS -m 10 -o /dev/null -w '%{http_code}\\n' https://example.com", &RunOptions { network: true, ..quick() }).await;
     println!("with the network on, curl https://example.com: {}{}", output.stdout.text, output.stderr.text);
     print_denials(&began);
+}
+
+/// macOS: what the developer tools' stubs print under the profile and under candidates for it, and
+/// whether a process can leave the command's session without `setsid`. For the log only.
+async fn macos_experiments(workspace: &stellarator_shell::Workspace) {
+    let tools = "echo 'int main(void){return 0;}' > x.c; /usr/bin/cc x.c -o x && ./x && echo cc-ok; /usr/bin/git --version; \
+                 /usr/bin/make --version | head -n 1; /usr/bin/python3 --version; xcrun --find clang";
+    let directories = "(allow mach-lookup (global-name \"com.apple.bsd.dirhelper\") \
+                       (global-name \"com.apple.system.opendirectoryd.membership\"))\n\
+                       (allow file-read-metadata (subpath \"/private/var/folders\"))\n";
+    let no_cache = vec![("xcrun_nocache".to_string(), "1".to_string())];
+    let candidates = [
+        ("the profile as it is", None, Vec::new()),
+        ("with xcrun_nocache=1", None, no_cache.clone()),
+        ("with the folder helper allowed", Some(directories.to_string()), Vec::new()),
+        ("with the folder helper allowed and xcrun_nocache=1", Some(directories.to_string()), no_cache),
+    ];
+    for (name, seatbelt_extra, env) in candidates {
+        let output = run(workspace, tools, &RunOptions { seatbelt_extra, env, ..quick() }).await;
+        println!("developer tools, {name}:\n{}{}", output.stdout.text, output.stderr.text);
+    }
+
+    // posix_spawn can start a process in a new session without the setsid call.
+    let mark = marker();
+    let command = format!(
+        "python3 -c 'import os, sys; print(os.posix_spawn(\"/bin/sleep\", [\"sleep\", sys.argv[1]], {{}}, setsid=True))' {mark}; sleep 0.5"
+    );
+    let output = run(workspace, &command, &quick()).await;
+    let left = survivors(&mark).await;
+    println!("posix_spawn with a new session: {}{}left after the command: {left:?}", output.stdout.text, output.stderr.text);
+    for pid in left {
+        // SAFETY: a signal to the stray `sleep` this test started.
+        unsafe { libc_kill(pid) };
+    }
+
+    // The priority of a process outside the sandbox.
+    let mut victim = Victim::start();
+    let pid = victim.0.id();
+    let output = run(workspace, &format!("renice -n 5 -p {pid}; echo renice=$?"), &quick()).await;
+    let nice = std::process::Command::new("ps").args(["-o", "ni=", "-p", &pid.to_string()]).output().unwrap();
+    println!(
+        "renice of an outside process: {}{}its priority afterwards: {} (alive: {})",
+        output.stdout.text,
+        output.stderr.text,
+        String::from_utf8_lossy(&nice.stdout).trim(),
+        victim.alive()
+    );
 }
 
 /// macOS: the time, in the form `log show --start` takes.
